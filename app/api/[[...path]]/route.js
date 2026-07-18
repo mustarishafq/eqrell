@@ -276,7 +276,7 @@ async function handleRoute(request, { params }) {
     }
 
     // DELETE /children/:id
-    if (route.startsWith('/children/') && method === 'DELETE') {
+    if (route.startsWith('/children/') && !route.includes('/habits') && !route.includes('/claims') && method === 'DELETE') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
       const childId = route.split('/')[2]
@@ -285,7 +285,166 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
       const result = await db.collection('children').deleteOne({ id: childId, familyId: user.familyId })
       if (result.deletedCount === 0) return err('Anak tidak dijumpai', 404)
+      // Cascade delete habits + claims for this child
+      await db.collection('habits').deleteMany({ childId, familyId: user.familyId })
+      await db.collection('habit_claims').deleteMany({ childId, familyId: user.familyId })
       return json({ ok: true })
+    }
+
+    // ══════════ HABITS ══════════
+
+    // GET /children/:id/habits  → list habits assigned to child (with today's completion state)
+    if (route.match(/^\/children\/[^/]+\/habits$/) && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      // Verify child belongs to family
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Anak tidak dijumpai', 404)
+
+      const habits = await db.collection('habits')
+        .find({ childId, familyId: user.familyId, active: { $ne: false } })
+        .sort({ createdAt: 1 })
+        .project({ _id: 0 })
+        .toArray()
+
+      // Attach today's claim status
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const claims = await db.collection('habit_claims')
+        .find({ childId, dateStr: todayStr })
+        .project({ _id: 0, habitId: 1, status: 1 })
+        .toArray()
+      const claimMap = Object.fromEntries(claims.map(c => [c.habitId, c.status]))
+      const enriched = habits.map(h => ({ ...h, todayStatus: claimMap[h.id] || 'pending' }))
+
+      return json({ habits: enriched })
+    }
+
+    // POST /children/:id/habits  → assign a habit (from template or custom)
+    if (route.match(/^\/children\/[^/]+\/habits$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Anak tidak dijumpai', 404)
+
+      if (!body.title?.trim()) return err('Tajuk habit diperlukan', 400)
+
+      const habit = {
+        id: crypto.randomUUID(),
+        familyId: user.familyId,
+        childId,
+        templateId: body.templateId || null,   // if from template, keep reference
+        category: body.category || 'ibadah',
+        title: body.title.trim(),
+        desc: body.desc || '',
+        points: body.points ?? 10,
+        frequency: body.frequency || 'daily',
+        active: true,
+        assignedBy: session.userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      await db.collection('habits').insertOne(habit)
+      const { _id, ...clean } = habit
+      return json({ habit: clean })
+    }
+
+    // PATCH /habits/:id  → update habit
+    if (route.match(/^\/habits\/[^/]+$/) && method === 'PATCH') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const habitId = route.split('/')[2]
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      const allowed = ['title', 'desc', 'category', 'points', 'frequency', 'active']
+      const $set = { updatedAt: new Date() }
+      for (const k of allowed) if (k in body) $set[k] = body[k]
+
+      const result = await db.collection('habits').updateOne(
+        { id: habitId, familyId: user.familyId },
+        { $set }
+      )
+      if (result.matchedCount === 0) return err('Habit tidak dijumpai', 404)
+      const updated = await db.collection('habits').findOne({ id: habitId }, { projection: { _id: 0 } })
+      return json({ habit: updated })
+    }
+
+    // DELETE /habits/:id
+    if (route.match(/^\/habits\/[^/]+$/) && method === 'DELETE') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const habitId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const result = await db.collection('habits').deleteOne({ id: habitId, familyId: user.familyId })
+      if (result.deletedCount === 0) return err('Habit tidak dijumpai', 404)
+      // Cascade delete related claims
+      await db.collection('habit_claims').deleteMany({ habitId })
+      return json({ ok: true })
+    }
+
+    // POST /habits/:id/claim  → child (or parent testing) marks habit as claimed for today
+    // Body: { childId, status: 'claimed' | 'skipped' }
+    if (route.match(/^\/habits\/[^/]+\/claim$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const habitId = route.split('/')[2]
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      const habit = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId })
+      if (!habit) return err('Habit tidak dijumpai', 404)
+
+      const dateStr = body.dateStr || new Date().toISOString().slice(0, 10)
+      const status = body.status || 'claimed'  // 'claimed' | 'verified' | 'rejected' | 'skipped'
+      const claimData = {
+        habitId,
+        childId: habit.childId,
+        familyId: habit.familyId,
+        dateStr,
+        status,
+        claimedAt: new Date(),
+        claimedBy: session.userId,
+      }
+      // Upsert (one claim per habit per day)
+      await db.collection('habit_claims').updateOne(
+        { habitId, dateStr },
+        { $set: claimData },
+        { upsert: true }
+      )
+      return json({ ok: true, claim: claimData })
+    }
+
+    // GET /verify-queue  → list pending claims across all children in family
+    if (route === '/verify-queue' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ claims: [] })
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const claims = await db.collection('habit_claims')
+        .find({ familyId: user.familyId, status: 'claimed', dateStr: todayStr })
+        .project({ _id: 0 })
+        .toArray()
+      return json({ claims })
     }
 
     // ── unknown ──

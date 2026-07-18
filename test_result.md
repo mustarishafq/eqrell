@@ -347,3 +347,124 @@ agent_communication:
       - All test data cleaned up successfully
       
       NO ISSUES FOUND. Backend is production-ready for the auth + family + children features.
+
+  - agent: "main"
+    message: |
+      Habit backend implementation complete. Added:
+      - 30 habit templates in /app/lib/habitTemplates.js
+      - 6 new endpoints for habit CRUD and claims
+      - Cascade delete for habits when child is deleted
+      Please test the new habit endpoints focusing on:
+      - Basic CRUD operations
+      - Claims system with upsert behavior
+      - Co-parenting (both parents can manage habits)
+      - Data isolation between families
+      - Cascade delete verification
+
+  - agent: "testing"
+    message: |
+      🎉 HABIT BACKEND TESTING COMPLETE - ALL TESTS PASSED (34/34)
+      
+      Comprehensive habit backend test suite executed successfully. All new habit endpoints working perfectly:
+      
+      ✅ Basic CRUD (10 tests): Create, read, update, delete habits with proper validation
+      ✅ Claims System (10 tests): Claim recording, upsert behavior, todayStatus updates, verify-queue filtering
+      ✅ Co-Parenting (6 tests): Both parents can manage habits, see each other's claims, shared verify-queue
+      ✅ Data Isolation (3 tests): Family-scoped access, no cross-family leaks
+      ✅ Cascade Delete (3 tests): Child deletion properly removes habits and claims
+      ✅ Edge Cases (2 tests): Graceful error handling, empty states
+      
+      KEY FINDINGS:
+      - All habit CRUD operations working correctly
+      - Claims system with proper upsert behavior (one claim per habit per day)
+      - todayStatus field correctly computed and returned with each habit
+      - Verify-queue correctly filters by family and status='claimed'
+      - Co-parenting model working perfectly for habits
+      - Data isolation between families working correctly
+      - Cascade delete working (child deletion removes habits + claims)
+      - Error handling appropriate (400, 401, 404 status codes)
+      
+      NO ISSUES FOUND. Habit backend is production-ready.
+
+  - task: "Habits templates + CRUD API (/children/:id/habits, /habits/:id, /habits/:id/claim, /verify-queue)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/habitTemplates.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added 30 pre-defined habit templates (Islamic-first: 10 ibadah, 6 akhlak, 4 pembelajaran, 5 kesihatan, 5 keluarga) with age-band tagging.
+          New endpoints (all family-scoped, auth-required):
+            - GET /api/children/:id/habits → list habits for child, includes todayStatus per habit
+            - POST /api/children/:id/habits → assign habit (from template or custom): {templateId?, title, desc, category, points, frequency}
+            - PATCH /api/habits/:id → update (title, desc, category, points, frequency, active)
+            - DELETE /api/habits/:id → remove habit; cascades habit_claims
+            - POST /api/habits/:id/claim → upsert claim {status:'claimed'|'verified'|'rejected'|'skipped'} for today (one per habit per day)
+            - GET /api/verify-queue → list pending claims (status='claimed') for family, today only
+          Also updated DELETE /children/:id to cascade-delete habits + claims for that child, and added exclusion regex so it doesn't match /children/:id/habits.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL HABIT TESTS PASSED (34/34)
+          
+          Comprehensive habit backend test suite executed successfully. Created habit-specific tests in /app/backend_test.py covering:
+          
+          ✅ SECTION A: Basic CRUD Operations (10 tests)
+             - Unauthenticated calls return 401
+             - Non-existent child returns 404
+             - Missing title returns 400 with proper error message
+             - Habit creation with template payload works correctly
+             - GET habits returns array with todayStatus field for each habit
+             - PATCH updates whitelisted fields only
+             - PATCH non-existent habit returns 404
+             - DELETE habit works and cascades to claims
+             - Deleted habits don't appear in subsequent GET requests
+          
+          ✅ SECTION B: Claims (10 tests)
+             - Verify-queue unauthorized returns 401
+             - Claim on non-existent habit returns 404
+             - POST claim with status='claimed' works
+             - todayStatus updates correctly after claim
+             - Verify-queue shows only 'claimed' status claims
+             - Upsert works: same-day claim with different status replaces previous
+             - 'skipped' status claims don't appear in verify-queue
+             - 'verified' status claims don't appear in verify-queue
+          
+          ✅ SECTION C: Co-Parenting (6 tests)
+             - User B (Bapa) can see habits added by User A (Ibu)
+             - User B can PATCH habits created by User A
+             - User A sees updates made by User B
+             - User B can claim habits
+             - User A sees User B's claims (todayStatus updated)
+             - User A's verify-queue shows User B's claims (family-scoped)
+          
+          ✅ SECTION D: Data Isolation (3 tests)
+             - User from different family gets 404 on GET habits for other family's child
+             - User from different family gets 404 on PATCH/DELETE/CLAIM for other family's habits
+             - Verify-queue is family-scoped (no cross-family leaks)
+          
+          ✅ SECTION E: Cascade Delete (3 tests)
+             - Created 2 habits for child with claims
+             - DELETE child successfully removes child from collection
+             - Verified habits and claims are cascade-deleted from MongoDB
+          
+          ✅ SECTION F: Edge Cases (2 tests)
+             - Non-number points handled gracefully (doesn't crash)
+             - Verify-queue returns empty array for user without family
+          
+          KEY FINDINGS:
+          - All habit CRUD operations working correctly
+          - Claims system working with proper upsert behavior
+          - todayStatus field correctly computed and returned
+          - Verify-queue correctly filters by family and status='claimed'
+          - Co-parenting model working perfectly (both parents can manage habits)
+          - Data isolation between families working correctly
+          - Cascade delete working (child deletion removes habits + claims)
+          - Error handling appropriate (400, 401, 404 status codes)
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. Habit backend is production-ready.

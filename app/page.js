@@ -7,6 +7,7 @@ import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
+import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 
 const ASSETS = {
@@ -32,9 +33,11 @@ const resolveAvatarSrc = (child) => {
   return AVATAR_BY_ID[id]?.src || AVATAR_BY_ID[DEFAULT_BOY_ID].src
 }
 
-const ChildProgressRing = ({ child }) => {
+const ChildProgressRing = ({ child, habitCount }) => {
   const ringColor = FAV_COLOR_MAP[child.favColor] || '#00B894'
-  const pct = child.todayTotal > 0 ? (child.todayCompleted / child.todayTotal) : 0
+  const total = habitCount?.total ?? 0
+  const done = habitCount?.done ?? 0
+  const pct = total > 0 ? (done / total) : 0
   const radius = 42
   const stroke = 5
   const circumference = 2 * Math.PI * radius
@@ -69,7 +72,7 @@ const ChildProgressRing = ({ child }) => {
           className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white shadow-eq-soft rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap"
           style={{ color: ringColor }}
         >
-          {child.todayCompleted}/{child.todayTotal}
+          {done}/{total}
         </div>
       </div>
       <div className="font-semibold text-xs pt-1" style={{ color: ringColor }}>{child.nickname}</div>
@@ -128,6 +131,9 @@ const ParentDashboard = () => {
   const [me, setMe] = useState(null)
   const [family, setFamily] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const [habitsSheetChild, setHabitsSheetChild] = useState(null)  // when set, opens HabitsSheet
+  const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
+  const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
 
   // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
@@ -152,27 +158,62 @@ const ParentDashboard = () => {
     })()
   }, [])
 
-  // LOAD CHILDREN from API once auth confirmed
+  // LOAD CHILDREN + their habit counts
   useEffect(() => {
     if (!authChecked) return
     (async () => {
       try {
         const res = await fetch('/api/children', { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          // Auto-recompute age band from DOB
-          const refreshed = (data.children || []).map(c => {
-            if (c.dob) {
-              const age = calculateAge(c.dob)
-              return { ...c, ageBand: ageBandFromAge(age) }
+        if (!res.ok) return
+        const data = await res.json()
+        const refreshed = (data.children || []).map(c => {
+          if (c.dob) {
+            const age = calculateAge(c.dob)
+            return { ...c, ageBand: ageBandFromAge(age) }
+          }
+          return c
+        })
+        setChildren(refreshed)
+
+        // Fetch habit counts + today status per child in parallel
+        const counts = {}
+        await Promise.all(refreshed.map(async (c) => {
+          try {
+            const r = await fetch(`/api/children/${c.id}/habits`, { credentials: 'include' })
+            if (r.ok) {
+              const d = await r.json()
+              const total = d.habits?.length || 0
+              const done  = d.habits?.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length || 0
+              counts[c.id] = { total, done }
             }
-            return c
-          })
-          setChildren(refreshed)
-        }
+          } catch (e) {}
+        }))
+        setHabitCounts(counts)
+
+        // Fetch verify queue count (pending claims)
+        try {
+          const vq = await fetch('/api/verify-queue', { credentials: 'include' })
+          if (vq.ok) {
+            const vqd = await vq.json()
+            setPendingVerifyCount(vqd.claims?.length || 0)
+          }
+        } catch (e) {}
       } catch (e) {}
     })()
   }, [authChecked])
+
+  // Refresh habit count for one child (called after HabitsSheet updates)
+  const refreshChildHabits = async (childId) => {
+    try {
+      const r = await fetch(`/api/children/${childId}/habits`, { credentials: 'include' })
+      if (r.ok) {
+        const d = await r.json()
+        const total = d.habits?.length || 0
+        const done  = d.habits?.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length || 0
+        setHabitCounts(prev => ({ ...prev, [childId]: { total, done } }))
+      }
+    } catch (e) {}
+  }
 
   useEffect(() => {
     // Format names for greeting
@@ -351,16 +392,36 @@ const ParentDashboard = () => {
           </p>
 
           <div className="flex justify-center gap-3 mt-3 flex-wrap">
-            {children.map((child) => (
-              <button
-                key={child.id}
-                onClick={() => openEditSheet(child)}
-                className="active:scale-95 transition-transform"
-                aria-label={`Edit ${child.nickname}`}
-              >
-                <ChildProgressRing child={child} />
-              </button>
-            ))}
+            {children.map((child) => {
+              let pressTimer = null
+              const handleDown = () => {
+                pressTimer = setTimeout(() => {
+                  openEditSheet(child)
+                  pressTimer = null
+                }, 550)
+              }
+              const handleUp = () => {
+                if (pressTimer) {
+                  clearTimeout(pressTimer)
+                  pressTimer = null
+                  setHabitsSheetChild(child)
+                }
+              }
+              const handleCancel = () => {
+                if (pressTimer) { clearTimeout(pressTimer); pressTimer = null }
+              }
+              return (
+                <button
+                  key={child.id}
+                  onMouseDown={handleDown} onMouseUp={handleUp} onMouseLeave={handleCancel}
+                  onTouchStart={handleDown} onTouchEnd={handleUp} onTouchCancel={handleCancel}
+                  className="active:scale-95 transition-transform"
+                  aria-label={`Habits ${child.nickname}`}
+                >
+                  <ChildProgressRing child={child} habitCount={habitCounts[child.id]} />
+                </button>
+              )
+            })}
             {children.length < 20 && (
               <button
                 onClick={openAddSheet}
@@ -374,6 +435,13 @@ const ParentDashboard = () => {
               </button>
             )}
           </div>
+
+          {/* Hint */}
+          {children.length > 0 && (
+            <p className="text-center text-[11px] text-eq-ink/50 mt-2 leading-tight">
+              👆 Tap untuk habits · 🔒 Tekan tahan untuk edit anak
+            </p>
+          )}
 
           <motion.div
             initial={{ opacity: 0 }}
@@ -399,7 +467,9 @@ const ParentDashboard = () => {
           <img src={ASSETS.verifyClip} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
           <div className="flex-1 text-left">
             <div className="font-bold text-eq-ink text-sm">
-              {mockFamily.pendingVerifications} tugasan sedia disemak
+              {pendingVerifyCount > 0
+                ? `${pendingVerifyCount} tugasan sedia disemak`
+                : 'Belum ada tugasan untuk disemak'}
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-eq-blue flex-shrink-0" strokeWidth={2.5} />
@@ -453,6 +523,19 @@ const ParentDashboard = () => {
         initial={editingChild}
         onSave={handleSaveChild}
         onDelete={handleDeleteChild}
+      />
+
+      {/* Habits sheet — opens when a child ring is tapped */}
+      <HabitsSheet
+        open={!!habitsSheetChild}
+        onClose={() => {
+          if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
+          setHabitsSheetChild(null)
+        }}
+        child={habitsSheetChild}
+        onCountChange={() => {
+          if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
+        }}
       />
     </div>
   )
