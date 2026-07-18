@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles } from 'lucide-react'
 import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
+import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -283,6 +284,9 @@ const ParentDashboard = () => {
       </div>
 
       <BottomNav active={activeTab} onChange={setActiveTab} />
+
+      {/* PWA Install Prompt (smart: iOS tutorial / Android native) */}
+      <InstallPrompt />
     </div>
   )
 }
