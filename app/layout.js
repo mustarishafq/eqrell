@@ -7,7 +7,7 @@ export const metadata = {
   applicationName: 'EQrel',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'EQrel',
   },
   formatDetection: {
@@ -23,7 +23,6 @@ export const metadata = {
       { url: '/icons/icon-192.png', sizes: '180x180', type: 'image/png' },
     ],
   },
-  themeColor: '#00B894',
 }
 
 export const viewport = {

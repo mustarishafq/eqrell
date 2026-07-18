@@ -78,7 +78,7 @@ const BottomNav = ({ active = 'home', onChange }) => {
     { id: 'profile', label: t.nav_profile, icon: ASSETS.navProfile, color: '#B39DDB' },
   ]
   return (
-    <nav className="flex-shrink-0 bg-white border-t border-eq-cream/50 safe-bottom">
+    <nav className="flex-shrink-0 bg-white border-t border-eq-cream/50 safe-bottom shadow-[0_-2px_12px_rgba(15,46,37,0.05)]">
       <div className="grid grid-cols-4 max-w-md mx-auto">
         {items.map(item => {
           const isActive = active === item.id
@@ -86,19 +86,19 @@ const BottomNav = ({ active = 'home', onChange }) => {
             <button
               key={item.id}
               onClick={() => onChange?.(item.id)}
-              className="flex flex-col items-center justify-center py-1.5 px-2 relative transition-transform active:scale-95"
+              className="flex flex-col items-center justify-center py-2.5 relative transition-transform active:scale-95"
               aria-label={item.label}
             >
-              <div className={`w-8 h-8 flex items-center justify-center transition-all ${isActive ? 'scale-110' : 'scale-100 opacity-60'}`}>
-                <img src={item.icon} alt="" className="w-8 h-8 object-contain" />
+              <div className={`w-12 h-12 flex items-center justify-center transition-all ${isActive ? 'scale-110' : 'scale-100 opacity-55'}`}>
+                <img src={item.icon} alt="" className="w-11 h-11 object-contain" />
               </div>
-              <span className={`text-[10px] font-semibold mt-0.5 transition-colors ${isActive ? 'text-eq-ink' : 'text-eq-ink/50'}`}>
+              <span className={`text-[11px] font-bold mt-0 transition-colors ${isActive ? 'text-eq-ink' : 'text-eq-ink/50'}`}>
                 {item.label}
               </span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className="absolute bottom-0 h-1 w-6 rounded-full"
+                  className="absolute bottom-0.5 h-1 w-8 rounded-full"
                   style={{ backgroundColor: item.color }}
                 />
               )}
@@ -128,8 +128,12 @@ const ParentDashboard = () => {
     <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden relative">
       {/* HERO — full-bleed, extends behind status bar/dynamic island */}
       <div className="absolute inset-x-0 top-0 pointer-events-none z-0" style={{ height: '48dvh' }}>
-        <img src={ASSETS.heroLandscape} alt="" className="w-full h-full object-cover" />
-        {/* Fade to warm bg at bottom edge */}
+        <img
+          src={ASSETS.heroLandscape}
+          alt=""
+          className="w-full h-full object-cover"
+          style={{ objectPosition: 'center 30%' }}
+        />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-eq-warm/95" />
       </div>
 
@@ -152,20 +156,19 @@ const ParentDashboard = () => {
         </div>
       </div>
 
-      {/* EQ MASCOT — large, half-body, sits over hero */}
-      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '20dvh', minHeight: 160 }}>
+      {/* EQ MASCOT — full body, feet overlap card */}
+      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '22dvh', minHeight: 180 }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: 'easeOut' }}
-          className="animate-float absolute inset-x-0 flex justify-center overflow-hidden"
-          style={{ top: '-10px', bottom: '10px' }}
+          className="animate-float absolute inset-x-0 flex justify-center"
+          style={{ top: '-10px', bottom: '-20px' }}
         >
           <img
             src={ASSETS.eqMascot}
             alt="EQ"
-            className="w-[220px] h-[220px] object-contain drop-shadow-2xl"
-            style={{ objectPosition: 'top center' }}
+            className="w-[220px] h-[240px] object-contain drop-shadow-2xl"
           />
         </motion.div>
       </div>
