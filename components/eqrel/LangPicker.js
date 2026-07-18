@@ -55,7 +55,10 @@ export function LangPicker({ variant = 'elegant', align = 'right' }) {
   }
 
   // ═══ Elegant dropdown ═══
-  const menuAlign = align === 'left' ? 'left-0' : 'right-0'
+  const menuAlign =
+    align === 'left'   ? 'left-0' :
+    align === 'center' ? 'left-1/2 -translate-x-1/2' :
+                         'right-0'
 
   return (
     <div ref={ref} className="relative inline-block">

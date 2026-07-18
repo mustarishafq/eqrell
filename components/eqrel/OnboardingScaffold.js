@@ -79,17 +79,6 @@ export function OnboardingScaffold({
       <div className="pointer-events-none absolute bottom-0 right-0 w-72 h-72 bg-amber-200/30 rounded-full blur-3xl translate-x-1/3 translate-y-1/3" />
 
       <div className="relative z-10 flex flex-col items-center px-5 py-6 min-h-[100dvh]">
-        {/* Floating language picker — top right, elegant dropdown */}
-        <div
-          className="absolute z-20"
-          style={{
-            top: 'max(env(safe-area-inset-top), 16px)',
-            right: 'max(env(safe-area-inset-right), 16px)',
-          }}
-        >
-          <LangPicker variant="elegant" align="right" />
-        </div>
-
         {/* Header — logo */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -111,6 +100,16 @@ export function OnboardingScaffold({
             style={{ width: mascotSize, height: mascotSize, objectFit: 'contain' }}
           />
         )}
+
+        {/* Language picker — centered below mascot for clarity */}
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="mt-3 z-30 relative"
+        >
+          <LangPicker variant="elegant" align="center" />
+        </motion.div>
 
         {/* Content slot */}
         <motion.div
