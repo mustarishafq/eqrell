@@ -1,4 +1,8 @@
 #====================================================================================================
+metadata:
+  updated_by: "main_agent"
+  update_note: "Login UI polished — elegant language dropdown (no flags) + pre-hydration lang script for build-safe language switching (2026-01-18)"
+
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
 
@@ -553,9 +557,39 @@ agent_communication:
           
           Zero remaining hardcoded UI strings detected via grep sweep of app/page.js + components/eqrel/*.js.
 
-metadata:
-  updated_by: "main_agent"
-  update_note: "Complete i18n audit — 100% UI + 30 habit templates localised across MS/EN/ID/AR (2026-01-18)"
+  - task: "Login UI polish — elegant language dropdown (no flags) + build-safe language switching"
+    implemented: true
+    working: true
+    file: "components/eqrel/LangPicker.js, components/eqrel/OnboardingScaffold.js, app/login/page.js, app/layout.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          User requested: remove country flags from login language picker, redesign into a more premium dropdown/menu, and ensure Next.js production builds remain aware of runtime language changes.
+          
+          LangPicker.js rewritten:
+            - New 'elegant' variant: floating glassmorphism pill (bg-white/70 backdrop-blur, subtle shadow) with a Globe icon + current language in its NATIVE SCRIPT + rotating chevron. No flags anywhere.
+            - Click opens an animated dropdown menu (framer-motion) with all 4 languages listed vertically, each in its native script (Bahasa Malaysia / English / Bahasa Indonesia / العربية). Active language shown in bold with a green Check icon.
+            - Outside-click and Escape key close the menu (mousedown + touchstart listeners for touch support).
+            - align prop supports 'right' or 'left' anchor.
+            - 'compact' variant (pill row with short codes) retained for use in authenticated header.
+          
+          OnboardingScaffold.js: LangPicker moved to a FLOATING absolute position at top-right (respects env(safe-area-inset-top/right) for iOS notch). Now appears on both /login and /family/setup automatically, giving consistent UX.
+          
+          login/page.js: removed the boxy 2x2 grid picker wrapper. Cleaner, more focus on the Google sign-in card.
+          
+          layout.js: Added a small pre-hydration inline script that reads localStorage 'eqrel-lang' (or falls back to navigator.languages auto-detect) and applies document.documentElement.lang + dir BEFORE the React tree hydrates. This prevents any visible flash of the wrong language/direction when a returning Arabic user opens the app in a Next.js production build. suppressHydrationWarning on <html> tolerates the mutation.
+          
+          Build-safety note: All UI components remain 'use client' with runtime context-driven text (useLang() → t.*). No text is captured at build time. The added pre-hydration script only sets HTML attributes (lang/dir), never text — so `next build` output for the html shell remains generic while every visible string is resolved dynamically on client. Safe for both static export and server-rendered deployments.
+          
+          Verified via screenshot tool on /login (420×900):
+            - BM/EN/ID show elegant pill top-right with respective language in native script; click reveals dropdown with checkmark on active
+            - AR flips full RTL, pill still stays at physical top-right corner, Arabic native label 'العربية' renders correctly
+            - Dropdown open state clean: 4 languages, native scripts, active English row has checkmark
+            - No flag emojis anywhere on the login screen
 
 agent_communication:
     -agent: "main"

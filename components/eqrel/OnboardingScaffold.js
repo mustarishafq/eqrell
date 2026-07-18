@@ -6,6 +6,7 @@
 
 import { motion } from 'framer-motion'
 import { BrandLogo } from './BrandLogo'
+import { LangPicker } from './LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
 
 const MASCOT_URL = 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/33belexr_eq-greeting-companion.png'
@@ -78,6 +79,17 @@ export function OnboardingScaffold({
       <div className="pointer-events-none absolute bottom-0 right-0 w-72 h-72 bg-amber-200/30 rounded-full blur-3xl translate-x-1/3 translate-y-1/3" />
 
       <div className="relative z-10 flex flex-col items-center px-5 py-6 min-h-[100dvh]">
+        {/* Floating language picker — top right, elegant dropdown */}
+        <div
+          className="absolute z-20"
+          style={{
+            top: 'max(env(safe-area-inset-top), 16px)',
+            right: 'max(env(safe-area-inset-right), 16px)',
+          }}
+        >
+          <LangPicker variant="elegant" align="right" />
+        </div>
+
         {/* Header — logo */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}

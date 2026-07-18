@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { startGoogleLogin } from '@/lib/authClient'
 import { OnboardingScaffold } from '@/components/eqrel/OnboardingScaffold'
-import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
 
 export default function LoginPage() {
@@ -12,11 +11,6 @@ export default function LoginPage() {
 
   return (
     <OnboardingScaffold showMascot={true} showQuote={true} mascotSize={96}>
-      {/* Language picker — prominent at top */}
-      <div className="bg-white/70 backdrop-blur rounded-2xl p-3 border border-emerald-100 mb-3">
-        <LangPicker variant="pills" />
-      </div>
-
       <div className="bg-white rounded-3xl shadow-xl p-5 border-2 border-emerald-100">
         <h2 className="text-xl font-extrabold text-emerald-900 text-center mb-1">
           {t.salam} 👋
