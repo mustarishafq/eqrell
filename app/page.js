@@ -7,7 +7,7 @@ import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
-import { Avatar } from '@/components/eqrel/Avatar'
+import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -26,11 +26,10 @@ const FAV_COLOR_MAP = {
   blue: '#2D9CDB', purple: '#9C7BD9', pink: '#EC4899', fresh: '#4CAF50',
 }
 
-// Legacy avatar type migration (from earlier build)
-const migrateAvatarType = (t) => {
-  if (t === 'boy-kopiah') return 'boy-kopiah-white'
-  if (t === 'girl-hijab') return 'girl-hijab-purple'
-  return t || 'boy-hair'
+// Resolve avatar src, with backward-compat for older child records
+const resolveAvatarSrc = (child) => {
+  const id = child.avatarId || (child.gender === 'female' ? DEFAULT_GIRL_ID : DEFAULT_BOY_ID)
+  return AVATAR_BY_ID[id]?.src || AVATAR_BY_ID[DEFAULT_BOY_ID].src
 }
 
 const ChildProgressRing = ({ child }) => {
@@ -58,12 +57,11 @@ const ChildProgressRing = ({ child }) => {
             transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Avatar
-            type={migrateAvatarType(child.avatarType)}
-            skinTone={child.skinTone || 'light'}
-            hasGlasses={child.hasGlasses}
-            size={68}
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full">
+          <img
+            src={resolveAvatarSrc(child)}
+            alt={child.nickname}
+            className="w-full h-full object-cover object-top scale-125"
           />
         </div>
         <div
@@ -128,9 +126,9 @@ const ParentDashboard = () => {
   const [editingChild, setEditingChild] = useState(null)
 
   useEffect(() => {
-    // Load from localStorage if exists
+    // Load from localStorage if exists (bump storage key so old avatarType records won't render)
     try {
-      const stored = localStorage.getItem('eqrel-children')
+      const stored = localStorage.getItem('eqrel-children-v2')
       if (stored) {
         const loaded = JSON.parse(stored)
         // Auto-recompute age band from DOB (in case anak dah berubah umur)
@@ -142,14 +140,17 @@ const ParentDashboard = () => {
           return c
         })
         setChildren(refreshed)
+      } else {
+        // First run on new schema — clear v1 storage silently
+        localStorage.removeItem('eqrel-children')
       }
     } catch (e) {}
   }, [])
 
   useEffect(() => {
-    // Persist to localStorage
+    // Persist to localStorage (v2 schema uses avatarId)
     try {
-      localStorage.setItem('eqrel-children', JSON.stringify(children))
+      localStorage.setItem('eqrel-children-v2', JSON.stringify(children))
     } catch (e) {}
 
     // Format names
