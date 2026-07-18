@@ -133,32 +133,34 @@ const ParentDashboard = () => {
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/95" />
         </div>
 
-        <div className="relative z-10 flex items-start justify-between px-4 pt-3 safe-top">
+        <div className="relative z-10 flex items-start justify-between px-4 pt-6 safe-top">
           <div>
-            <p className="text-eq-ink/70 text-[11px] font-medium leading-tight">{t.salam},</p>
-            <h1 className="text-eq-ink font-extrabold text-2xl leading-tight mt-0 flex items-center gap-1.5">
-              {mockParent.name} <span className="animate-gentle-pulse text-lg">👋</span>
+            <p className="text-eq-ink/70 text-[13px] font-semibold leading-tight">{t.salam},</p>
+            <h1 className="text-eq-ink font-extrabold text-3xl leading-tight mt-0.5 flex items-center gap-2">
+              {mockParent.name} <span className="animate-gentle-pulse text-2xl">👋</span>
             </h1>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button className="w-9 h-9 bg-white rounded-full shadow-eq-soft flex items-center justify-center relative" aria-label="Notifications">
-              <Bell className="w-4 h-4 text-eq-ink" strokeWidth={2.5} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-eq-coral rounded-full ring-2 ring-white" />
+          <div className="flex items-center gap-1.5 mt-1">
+            <button className="w-10 h-10 bg-white rounded-full shadow-eq-soft flex items-center justify-center relative" aria-label="Notifications">
+              <Bell className="w-4.5 h-4.5 text-eq-ink" strokeWidth={2.5} />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-eq-coral rounded-full ring-2 ring-white" />
             </button>
-            <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-white shadow-eq-soft">
+            <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-white shadow-eq-soft">
               <img src={ASSETS.navProfile} alt="Profile" className="w-full h-full object-cover" />
             </div>
           </div>
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none z-10">
+        {/* EQ Mascot — half body only (crop bottom, like Master Reference) */}
+        <div className="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none z-10 overflow-hidden" style={{ height: '55%' }}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
             className="animate-float"
+            style={{ marginBottom: '-70px' }}
           >
-            <img src={ASSETS.eqMascot} alt="EQ" className="w-[130px] h-[130px] object-contain drop-shadow-2xl" />
+            <img src={ASSETS.eqMascot} alt="EQ" className="w-[180px] h-[180px] object-contain drop-shadow-2xl" />
           </motion.div>
         </div>
       </div>
@@ -234,22 +236,27 @@ const ParentDashboard = () => {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6, duration: 0.4 }}
-          className="relative rounded-2xl overflow-hidden shadow-eq-card bg-gradient-to-br from-sky-100 to-blue-50 flex-shrink-0"
+          className="relative rounded-2xl overflow-hidden shadow-eq-card flex-shrink-0"
+          style={{ minHeight: 90 }}
         >
-          <div className="absolute right-0 top-0 bottom-0 w-24 opacity-95 pointer-events-none">
+          {/* Full hero landscape background */}
+          <div className="absolute inset-0">
             <img
               src={ASSETS.heroLandscape}
               alt=""
               className="w-full h-full object-cover"
-              style={{ objectPosition: 'right center' }}
+              style={{ objectPosition: 'center 40%' }}
             />
+            {/* Gradient overlay for text readability */}
+            <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/85 to-white/30" />
           </div>
-          <div className="relative p-3 pr-24">
+
+          <div className="relative p-3">
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className="text-base">🚩</span>
-              <h3 className="text-eq-ink font-extrabold text-base">{t.family_quest_title}</h3>
+              <h3 className="text-eq-ink font-extrabold text-base drop-shadow-sm">{t.family_quest_title}</h3>
             </div>
-            <p className="text-eq-ink/70 text-[11px] mb-2 leading-tight">
+            <p className="text-eq-ink/80 text-[11px] mb-2 leading-tight font-medium">
               Akan tiba tidak lama lagi ✨
             </p>
             <button className="bg-eq-yellow text-eq-ink font-bold text-xs px-3 py-1.5 rounded-full shadow-eq-soft active:scale-95 flex items-center gap-0.5">
