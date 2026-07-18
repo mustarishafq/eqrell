@@ -126,22 +126,22 @@ const ParentDashboard = () => {
 
   return (
     <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden relative">
-      {/* HERO — full-bleed, extends behind main card */}
-      <div className="absolute inset-x-0 top-0 pointer-events-none z-0" style={{ height: '52dvh' }}>
+      {/* HERO — full-bleed, extends behind status bar/dynamic island */}
+      <div className="absolute inset-x-0 top-0 pointer-events-none z-0" style={{ height: '48dvh' }}>
         <img src={ASSETS.heroLandscape} alt="" className="w-full h-full object-cover" />
         {/* Fade to warm bg at bottom edge */}
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-eq-warm" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-eq-warm/95" />
       </div>
 
-      {/* TOP BAR — over hero */}
-      <div className="relative z-20 flex items-start justify-between px-5 pt-8 safe-top flex-shrink-0 pointer-events-auto">
-        <div>
+      {/* TOP BAR — over hero, respects safe area */}
+      <div className="relative z-20 flex items-start justify-between px-5 flex-shrink-0 pointer-events-auto" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <div className="pt-2">
           <p className="text-eq-ink/70 text-sm font-semibold leading-tight">{t.salam},</p>
-          <h1 className="text-eq-ink font-extrabold text-[32px] leading-tight mt-0.5 flex items-center gap-2">
+          <h1 className="text-eq-ink font-extrabold text-[34px] leading-tight mt-0.5 flex items-center gap-2">
             {mockParent.name} <span className="animate-gentle-pulse text-2xl">👋</span>
           </h1>
         </div>
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 pt-3">
           <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label="Notifications">
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
@@ -152,26 +152,26 @@ const ParentDashboard = () => {
         </div>
       </div>
 
-      {/* EQ MASCOT — half-body, sits over hero */}
-      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '18dvh', minHeight: 140 }}>
+      {/* EQ MASCOT — large, half-body, sits over hero */}
+      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '20dvh', minHeight: 160 }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: 'easeOut' }}
           className="animate-float absolute inset-x-0 flex justify-center overflow-hidden"
-          style={{ top: 0, bottom: 0 }}
+          style={{ top: '-10px', bottom: '10px' }}
         >
           <img
             src={ASSETS.eqMascot}
             alt="EQ"
-            className="w-[210px] h-[210px] object-contain drop-shadow-2xl"
+            className="w-[220px] h-[220px] object-contain drop-shadow-2xl"
             style={{ objectPosition: 'top center' }}
           />
         </motion.div>
       </div>
 
       {/* MOMENTUM BADGE — floating between hero and card */}
-      <div className="relative z-30 flex justify-center flex-shrink-0 -mt-1">
+      <div className="relative z-30 flex justify-center flex-shrink-0 -mt-2">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -193,9 +193,15 @@ const ParentDashboard = () => {
           transition={{ delay: 0.3, duration: 0.4 }}
           className="bg-white rounded-3xl p-4 shadow-eq-card flex-shrink-0"
         >
-          <h2 className="text-eq-ink font-extrabold text-base leading-snug">
-            {t.alhamdulillah}, perjalanan {childrenNames} semakin bercahaya <span className="inline-block">💛</span>
+          <h2 className="text-eq-ink font-extrabold text-xl leading-tight">
+            {t.alhamdulillah},
           </h2>
+          <p className="text-eq-ink font-extrabold text-lg leading-snug mt-0.5">
+            perjalanan {childrenNames} semakin bercahaya <span className="inline-block">💛</span>
+          </p>
+          <p className="text-eq-ink/60 text-xs mt-2 leading-relaxed">
+            {t.dashboard_sub}
+          </p>
 
           <div className="flex justify-center gap-5 mt-3">
             {mockChildren.map((child, idx) => (

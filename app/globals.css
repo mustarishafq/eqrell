@@ -41,8 +41,7 @@
 
   body {
     overscroll-behavior-y: contain;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    /* No top padding on body — let hero extend behind status bar */
   }
 
   /* Prevent horizontal scroll on mobile */
