@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles, Plus } from 'lucide-react'
 import { strings } from '@/lib/i18n/strings'
@@ -202,8 +202,8 @@ const ParentDashboard = () => {
     })()
   }, [authChecked])
 
-  // Refresh habit count for one child (called after HabitsSheet updates)
-  const refreshChildHabits = async (childId) => {
+  // Refresh habit count for one child (called after HabitsSheet updates) — memoized
+  const refreshChildHabits = useCallback(async (childId) => {
     try {
       const r = await fetch(`/api/children/${childId}/habits`, { credentials: 'include' })
       if (r.ok) {
@@ -213,7 +213,12 @@ const ParentDashboard = () => {
         setHabitCounts(prev => ({ ...prev, [childId]: { total, done } }))
       }
     } catch (e) {}
-  }
+  }, [])
+
+  // Stable callback for HabitsSheet so it doesn't cause re-renders
+  const handleHabitCountChange = useCallback(() => {
+    if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
+  }, [habitsSheetChild, refreshChildHabits])
 
   useEffect(() => {
     // Format names for greeting
@@ -533,9 +538,7 @@ const ParentDashboard = () => {
           setHabitsSheetChild(null)
         }}
         child={habitsSheetChild}
-        onCountChange={() => {
-          if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
-        }}
+        onCountChange={handleHabitCountChange}
       />
     </div>
   )

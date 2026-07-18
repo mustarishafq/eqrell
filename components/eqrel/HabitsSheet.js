@@ -1,54 +1,87 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, Check, Sparkles, ChevronRight } from 'lucide-react'
+import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand } from '@/lib/habitTemplates'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
+
+const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
 
 /**
  * HabitsSheet — bottom sheet for viewing/adding habits for a child.
  * Props: { open, onClose, child, onCountChange?(count) }
+ *
+ * Views: 'brief' (first-time popup) → 'list' (assigned habits) → 'add' (template picker) → 'custom' (custom habit form)
  */
 export function HabitsSheet({ open, onClose, child, onCountChange }) {
-  const [view, setView] = useState('list')  // 'list' | 'add'
+  const [view, setView] = useState('list')
   const [habits, setHabits] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState(null)
+  const [busyTemplateId, setBusyTemplateId] = useState(null)
+
+  // Custom habit form
+  const [customTitle, setCustomTitle] = useState('')
+  const [customDesc, setCustomDesc] = useState('')
+  const [customCategory, setCustomCategory] = useState('ibadah')
+  const [customPoints, setCustomPoints] = useState(10)
 
   const avatarSrc = child ? (AVATAR_BY_ID[child.avatarId]?.src ||
     (child.gender === 'female' ? AVATAR_BY_ID[DEFAULT_GIRL_ID].src : AVATAR_BY_ID[DEFAULT_BOY_ID].src)) : null
 
-  // Load habits when child changes
+  // Load habits when child changes. Use child.id (stable primitive) instead of child object.
+  const childId = child?.id
   useEffect(() => {
-    if (!open || !child) return
-    (async () => {
-      setLoading(true)
+    if (!open || !childId) return
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
       try {
-        const res = await fetch(`/api/children/${child.id}/habits`, { credentials: 'include' })
+        const res = await fetch(`/api/children/${childId}/habits`, { credentials: 'include' })
+        if (cancelled) return
         if (res.ok) {
           const data = await res.json()
           setHabits(data.habits || [])
           onCountChange?.(data.habits?.length || 0)
         }
       } catch (e) { console.error(e) }
-      finally { setLoading(false) }
+      finally { if (!cancelled) setLoading(false) }
     })()
-  }, [open, child, onCountChange])
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, childId])
 
-  const templates = useMemo(() => {
-    return templatesForAgeBand(child?.ageBand)
-  }, [child?.ageBand])
-
-  const assignedTemplateIds = useMemo(
-    () => new Set(habits.map(h => h.templateId).filter(Boolean)),
-    [habits]
-  )
-
-  const assignFromTemplate = async (tpl) => {
-    if (!child) return
+  // First-time brief popup: check localStorage once when sheet opens
+  useEffect(() => {
+    if (!open) return
     try {
-      const res = await fetch(`/api/children/${child.id}/habits`, {
+      if (!localStorage.getItem(BRIEF_STORAGE_KEY)) {
+        setView('brief')
+      } else {
+        setView('list')
+      }
+    } catch (e) { setView('list') }
+  }, [open])
+
+  const dismissBrief = () => {
+    try { localStorage.setItem(BRIEF_STORAGE_KEY, '1') } catch (e) {}
+    setView('list')
+  }
+
+  const templates = useMemo(() => templatesForAgeBand(child?.ageBand), [child?.ageBand])
+
+  const templateIdToHabit = useMemo(() => {
+    const map = {}
+    for (const h of habits) if (h.templateId) map[h.templateId] = h
+    return map
+  }, [habits])
+
+  const assignFromTemplate = useCallback(async (tpl) => {
+    if (!childId || busyTemplateId) return
+    setBusyTemplateId(tpl.id)
+    try {
+      const res = await fetch(`/api/children/${childId}/habits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -63,23 +96,47 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       })
       if (res.ok) {
         const data = await res.json()
-        const updated = [...habits, { ...data.habit, todayStatus: 'pending' }]
-        setHabits(updated)
-        onCountChange?.(updated.length)
+        setHabits(prev => {
+          const next = [...prev, { ...data.habit, todayStatus: 'pending' }]
+          onCountChange?.(next.length)
+          return next
+        })
       }
     } catch (e) { console.error(e) }
+    finally { setBusyTemplateId(null) }
+  }, [childId, busyTemplateId, onCountChange])
+
+  const unassignHabit = useCallback(async (habitId) => {
+    if (busyTemplateId) return
+    setBusyTemplateId('__unassign__' + habitId)
+    try {
+      const res = await fetch(`/api/habits/${habitId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        setHabits(prev => {
+          const next = prev.filter(h => h.id !== habitId)
+          onCountChange?.(next.length)
+          return next
+        })
+      }
+    } catch (e) { console.error(e) }
+    finally { setBusyTemplateId(null) }
+  }, [busyTemplateId, onCountChange])
+
+  const toggleTemplate = (tpl) => {
+    const existing = templateIdToHabit[tpl.id]
+    if (existing) {
+      unassignHabit(existing.id)
+    } else {
+      assignFromTemplate(tpl)
+    }
   }
 
   const removeHabit = async (habitId) => {
     if (!confirm('Padam habit ini?')) return
-    try {
-      const res = await fetch(`/api/habits/${habitId}`, { method: 'DELETE', credentials: 'include' })
-      if (res.ok) {
-        const updated = habits.filter(h => h.id !== habitId)
-        setHabits(updated)
-        onCountChange?.(updated.length)
-      }
-    } catch (e) { console.error(e) }
+    unassignHabit(habitId)
   }
 
   const toggleClaim = async (habit) => {
@@ -93,6 +150,35 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       })
       if (res.ok) {
         setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: nextStatus } : h))
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  const submitCustom = async () => {
+    if (!childId || !customTitle.trim()) return
+    try {
+      const res = await fetch(`/api/children/${childId}/habits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          templateId: null,
+          category: customCategory,
+          title: customTitle.trim(),
+          desc: customDesc.trim(),
+          points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
+          frequency: 'daily',
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setHabits(prev => {
+          const next = [...prev, { ...data.habit, todayStatus: 'pending' }]
+          onCountChange?.(next.length)
+          return next
+        })
+        setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
+        setView('list')
       }
     } catch (e) { console.error(e) }
   }
@@ -133,15 +219,62 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 <div className="text-xs text-eq-ink/60">Habits untuk</div>
                 <div className="font-extrabold text-eq-ink text-lg leading-tight truncate">{child.nickname}</div>
               </div>
+              {view === 'list' && (
+                <button
+                  onClick={() => { setView('brief') }}
+                  className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
+                  title="Bantuan"
+                >
+                  <Info className="w-5 h-5 text-eq-ink/60" />
+                </button>
+              )}
               <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0">
                 <X className="w-5 h-5 text-eq-ink/60" />
               </button>
             </div>
 
-            {view === 'list' ? (
-              /* ─── LIST VIEW ─── */
+            {/* ═══ BRIEF POPUP ═══ */}
+            {view === 'brief' && (
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                {/* Stats row */}
+                <div className="text-center">
+                  <div className="text-4xl mb-1">🌱</div>
+                  <h3 className="text-lg font-extrabold text-emerald-900">Cara Habits berfungsi</h3>
+                  <p className="text-emerald-800/60 text-xs mt-0.5">Untuk {child.nickname}</p>
+                </div>
+
+                {[
+                  { icon: '📚', title: 'Pilih dari 30 template', body: `Habit disusun ikut umur ${child.ageBand} (Ibadah, Akhlak, Pembelajaran, Kesihatan, Keluarga).` },
+                  { icon: '✏️', title: 'Atau cipta habit sendiri', body: 'Anda boleh tulis habit khas untuk anak (contoh: "Ulangkaji Matematik 20 min").' },
+                  { icon: '✨', title: 'Anak claim, anda verify', body: 'Anak tandakan selesai di Kid Mode. Anda semak di Verify Queue → sah = dapat Mata Bina.' },
+                  { icon: '💛', title: 'Progres real, bukan game', body: 'Setiap Mata Bina daripada perbuatan sebenar. Dunia anak berkembang dari amalan harian.' },
+                ].map((item, i) => (
+                  <div key={i} className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-3">
+                    <div className="text-2xl">{item.icon}</div>
+                    <div>
+                      <div className="font-bold text-emerald-900 text-sm">{item.title}</div>
+                      <div className="text-emerald-800/70 text-xs mt-0.5 leading-snug">{item.body}</div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mt-2">
+                  <p className="text-amber-900 text-xs leading-relaxed">
+                    💡 <b>Tip:</b> Mula dengan 3–5 habit ringan dulu. Tambah lagi bila anak dah biasa. Konsistensi &gt; banyak.
+                  </p>
+                </div>
+
+                <button
+                  onClick={dismissBrief}
+                  className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
+                >
+                  Mula tetapkan habits →
+                </button>
+              </div>
+            )}
+
+            {/* ═══ LIST VIEW ═══ */}
+            {view === 'list' && (
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 {habits.length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200">
@@ -166,10 +299,10 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 )}
 
                 {!loading && habits.length === 0 && (
-                  <div className="text-center py-8">
+                  <div className="text-center py-6">
                     <div className="text-5xl mb-2">🌱</div>
                     <p className="text-eq-ink font-bold">Belum ada habits</p>
-                    <p className="text-eq-ink/60 text-sm mt-1">Tambah dari template atau cipta sendiri</p>
+                    <p className="text-eq-ink/60 text-sm mt-1 mb-3">Tambah dari template atau cipta sendiri</p>
                   </div>
                 )}
 
@@ -193,11 +326,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           {isDone && <Check className="w-5 h-5 text-white" strokeWidth={3} />}
                         </button>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                             <span className="text-sm">{cat.icon}</span>
                             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{cat.label}</span>
                             <span className="text-[10px] text-eq-ink/40">·</span>
                             <span className="text-[10px] text-amber-600 font-bold">+{habit.points} mata</span>
+                            {!habit.templateId && (
+                              <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">CUSTOM</span>
+                            )}
                           </div>
                           <div className={`font-bold text-sm leading-tight ${isDone ? 'text-emerald-900 line-through opacity-70' : 'text-eq-ink'}`}>
                             {habit.title}
@@ -218,18 +354,30 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   )
                 })}
 
-                {/* Add habit button */}
-                <button
-                  onClick={() => setView('add')}
-                  className="w-full mt-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-[0.99]"
-                >
-                  <Plus className="w-5 h-5" strokeWidth={3} /> Tambah habit
-                </button>
+                {/* Add habit buttons — always visible */}
+                {!loading && (
+                  <div className="space-y-2 pt-2">
+                    <button
+                      onClick={() => { setActiveCategory(null); setView('add') }}
+                      className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white font-extrabold py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md active:scale-[0.99]"
+                    >
+                      <Plus className="w-5 h-5" strokeWidth={3} /> Tambah dari template
+                    </button>
+                    <button
+                      onClick={() => setView('custom')}
+                      className="w-full bg-white border-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-extrabold py-2.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]"
+                    >
+                      <Pencil className="w-4 h-4" strokeWidth={2.5} /> Cipta habit sendiri
+                    </button>
+                  </div>
+                )}
 
                 <div className="h-2" />
               </div>
-            ) : (
-              /* ─── ADD VIEW (template picker) ─── */
+            )}
+
+            {/* ═══ ADD (TEMPLATE PICKER) ═══ */}
+            {view === 'add' && (
               <div className="flex-1 overflow-y-auto">
                 <div className="sticky top-0 bg-white z-10 px-5 pt-3 pb-2 border-b border-eq-cream/50">
                   <div className="flex items-center justify-between mb-2">
@@ -237,10 +385,12 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                       ← Balik
                     </button>
                     <div className="text-xs text-eq-ink/60">
-                      Untuk umur <span className="font-bold text-emerald-700">{child.ageBand}</span>
+                      Umur <span className="font-bold text-emerald-700">{child.ageBand}</span> · {habits.length} habit
                     </div>
                   </div>
-                  {/* Category chips */}
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5 mb-2 text-[11px] text-emerald-800">
+                    💡 Klik untuk tambah, klik semula untuk buang. Boleh pilih seberapa banyak.
+                  </div>
                   <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 py-1 no-scrollbar">
                     <button
                       onClick={() => setActiveCategory(null)}
@@ -269,17 +419,19 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     .filter(t => activeCategory === null || t.category === activeCategory)
                     .map(t => {
                       const cat = HABIT_CATEGORIES[t.category]
-                      const isAssigned = assignedTemplateIds.has(t.id)
+                      const assignedHabit = templateIdToHabit[t.id]
+                      const isAssigned = !!assignedHabit
+                      const isBusy = busyTemplateId === t.id || busyTemplateId === '__unassign__' + assignedHabit?.id
                       return (
                         <button
                           key={t.id}
-                          disabled={isAssigned}
-                          onClick={() => assignFromTemplate(t)}
-                          className={`w-full text-left rounded-2xl p-3 border-2 transition-all flex items-start gap-2 ${
+                          disabled={isBusy}
+                          onClick={() => toggleTemplate(t)}
+                          className={`w-full text-left rounded-2xl p-3 border-2 transition-all flex items-start gap-2 active:scale-[0.99] ${
                             isAssigned
-                              ? 'bg-eq-cream/30 border-eq-cream opacity-60 cursor-not-allowed'
-                              : 'bg-white border-eq-cream hover:border-emerald-300 hover:bg-emerald-50/30 active:scale-[0.99]'
-                          }`}
+                              ? 'bg-emerald-50 border-emerald-400'
+                              : 'bg-white border-eq-cream hover:border-emerald-300 hover:bg-emerald-50/30'
+                          } ${isBusy ? 'opacity-60' : ''}`}
                         >
                           <div
                             className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
@@ -295,18 +447,123 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                             <div className="font-bold text-sm text-eq-ink leading-tight">{t.title}</div>
                             <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{t.desc}</div>
                           </div>
-                          {isAssigned ? (
-                            <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-0.5 flex-shrink-0">
-                              <Check className="w-3 h-3" /> Ada
-                            </div>
-                          ) : (
-                            <ChevronRight className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                          )}
+                          <div className="flex-shrink-0 self-center">
+                            {isAssigned ? (
+                              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <Check className="w-5 h-5 text-white" strokeWidth={3} />
+                              </div>
+                            ) : (
+                              <div className="w-8 h-8 rounded-full border-2 border-emerald-500 flex items-center justify-center">
+                                <Plus className="w-4 h-4 text-emerald-500" strokeWidth={3} />
+                              </div>
+                            )}
+                          </div>
                         </button>
                       )
                     })}
                   <div className="h-4" />
                 </div>
+
+                {/* Sticky bottom done button */}
+                <div className="sticky bottom-0 bg-white border-t border-eq-cream/50 px-5 py-3">
+                  <button
+                    onClick={() => setView('list')}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-2xl active:scale-[0.99]"
+                  >
+                    Selesai ({habits.length} habit dipilih) →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ═══ CUSTOM HABIT FORM ═══ */}
+            {view === 'custom' && (
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                <div className="flex items-center justify-between mb-1">
+                  <button onClick={() => setView('list')} className="text-emerald-700 font-bold text-sm flex items-center gap-1">
+                    ← Balik
+                  </button>
+                  <div className="text-xs text-eq-ink/60 flex items-center gap-1">
+                    <Pencil className="w-3 h-3" /> Custom habit
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Tajuk habit</label>
+                  <input
+                    type="text"
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    placeholder="Contoh: Ulangkaji Matematik 20 minit"
+                    className="w-full bg-eq-cream/50 border-2 border-transparent focus:border-eq-green focus:bg-white outline-none rounded-xl px-4 py-3 text-eq-ink font-medium"
+                    maxLength={80}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Penerangan (optional)</label>
+                  <textarea
+                    value={customDesc}
+                    onChange={(e) => setCustomDesc(e.target.value)}
+                    placeholder="Detail tambahan..."
+                    rows={2}
+                    className="w-full bg-eq-cream/50 border-2 border-transparent focus:border-eq-green focus:bg-white outline-none rounded-xl px-4 py-2 text-eq-ink text-sm resize-none"
+                    maxLength={200}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Kategori</label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {Object.entries(HABIT_CATEGORIES).map(([id, cat]) => (
+                      <button key={id}
+                        onClick={() => setCustomCategory(id)}
+                        className={`rounded-xl p-2 border-2 flex flex-col items-center gap-0.5 transition-all ${
+                          customCategory === id ? 'scale-[1.02]' : 'opacity-60'
+                        }`}
+                        style={customCategory === id
+                          ? { borderColor: cat.color, background: `${cat.color}15` }
+                          : { borderColor: 'transparent', background: '#F5F5F0' }}
+                      >
+                        <span className="text-lg">{cat.icon}</span>
+                        <span className="text-[9px] font-bold text-eq-ink text-center leading-tight">{cat.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Mata Bina (1–50)</label>
+                  <div className="flex gap-2">
+                    {[5, 10, 15, 20].map(p => (
+                      <button key={p}
+                        onClick={() => setCustomPoints(p)}
+                        className={`flex-1 rounded-xl py-2 font-extrabold text-sm border-2 transition-all ${
+                          customPoints === p ? 'border-eq-green bg-eq-green/10 text-eq-green' : 'border-transparent bg-eq-cream/50 text-eq-ink'
+                        }`}
+                      >
+                        +{p}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={customPoints}
+                      onChange={(e) => setCustomPoints(e.target.value)}
+                      className="w-16 rounded-xl border-2 border-transparent bg-eq-cream/50 focus:border-eq-green focus:bg-white outline-none text-center font-extrabold text-sm text-eq-ink"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={submitCustom}
+                  disabled={!customTitle.trim()}
+                  className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 disabled:from-eq-ink/20 disabled:to-eq-ink/20 disabled:cursor-not-allowed hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
+                >
+                  Cipta habit ini
+                </button>
+                <div className="h-2" />
               </div>
             )}
           </motion.div>
