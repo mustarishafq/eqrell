@@ -121,39 +121,60 @@ const ParentDashboard = () => {
   const t = strings.ms
   const [activeTab, setActiveTab] = useState('home')
   const [childrenNames, setChildrenNames] = useState('')
-  const [children, setChildren] = useState(mockChildren)
+  const [children, setChildren] = useState([])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingChild, setEditingChild] = useState(null)
+  const [me, setMe] = useState(null)
+  const [family, setFamily] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
 
+  // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
-    // Load from localStorage if exists (bump storage key so old avatarType records won't render)
-    try {
-      const stored = localStorage.getItem('eqrel-children-v2')
-      if (stored) {
-        const loaded = JSON.parse(stored)
-        // Auto-recompute age band from DOB (in case anak dah berubah umur)
-        const refreshed = loaded.map(c => {
-          if (c.dob) {
-            const age = calculateAge(c.dob)
-            return { ...c, ageBand: ageBandFromAge(age) }
-          }
-          return c
-        })
-        setChildren(refreshed)
-      } else {
-        // First run on new schema — clear v1 storage silently
-        localStorage.removeItem('eqrel-children')
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' })
+        if (!res.ok) {
+          window.location.href = '/login'
+          return
+        }
+        const data = await res.json()
+        if (data.needsFamilySetup) {
+          window.location.href = '/family/setup'
+          return
+        }
+        setMe(data.user)
+        setFamily(data.family)
+        setAuthChecked(true)
+      } catch (e) {
+        window.location.href = '/login'
       }
-    } catch (e) {}
+    })()
   }, [])
 
+  // LOAD CHILDREN from API once auth confirmed
   useEffect(() => {
-    // Persist to localStorage (v2 schema uses avatarId)
-    try {
-      localStorage.setItem('eqrel-children-v2', JSON.stringify(children))
-    } catch (e) {}
+    if (!authChecked) return
+    (async () => {
+      try {
+        const res = await fetch('/api/children', { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          // Auto-recompute age band from DOB
+          const refreshed = (data.children || []).map(c => {
+            if (c.dob) {
+              const age = calculateAge(c.dob)
+              return { ...c, ageBand: ageBandFromAge(age) }
+            }
+            return c
+          })
+          setChildren(refreshed)
+        }
+      } catch (e) {}
+    })()
+  }, [authChecked])
 
-    // Format names
+  useEffect(() => {
+    // Format names for greeting
     const names = children.map(c => c.nickname)
     if (names.length === 0) setChildrenNames('keluarga anda')
     else if (names.length === 1) setChildrenNames(names[0])
@@ -165,19 +186,57 @@ const ParentDashboard = () => {
 
   const openAddSheet = () => { setEditingChild(null); setSheetOpen(true) }
   const openEditSheet = (child) => { setEditingChild(child); setSheetOpen(true) }
-  const handleSaveChild = (child) => {
-    setChildren(prev => {
-      const idx = prev.findIndex(c => c.id === child.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = child
-        return next
+
+  const handleSaveChild = async (child) => {
+    const isEdit = children.some(c => c.id === child.id)
+    try {
+      if (isEdit) {
+        const res = await fetch(`/api/children/${child.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(child),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setChildren(prev => prev.map(c => c.id === child.id ? data.child : c))
+        }
+      } else {
+        const res = await fetch('/api/children', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(child),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setChildren(prev => [...prev, data.child])
+        }
       }
-      return [...prev, child]
-    })
+    } catch (e) {
+      console.error('Save child error', e)
+    }
   }
-  const handleDeleteChild = (id) => {
-    setChildren(prev => prev.filter(c => c.id !== id))
+
+  const handleDeleteChild = async (id) => {
+    try {
+      const res = await fetch(`/api/children/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (res.ok) setChildren(prev => prev.filter(c => c.id !== id))
+    } catch (e) {
+      console.error('Delete child error', e)
+    }
+  }
+
+  // Loading gate — don't render dashboard until auth confirmed
+  if (!authChecked) {
+    return (
+      <div className="h-[100dvh] bg-gradient-to-br from-emerald-50 to-amber-50 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full border-4 border-emerald-200 border-t-emerald-500 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -198,17 +257,44 @@ const ParentDashboard = () => {
         <div className="pt-2">
           <p className="text-eq-ink/70 text-sm font-semibold leading-tight">{t.salam},</p>
           <h1 className="text-eq-ink font-extrabold text-[34px] leading-tight mt-0.5 flex items-center gap-2">
-            {mockParent.name} <span className="animate-gentle-pulse text-2xl">👋</span>
+            {(me?.name || 'Mama').split(' ')[0]} <span className="animate-gentle-pulse text-2xl">👋</span>
           </h1>
+          {family?.code && (
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(family.code)
+                alert(`Kod keluarga disalin: ${family.code}`)
+              }}
+              className="mt-1 inline-flex items-center gap-1 bg-white/70 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-800 shadow-sm border border-emerald-200/60 hover:bg-white"
+              title="Klik untuk salin kod (kongsi dengan pasangan)"
+            >
+              👨‍👩‍👧 {family.code}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 pt-3">
           <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label="Notifications">
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
           </button>
-          <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white shadow-eq-card">
-            <img src={ASSETS.navProfile} alt="Profile" className="w-full h-full object-cover" />
-          </div>
+          <button
+            onClick={async () => {
+              if (confirm('Log keluar dari EQrel?')) {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+                window.location.href = '/login'
+              }
+            }}
+            className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white shadow-eq-card bg-emerald-100 flex items-center justify-center"
+            title="Log keluar"
+          >
+            {me?.picture ? (
+              <img src={me.picture} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-emerald-700 font-bold text-lg">
+                {(me?.name || 'U')[0].toUpperCase()}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
