@@ -1,223 +1,385 @@
 'use client'
 
 /**
- * SVG-based Avatar renderer for EQrel.
- * Renders accurate Islamic-first headwear (kopiah, songkok, serban, hijab)
- * instead of generic emoji.
+ * EQrel Chunky Cartoon Avatar (v2)
+ * -------------------------------------
+ * Islamic-first modular SVG avatar built for kids 3-12.
+ * Style: chunky cartoon (thick outlines, playful, warm) — Duolingo/Toca Boca inspired.
  *
- * Props:
- *  - type: one of AVATAR_TYPES keys (e.g. 'boy-kopiah-white')
- *  - skinTone: 'light' | 'medium' | 'tan' | 'brown'
- *  - hasGlasses: boolean
- *  - size: pixel size (default 96)
- *  - bg: optional tailwind gradient class for outer circle (falls back to type default)
- *  - showBg: whether to wrap in a circular gradient background (default true)
+ * Modular pieces:
+ *   - face shape: normal | chubby | slim | oval
+ *   - skin tone:  light | medium | tan | brown
+ *   - hair color: derived from skin tone
+ *   - headwear:   see AVATAR_META keys
+ *   - eyes:       normal | sparkly | sleepy
+ *   - mouth:      smile | bigSmile | small
+ *   - freckles:   boolean
+ *   - glasses:    boolean
  */
 
 export const SKIN_HEX = {
-  light: '#F5D5B5',
+  light:  '#F5D5B5',
   medium: '#E4B48C',
-  tan: '#C48A5D',
-  brown: '#8B5A38',
+  tan:    '#C48A5D',
+  brown:  '#8B5A38',
+}
+
+export const SKIN_SHADOW = {
+  light:  '#E5B892',
+  medium: '#C6926A',
+  tan:    '#A56E42',
+  brown:  '#6B4028',
 }
 
 export const HAIR_HEX = {
-  light: '#3A2415',
+  light:  '#3A2415',
   medium: '#2E1B0F',
-  tan: '#26140A',
-  brown: '#1B0E06',
+  tan:    '#26140A',
+  brown:  '#180C05',
 }
+
+const STROKE = '#2A1810'
+const STROKE_W = 1.4
+const STROKE_W_THIN = 1.0
 
 export const AVATAR_META = {
-  // Male
-  'boy-hair':         { gender: 'male',   label: 'Rambut',         bg: 'from-green-100 to-green-200' },
-  'boy-kopiah-white': { gender: 'male',   label: 'Kopiah putih',   bg: 'from-blue-100 to-blue-200' },
-  'boy-kopiah-black': { gender: 'male',   label: 'Kopiah hitam',   bg: 'from-slate-100 to-slate-200' },
-  'boy-songkok':      { gender: 'male',   label: 'Songkok',        bg: 'from-teal-100 to-teal-200' },
-  'boy-serban':       { gender: 'male',   label: 'Serban',         bg: 'from-amber-100 to-amber-200' },
-  'boy-cap':          { gender: 'male',   label: 'Topi',           bg: 'from-cyan-100 to-cyan-200' },
-  // Female
-  'girl-hair':        { gender: 'female', label: 'Rambut',         bg: 'from-pink-100 to-pink-200' },
-  'girl-hijab-pink':  { gender: 'female', label: 'Hijab pink',     bg: 'from-pink-100 to-rose-200',   hijab: '#F48FB1' },
-  'girl-hijab-purple':{ gender: 'female', label: 'Hijab ungu',     bg: 'from-purple-100 to-purple-200', hijab: '#B197FC' },
-  'girl-hijab-teal':  { gender: 'female', label: 'Hijab teal',     bg: 'from-teal-100 to-emerald-200', hijab: '#4DB6AC' },
-  'girl-hijab-coral': { gender: 'female', label: 'Hijab coral',    bg: 'from-orange-100 to-red-200',  hijab: '#FF8A80' },
-  'girl-hijab-black': { gender: 'female', label: 'Hijab hitam',    bg: 'from-slate-100 to-gray-300',  hijab: '#3E3E4F' },
+  'boy-hair':         { gender: 'male',   label: 'Rambut',       bg: 'from-green-100 to-green-200' },
+  'boy-kopiah-white': { gender: 'male',   label: 'Kopiah putih', bg: 'from-blue-100 to-blue-200' },
+  'boy-kopiah-black': { gender: 'male',   label: 'Kopiah hitam', bg: 'from-slate-100 to-slate-200' },
+  'boy-songkok':      { gender: 'male',   label: 'Songkok',      bg: 'from-teal-100 to-teal-200' },
+  'boy-serban':       { gender: 'male',   label: 'Serban',       bg: 'from-amber-100 to-amber-200' },
+  'boy-cap':          { gender: 'male',   label: 'Topi',         bg: 'from-cyan-100 to-cyan-200' },
+  'girl-hair':        { gender: 'female', label: 'Rambut',       bg: 'from-pink-100 to-pink-200' },
+  'girl-hijab-pink':  { gender: 'female', label: 'Hijab pink',   bg: 'from-pink-100 to-rose-200',    hijab: '#F48FB1', hijabDark: '#D97AA0' },
+  'girl-hijab-purple':{ gender: 'female', label: 'Hijab ungu',   bg: 'from-purple-100 to-purple-200',hijab: '#B197FC', hijabDark: '#8E76E0' },
+  'girl-hijab-teal':  { gender: 'female', label: 'Hijab teal',   bg: 'from-teal-100 to-emerald-200', hijab: '#4DB6AC', hijabDark: '#399389' },
+  'girl-hijab-coral': { gender: 'female', label: 'Hijab coral',  bg: 'from-orange-100 to-red-200',   hijab: '#FF8A80', hijabDark: '#E36961' },
+  'girl-hijab-black': { gender: 'female', label: 'Hijab hitam',  bg: 'from-slate-100 to-gray-300',   hijab: '#3E3E4F', hijabDark: '#252533' },
 }
 
-// ---------- FACE PIECES ----------
-const Face = ({ skin }) => (
-  <>
-    {/* neck */}
-    <path d="M42 78 L42 88 L58 88 L58 78 Z" fill={skin} />
-    {/* face oval */}
-    <ellipse cx="50" cy="55" rx="22" ry="26" fill={skin} />
-    {/* ears */}
-    <ellipse cx="27" cy="57" rx="4" ry="6" fill={skin} />
-    <ellipse cx="73" cy="57" rx="4" ry="6" fill={skin} />
-    {/* subtle cheek */}
-    <circle cx="39" cy="63" r="3" fill="#F8AFAF" opacity="0.35" />
-    <circle cx="61" cy="63" r="3" fill="#F8AFAF" opacity="0.35" />
-  </>
-)
+export const FACE_SHAPES = {
+  normal: { rx: 22, ry: 26, cy: 55, cheekR: 3.5, label: 'Standard' },
+  chubby: { rx: 26, ry: 25, cy: 56, cheekR: 4.8, label: 'Chubby' },
+  slim:   { rx: 19, ry: 28, cy: 55, cheekR: 2.8, label: 'Kurus' },
+  oval:   { rx: 21, ry: 29, cy: 55, cheekR: 3.0, label: 'Oval' },
+}
 
-const EyesMouth = () => (
-  <>
-    {/* eyes */}
-    <ellipse cx="42" cy="55" rx="1.7" ry="2.3" fill="#2A1810" />
-    <ellipse cx="58" cy="55" rx="1.7" ry="2.3" fill="#2A1810" />
-    {/* eye highlights */}
-    <circle cx="42.5" cy="54.3" r="0.6" fill="#fff" />
-    <circle cx="58.5" cy="54.3" r="0.6" fill="#fff" />
-    {/* smile */}
-    <path d="M45 66 Q50 70 55 66" stroke="#5A2C1F" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-  </>
-)
-
-const Glasses = () => (
-  <g>
-    <circle cx="42" cy="55" r="5.2" fill="none" stroke="#2A1810" strokeWidth="1.4" />
-    <circle cx="58" cy="55" r="5.2" fill="none" stroke="#2A1810" strokeWidth="1.4" />
-    <line x1="47.2" y1="55" x2="52.8" y2="55" stroke="#2A1810" strokeWidth="1.4" />
-    {/* temple hints */}
-    <line x1="36.8" y1="55" x2="33.5" y2="54.5" stroke="#2A1810" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="63.2" y1="55" x2="66.5" y2="54.5" stroke="#2A1810" strokeWidth="1.2" strokeLinecap="round" />
-  </g>
-)
-
-// ---------- HEADWEAR ----------
-
-// Short boy hair (visible in front, sides trimmed)
-const BoyHair = ({ hair }) => (
-  <path
-    d="M28 44 C28 24, 72 24, 72 44 C68 38, 60 34, 50 35 C40 34, 32 38, 28 44 Z"
-    fill={hair}
-  />
-)
-
-// Kopiah = dome/skullcap that sits round on top of head
-const Kopiah = ({ color, stroke }) => (
-  <g>
-    <path
-      d="M28 40 Q28 22 50 20 Q72 22 72 40 Q60 36 50 36 Q40 36 28 40 Z"
-      fill={color}
-      stroke={stroke}
-      strokeWidth="0.8"
-    />
-    {/* subtle woven texture line */}
-    <path d="M32 38 Q50 30 68 38" fill="none" stroke={stroke} strokeWidth="0.4" opacity="0.5" />
-  </g>
-)
-
-// Songkok = Malay tall flat-top velvet cap
-const Songkok = () => (
-  <g>
-    {/* body */}
-    <path
-      d="M28 40 L28 25 Q28 20 32 20 L68 20 Q72 20 72 25 L72 40 Z"
-      fill="#1A1A2A"
-    />
-    {/* top edge highlight */}
-    <path d="M28 25 Q50 22 72 25" fill="none" stroke="#3B3B55" strokeWidth="1" />
-    {/* velvet shine */}
-    <rect x="32" y="24" width="3" height="14" fill="#2E2E44" opacity="0.6" rx="1" />
-    {/* bottom band */}
-    <rect x="28" y="38" width="44" height="2.5" fill="#0F0F1C" />
-  </g>
-)
-
-// Serban = wrapped turban, larger, layered with a small tail
-const Serban = () => (
-  <g>
-    {/* main dome */}
-    <path
-      d="M22 42 Q22 18 50 15 Q78 18 78 42 Z"
-      fill="#F7F5EF"
-      stroke="#D9D5C6"
-      strokeWidth="0.8"
-    />
-    {/* wrap line 1 */}
-    <path d="M23 32 Q50 22 77 32" fill="none" stroke="#D9D5C6" strokeWidth="1.5" strokeLinecap="round" />
-    {/* wrap line 2 */}
-    <path d="M25 40 Q50 34 75 40" fill="none" stroke="#D9D5C6" strokeWidth="1.2" strokeLinecap="round" />
-    {/* tail on the side */}
-    <path d="M75 38 Q82 40 80 48 Q76 46 74 42 Z" fill="#F0EBD9" stroke="#D9D5C6" strokeWidth="0.6" />
-    {/* small green button (Islamic accent) */}
-    <circle cx="50" cy="20" r="1.4" fill="#00B894" />
-  </g>
-)
-
-// Baseball cap = crown + curved brim to one side
-const Cap = () => (
-  <g>
-    {/* crown */}
-    <path
-      d="M30 42 Q30 24 50 22 Q70 24 70 42 Q60 38 50 38 Q40 38 30 42 Z"
-      fill="#2D9CDB"
-    />
-    {/* front panel accent */}
-    <path d="M40 26 Q50 22 60 26 L60 38 Q50 34 40 38 Z" fill="#1E85BF" opacity="0.5" />
-    {/* brim */}
-    <path
-      d="M28 41 Q50 47 82 41 Q84 44 82 46 Q60 51 30 45 Z"
-      fill="#1E85BF"
-    />
-    {/* button on top */}
-    <circle cx="50" cy="22" r="1.6" fill="#1E85BF" />
-  </g>
-)
-
-// Long girl hair (framing face + shoulder-length strands)
-const GirlHair = ({ hair }) => (
-  <g>
-    {/* top scalp */}
-    <path
-      d="M25 48 C25 22, 75 22, 75 48 C70 42, 60 38, 50 38 C40 38, 30 42, 25 48 Z"
-      fill={hair}
-    />
-    {/* left strand */}
-    <path d="M25 48 Q22 65 26 82 L32 80 Q30 65 32 50 Z" fill={hair} />
-    {/* right strand */}
-    <path d="M75 48 Q78 65 74 82 L68 80 Q70 65 68 50 Z" fill={hair} />
-    {/* fringe hint */}
-    <path d="M38 34 Q50 30 62 34 Q56 38 50 38 Q44 38 38 34 Z" fill={hair} opacity="0.85" />
-  </g>
-)
-
-// Hijab = fabric covering hair + draping around face and shoulders
-const Hijab = ({ color }) => {
-  // Slightly darker shade for shadow
-  const shadow = color + 'CC'
+// -------------------- FEATURES --------------------
+const Face = ({ skin, skinShadow, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const cheekY = s.cy + 8
+  const earY = s.cy + 2
+  const earRy = 5.5
+  const earOffset = s.rx + 2
   return (
     <g>
-      {/* back / shoulder drape */}
-      <path
-        d="M14 92 L14 70 Q14 40 25 30 Q50 12 75 30 Q86 40 86 70 L86 92 Z"
-        fill={color}
-      />
-      {/* face opening — cut back a bit so face oval shows */}
-      <path
-        d="M28 55 Q28 30 50 26 Q72 30 72 55 Q72 68 68 74 Q64 78 60 79 L40 79 Q36 78 32 74 Q28 68 28 55 Z"
-        fill={color}
-      />
-      {/* inner fold (lighter tone at edge) */}
-      <path
-        d="M32 55 Q32 34 50 30 Q68 34 68 55"
-        fill="none"
-        stroke={shadow}
-        strokeWidth="1.2"
-        opacity="0.6"
-      />
-      {/* pin (subtle) */}
-      <circle cx="50" cy="30" r="0.9" fill="#FFD54F" />
+      <path d={`M 44 ${s.cy + s.ry - 2} L 44 88 L 56 88 L 56 ${s.cy + s.ry - 2} Z`}
+            fill={skin} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path d={`M 44 ${s.cy + s.ry - 2} Q 50 ${s.cy + s.ry + 1.5} 56 ${s.cy + s.ry - 2}`}
+            fill={skinShadow} opacity="0.5" stroke="none" />
+      <ellipse cx={50 - earOffset} cy={earY} rx="4" ry={earRy} fill={skin}
+               stroke={STROKE} strokeWidth={STROKE_W} />
+      <ellipse cx={50 + earOffset} cy={earY} rx="4" ry={earRy} fill={skin}
+               stroke={STROKE} strokeWidth={STROKE_W} />
+      <ellipse cx={50 - earOffset} cy={earY + 0.5} rx="1.6" ry="2.5" fill={skinShadow} opacity="0.6" />
+      <ellipse cx={50 + earOffset} cy={earY + 0.5} rx="1.6" ry="2.5" fill={skinShadow} opacity="0.6" />
+      <ellipse cx="50" cy={s.cy} rx={s.rx} ry={s.ry} fill={skin}
+               stroke={STROKE} strokeWidth={STROKE_W} />
+      <ellipse cx="50" cy={s.cy + s.ry - 5} rx={s.rx - 5} ry="3" fill={skinShadow} opacity="0.35" />
+      <circle cx={50 - s.rx * 0.55} cy={cheekY} r={s.cheekR} fill="#F8A5A5" opacity="0.55" />
+      <circle cx={50 + s.rx * 0.55} cy={cheekY} r={s.cheekR} fill="#F8A5A5" opacity="0.55" />
+      <path d={`M 50 ${s.cy + 3} Q 51 ${s.cy + 5.5} 50 ${s.cy + 6.5} Q 49 ${s.cy + 5.5} 50 ${s.cy + 3}`}
+            fill={skinShadow} opacity="0.55" />
     </g>
   )
 }
 
-// ---------- MAIN COMPONENT ----------
+const Eyes = ({ style, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const y = s.cy - 1
+  const lx = 43, rx = 57
+  if (style === 'sparkly') {
+    return (
+      <g>
+        {[lx, rx].map((x) => (
+          <g key={x}>
+            <ellipse cx={x} cy={y} rx="2.6" ry="3.2" fill={STROKE} />
+            <circle cx={x + 0.9} cy={y - 1} r="1" fill="#FFFFFF" />
+            <circle cx={x - 0.7} cy={y + 1.1} r="0.5" fill="#FFFFFF" />
+          </g>
+        ))}
+      </g>
+    )
+  }
+  if (style === 'sleepy') {
+    return (
+      <g stroke={STROKE} strokeWidth="1.7" fill="none" strokeLinecap="round">
+        <path d={`M ${lx - 3} ${y + 0.3} Q ${lx} ${y - 1.3} ${lx + 3} ${y + 0.3}`} />
+        <path d={`M ${rx - 3} ${y + 0.3} Q ${rx} ${y - 1.3} ${rx + 3} ${y + 0.3}`} />
+      </g>
+    )
+  }
+  return (
+    <g>
+      {[lx, rx].map((x) => (
+        <g key={x}>
+          <ellipse cx={x} cy={y} rx="2" ry="2.7" fill={STROKE} />
+          <circle cx={x + 0.6} cy={y - 0.8} r="0.7" fill="#FFFFFF" />
+        </g>
+      ))}
+    </g>
+  )
+}
+
+const Eyebrows = ({ shape, color }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const y = s.cy - 6
+  return (
+    <g stroke={color} strokeWidth="1.6" fill="none" strokeLinecap="round">
+      <path d={`M 40 ${y + 0.5} Q 43 ${y - 0.8} 46 ${y + 0.5}`} />
+      <path d={`M 54 ${y + 0.5} Q 57 ${y - 0.8} 60 ${y + 0.5}`} />
+    </g>
+  )
+}
+
+const Mouth = ({ style, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const y = s.cy + 12
+  if (style === 'bigSmile') {
+    return (
+      <g>
+        <path d={`M 42 ${y - 1} Q 50 ${y + 6} 58 ${y - 1} Q 50 ${y + 4} 42 ${y - 1}`}
+              fill="#C0392B" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+        <path d={`M 44 ${y + 0.5} Q 50 ${y + 3} 56 ${y + 0.5}`}
+              fill="#FFFFFF" stroke="none" opacity="0.7" />
+      </g>
+    )
+  }
+  if (style === 'small') {
+    return (
+      <path d={`M 47 ${y + 1} Q 50 ${y + 3} 53 ${y + 1}`}
+            stroke={STROKE} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+    )
+  }
+  return (
+    <path d={`M 45 ${y} Q 50 ${y + 4} 55 ${y}`}
+          stroke={STROKE} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+  )
+}
+
+const Freckles = ({ shape, skinShadow }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const y = s.cy + 3
+  return (
+    <g fill={skinShadow} opacity="0.7">
+      <circle cx={44} cy={y} r="0.6" />
+      <circle cx={47} cy={y + 1.5} r="0.5" />
+      <circle cx={50} cy={y - 0.5} r="0.55" />
+      <circle cx={53} cy={y + 1.2} r="0.55" />
+      <circle cx={56} cy={y} r="0.6" />
+    </g>
+  )
+}
+
+const Glasses = ({ shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const y = s.cy - 1
+  return (
+    <g fill="none" stroke={STROKE} strokeWidth="1.6" strokeLinecap="round">
+      <rect x={38} y={y - 4} width={10} height={8} rx="3" />
+      <rect x={52} y={y - 4} width={10} height={8} rx="3" />
+      <line x1={48} y1={y} x2={52} y2={y} />
+      <line x1={38} y1={y - 1} x2={34} y2={y - 2} strokeWidth="1.3" />
+      <line x1={62} y1={y - 1} x2={66} y2={y - 2} strokeWidth="1.3" />
+    </g>
+  )
+}
+
+// -------------------- HEADWEAR --------------------
+const BoyHair = ({ hair, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry
+  const leftX = 50 - s.rx
+  const rightX = 50 + s.rx
+  return (
+    <path
+      d={`M ${leftX - 1} ${topY + 18}
+          C ${leftX - 1} ${topY - 2}, ${rightX + 1} ${topY - 2}, ${rightX + 1} ${topY + 18}
+          C ${rightX - 4} ${topY + 12}, ${50 + 10} ${topY + 6}, 50 ${topY + 8}
+          C ${50 - 10} ${topY + 6}, ${leftX + 4} ${topY + 12}, ${leftX - 1} ${topY + 18} Z`}
+      fill={hair}
+      stroke={STROKE}
+      strokeWidth={STROKE_W}
+      strokeLinejoin="round"
+    />
+  )
+}
+
+const Kopiah = ({ color, isDark, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry - 2
+  const leftX = 50 - s.rx + 1
+  const rightX = 50 + s.rx - 1
+  return (
+    <g>
+      <path
+        d={`M ${leftX} ${topY + 20}
+            Q ${leftX} ${topY} 50 ${topY - 3}
+            Q ${rightX} ${topY} ${rightX} ${topY + 20}
+            Q 50 ${topY + 16} ${leftX} ${topY + 20} Z`}
+        fill={color} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path d={`M ${leftX + 2} ${topY + 17} Q 50 ${topY + 12} ${rightX - 2} ${topY + 17}`}
+            fill="none" stroke={isDark ? '#4A4A66' : '#B8B097'} strokeWidth="1.1" strokeLinecap="round" />
+      <circle cx="50" cy={topY - 2} r="1.4" fill={isDark ? '#4A4A66' : '#B8B097'} stroke={STROKE} strokeWidth="0.6" />
+    </g>
+  )
+}
+
+const Songkok = ({ shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry - 2
+  const leftX = 50 - s.rx + 1
+  const rightX = 50 + s.rx - 1
+  return (
+    <g>
+      <path
+        d={`M ${leftX} ${topY + 20}
+            L ${leftX} ${topY + 2}
+            Q ${leftX} ${topY - 3} ${leftX + 4} ${topY - 3}
+            L ${rightX - 4} ${topY - 3}
+            Q ${rightX} ${topY - 3} ${rightX} ${topY + 2}
+            L ${rightX} ${topY + 20} Z`}
+        fill="#151525" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <rect x={leftX + 4} y={topY + 1} width="3" height="14" rx="1" fill="#2E2E44" opacity="0.7" />
+      <rect x={leftX + 8} y={topY + 2} width="1.5" height="10" rx="0.5" fill="#2E2E44" opacity="0.4" />
+      <rect x={leftX} y={topY + 17} width={rightX - leftX} height="3" fill="#0A0A18" stroke={STROKE} strokeWidth="0.6" />
+      <path d={`M ${leftX + 4} ${topY - 3} Q 50 ${topY - 5} ${rightX - 4} ${topY - 3}`}
+            fill="none" stroke="#3B3B55" strokeWidth="0.8" />
+    </g>
+  )
+}
+
+const Serban = ({ shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry - 3
+  const leftX = 50 - s.rx - 3
+  const rightX = 50 + s.rx + 3
+  return (
+    <g>
+      <path
+        d={`M ${leftX} ${topY + 24}
+            Q ${leftX} ${topY - 5} 50 ${topY - 8}
+            Q ${rightX} ${topY - 5} ${rightX} ${topY + 24} Z`}
+        fill="#FBF9F1" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path d={`M ${leftX + 2} ${topY + 12} Q 50 ${topY + 2} ${rightX - 2} ${topY + 12}`}
+            fill="none" stroke="#D8D2BC" strokeWidth="1.6" strokeLinecap="round" />
+      <path d={`M ${leftX + 4} ${topY + 20} Q 50 ${topY + 14} ${rightX - 4} ${topY + 20}`}
+            fill="none" stroke="#D8D2BC" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        d={`M ${rightX - 2} ${topY + 20} Q ${rightX + 5} ${topY + 24} ${rightX + 3} ${topY + 34}
+            Q ${rightX - 3} ${topY + 30} ${rightX - 4} ${topY + 24} Z`}
+        fill="#F0EAD1" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <circle cx="50" cy={topY - 4} r="1.6" fill="#00B894" stroke={STROKE} strokeWidth="0.6" />
+    </g>
+  )
+}
+
+const Cap = ({ shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry - 2
+  const leftX = 50 - s.rx + 1
+  const rightX = 50 + s.rx - 1
+  return (
+    <g>
+      <path
+        d={`M ${leftX} ${topY + 20}
+            Q ${leftX} ${topY} 50 ${topY - 4}
+            Q ${rightX} ${topY} ${rightX} ${topY + 20}
+            Q 50 ${topY + 15} ${leftX} ${topY + 20} Z`}
+        fill="#2D9CDB" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path
+        d={`M ${leftX + 5} ${topY + 6} Q 50 ${topY + 1} ${rightX - 5} ${topY + 6}
+            Q ${rightX - 5} ${topY + 16} 50 ${topY + 13} Q ${leftX + 5} ${topY + 16} ${leftX + 5} ${topY + 6} Z`}
+        fill="#1E85BF" opacity="0.55" />
+      <path
+        d={`M ${leftX - 3} ${topY + 19}
+            Q 50 ${topY + 28} ${rightX + 12} ${topY + 19}
+            Q ${rightX + 14} ${topY + 23} ${rightX + 12} ${topY + 25}
+            Q 60 ${topY + 30} ${leftX - 1} ${topY + 24} Z`}
+        fill="#1E85BF" stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <circle cx="50" cy={topY - 3} r="1.7" fill="#1E85BF" stroke={STROKE} strokeWidth="0.6" />
+    </g>
+  )
+}
+
+const GirlHair = ({ hair, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry
+  const bottomY = s.cy + s.ry
+  const leftX = 50 - s.rx - 2
+  const rightX = 50 + s.rx + 2
+  return (
+    <g>
+      <path
+        d={`M ${leftX} ${topY + 10} Q ${leftX - 3} ${bottomY + 4} ${leftX + 2} ${bottomY + 10}
+            L ${leftX + 8} ${bottomY + 8} Q ${leftX + 5} ${bottomY - 4} ${leftX + 4} ${topY + 15} Z`}
+        fill={hair} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path
+        d={`M ${rightX} ${topY + 10} Q ${rightX + 3} ${bottomY + 4} ${rightX - 2} ${bottomY + 10}
+            L ${rightX - 8} ${bottomY + 8} Q ${rightX - 5} ${bottomY - 4} ${rightX - 4} ${topY + 15} Z`}
+        fill={hair} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path
+        d={`M ${leftX} ${topY + 18}
+            C ${leftX} ${topY - 4}, ${rightX} ${topY - 4}, ${rightX} ${topY + 18}
+            C ${rightX - 4} ${topY + 12}, ${50 + 8} ${topY + 6}, 50 ${topY + 7}
+            C ${50 - 8} ${topY + 6}, ${leftX + 4} ${topY + 12}, ${leftX} ${topY + 18} Z`}
+        fill={hair} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path
+        d={`M 40 ${topY + 12} Q 50 ${topY + 6} 60 ${topY + 12} Q 55 ${topY + 15} 50 ${topY + 14} Q 45 ${topY + 15} 40 ${topY + 12} Z`}
+        fill={hair} stroke={STROKE} strokeWidth={STROKE_W_THIN} opacity="0.9" />
+    </g>
+  )
+}
+
+const Hijab = ({ color, colorDark, shape }) => {
+  const s = FACE_SHAPES[shape] || FACE_SHAPES.normal
+  const topY = s.cy - s.ry - 4
+  const cy = s.cy
+  return (
+    <g>
+      <path
+        d={`M 12 92 L 12 ${cy + 15}
+            Q 12 ${topY + 10} 25 ${topY + 2}
+            Q 50 ${topY - 6} 75 ${topY + 2}
+            Q 88 ${topY + 10} 88 ${cy + 15}
+            L 88 92 Z`}
+        fill={color} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <path
+        d={`M 22 ${cy + 20} Q 20 ${topY + 15} 30 ${topY + 5}
+            Q 50 ${topY - 4} 70 ${topY + 5}
+            Q 80 ${topY + 15} 78 ${cy + 20}`}
+        fill="none" stroke={colorDark} strokeWidth="1.4" opacity="0.7" />
+      <path
+        d={`M ${50 - s.rx - 3} ${cy + 4}
+            Q ${50 - s.rx - 3} ${cy - s.ry - 2} 50 ${cy - s.ry - 4}
+            Q ${50 + s.rx + 3} ${cy - s.ry - 2} ${50 + s.rx + 3} ${cy + 4}
+            Q ${50 + s.rx + 3} ${cy + s.ry - 6} ${50 + s.rx - 2} ${cy + s.ry - 2}
+            L ${50 - s.rx + 2} ${cy + s.ry - 2}
+            Q ${50 - s.rx - 3} ${cy + s.ry - 6} ${50 - s.rx - 3} ${cy + 4} Z`}
+        fill={color} stroke={STROKE} strokeWidth={STROKE_W} strokeLinejoin="round" />
+      <circle cx={50 + s.rx - 4} cy={cy - s.ry + 3} r="1.2" fill="#FFD54F" stroke={STROKE} strokeWidth="0.5" />
+    </g>
+  )
+}
+
+// -------------------- MAIN COMPONENT --------------------
 export function Avatar({
   type = 'boy-hair',
   skinTone = 'light',
+  faceShape = 'normal',
+  eyeStyle = 'sparkly',
+  mouthStyle = 'smile',
+  freckles = false,
   hasGlasses = false,
   size = 96,
   showBg = true,
@@ -226,60 +388,42 @@ export function Avatar({
 }) {
   const meta = AVATAR_META[type] || AVATAR_META['boy-hair']
   const skin = SKIN_HEX[skinTone] || SKIN_HEX.light
+  const skinShadow = SKIN_SHADOW[skinTone] || SKIN_SHADOW.light
   const hair = HAIR_HEX[skinTone] || HAIR_HEX.light
-
-  // A hijab covers the face oval — face is drawn INSIDE the hijab opening
   const isHijab = type.startsWith('girl-hijab')
+  const shape = FACE_SHAPES[faceShape] ? faceShape : 'normal'
 
   const renderHeadwear = () => {
     switch (type) {
-      case 'boy-hair':          return <BoyHair hair={hair} />
-      case 'boy-kopiah-white':  return <Kopiah color="#FFFFFF" stroke="#C9C4B4" />
-      case 'boy-kopiah-black':  return <Kopiah color="#1F1F2E" stroke="#0A0A14" />
-      case 'boy-songkok':       return <Songkok />
-      case 'boy-serban':        return <Serban />
-      case 'boy-cap':           return <Cap />
-      case 'girl-hair':         return <GirlHair hair={hair} />
-      case 'girl-hijab-pink':
-      case 'girl-hijab-purple':
-      case 'girl-hijab-teal':
-      case 'girl-hijab-coral':
-      case 'girl-hijab-black':  return <Hijab color={meta.hijab} />
-      default:                  return <BoyHair hair={hair} />
+      case 'boy-hair':          return <BoyHair hair={hair} shape={shape} />
+      case 'boy-kopiah-white':  return <Kopiah color="#FFFFFF" isDark={false} shape={shape} />
+      case 'boy-kopiah-black':  return <Kopiah color="#1F1F2E" isDark={true}  shape={shape} />
+      case 'boy-songkok':       return <Songkok shape={shape} />
+      case 'boy-serban':        return <Serban shape={shape} />
+      case 'boy-cap':           return <Cap shape={shape} />
+      case 'girl-hair':         return <GirlHair hair={hair} shape={shape} />
+      default:                  return null
     }
   }
 
-  const wrapperStyle = ringColor
-    ? { boxShadow: `0 0 0 3px ${ringColor}` , background: `linear-gradient(135deg, ${ringColor}22, ${ringColor}44)` }
-    : undefined
-
   const svg = (
     <svg viewBox="0 0 100 100" width={size} height={size} className="block">
-      {/* Face first (hijab will overlap edges) */}
-      {!isHijab && <Face skin={skin} />}
-      {isHijab && (
-        <>
-          {/* Hijab back layer */}
-          <Hijab color={meta.hijab} />
-          {/* Face on top of hijab (inside opening) */}
-          <ellipse cx="50" cy="55" rx="20" ry="24" fill={skin} />
-          <circle cx="39" cy="63" r="3" fill="#F8AFAF" opacity="0.35" />
-          <circle cx="61" cy="63" r="3" fill="#F8AFAF" opacity="0.35" />
-        </>
-      )}
-
-      {/* Headwear (skip for hijab types since already rendered) */}
+      {isHijab && <Hijab color={meta.hijab} colorDark={meta.hijabDark} shape={shape} />}
+      <Face skin={skin} skinShadow={skinShadow} shape={shape} />
       {!isHijab && renderHeadwear()}
-
-      {/* Eyes + mouth always on top */}
-      <EyesMouth />
-
-      {/* Glasses on top of eyes */}
-      {hasGlasses && <Glasses />}
+      <Eyebrows shape={shape} color={hair} />
+      <Eyes style={eyeStyle} shape={shape} />
+      <Mouth style={mouthStyle} shape={shape} />
+      {freckles && <Freckles shape={shape} skinShadow={skinShadow} />}
+      {hasGlasses && <Glasses shape={shape} />}
     </svg>
   )
 
   if (!showBg) return svg
+
+  const wrapperStyle = ringColor
+    ? { boxShadow: `0 0 0 3px ${ringColor}`, background: `linear-gradient(135deg, ${ringColor}22, ${ringColor}44)` }
+    : undefined
 
   return (
     <div
