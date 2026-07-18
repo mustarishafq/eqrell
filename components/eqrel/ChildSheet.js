@@ -3,14 +3,31 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, Trash2, Calendar } from 'lucide-react'
+import { Avatar, AVATAR_META } from './Avatar'
 
-const AVATARS = [
-  { id: 'boy-kopiah', emoji: '👦🏻', label: 'Boy 1', gender: 'male', bg: 'from-green-100 to-green-200' },
-  { id: 'boy-2', emoji: '👦🏽', label: 'Boy 2', gender: 'male', bg: 'from-blue-100 to-blue-200' },
-  { id: 'boy-3', emoji: '🧒🏻', label: 'Boy 3', gender: 'male', bg: 'from-teal-100 to-teal-200' },
-  { id: 'girl-hijab', emoji: '👧🏻', label: 'Girl 1', gender: 'female', bg: 'from-purple-100 to-purple-200' },
-  { id: 'girl-2', emoji: '👧🏽', label: 'Girl 2', gender: 'female', bg: 'from-pink-100 to-pink-200' },
-  { id: 'girl-3', emoji: '🧕🏻', label: 'Girl 3', gender: 'female', bg: 'from-rose-100 to-rose-200' },
+const AVATARS = Object.entries(AVATAR_META).map(([id, meta]) => ({
+  id,
+  label: meta.label,
+  gender: meta.gender,
+  bg: meta.bg,
+}))
+
+const SKIN_TONES = [
+  { id: 'light',  label: 'Cerah',     hex: '#F5D5B5' },
+  { id: 'medium', label: 'Sederhana', hex: '#E4B48C' },
+  { id: 'tan',    label: 'Sawo',      hex: '#C48A5D' },
+  { id: 'brown',  label: 'Gelap',     hex: '#8B5A38' },
+]
+
+const FAVOURITE_COLORS = [
+  { id: 'green', hex: '#00B894', label: 'Hijau' },
+  { id: 'yellow', hex: '#FFB703', label: 'Kuning' },
+  { id: 'orange', hex: '#FF8A00', label: 'Oren' },
+  { id: 'coral', hex: '#FF5D6E', label: 'Coral' },
+  { id: 'blue', hex: '#2D9CDB', label: 'Biru' },
+  { id: 'purple', hex: '#9C7BD9', label: 'Ungu' },
+  { id: 'pink', hex: '#EC4899', label: 'Pink' },
+  { id: 'fresh', hex: '#4CAF50', label: 'Fresh' },
 ]
 
 const LANGS = [
@@ -56,7 +73,10 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
   const [nickname, setNickname] = useState('')
   const [dob, setDob] = useState('')
   const [gender, setGender] = useState('male')
-  const [avatarType, setAvatarType] = useState('boy-kopiah')
+  const [avatarType, setAvatarType] = useState('boy-hair')
+  const [skinTone, setSkinTone] = useState('light')
+  const [hasGlasses, setHasGlasses] = useState(false)
+  const [favColor, setFavColor] = useState('green')
   const [preferredLang, setPreferredLang] = useState('ms')
 
   useEffect(() => {
@@ -64,13 +84,19 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
       setNickname(initial.nickname || '')
       setDob(initial.dob || '')
       setGender(initial.gender || 'male')
-      setAvatarType(initial.avatarType || 'boy-kopiah')
+      setAvatarType(initial.avatarType || 'boy-hair')
+      setSkinTone(initial.skinTone || 'light')
+      setHasGlasses(initial.hasGlasses || false)
+      setFavColor(initial.favColor || 'green')
       setPreferredLang(initial.preferredLang || 'ms')
     } else if (open && !initial) {
       setNickname('')
       setDob('')
       setGender('male')
-      setAvatarType('boy-kopiah')
+      setAvatarType('boy-hair')
+      setSkinTone('light')
+      setHasGlasses(false)
+      setFavColor('green')
       setPreferredLang('ms')
     }
   }, [open, initial])
@@ -97,8 +123,11 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
       nickname: nickname.trim(),
       dob,
       gender,
-      ageBand, // auto-derived, refreshed on load
+      ageBand,
       avatarType,
+      skinTone,
+      hasGlasses,
+      favColor,
       preferredLang,
       todayCompleted: initial?.todayCompleted ?? 0,
       todayTotal: initial?.todayTotal ?? 0,
@@ -109,6 +138,9 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
     onSave(child)
     onClose()
   }
+
+  const selectedAvatar = AVATARS.find(a => a.id === avatarType) || AVATARS[0]
+  const selectedColor = FAVOURITE_COLORS.find(c => c.id === favColor) || FAVOURITE_COLORS[0]
 
   // Max DOB = today, min DOB = 20 years ago
   const today = new Date().toISOString().split('T')[0]
@@ -146,6 +178,32 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
             </div>
 
             <div className="px-5 pb-5 space-y-4">
+              {/* LIVE PREVIEW */}
+              <div className="flex flex-col items-center pt-1">
+                <div
+                  className="relative rounded-full flex items-center justify-center shadow-eq-card overflow-hidden"
+                  style={{
+                    width: 108,
+                    height: 108,
+                    background: `linear-gradient(135deg, ${selectedColor.hex}22, ${selectedColor.hex}44)`,
+                    border: `3px solid ${selectedColor.hex}`,
+                  }}
+                >
+                  <Avatar
+                    type={avatarType}
+                    skinTone={skinTone}
+                    hasGlasses={hasGlasses}
+                    size={100}
+                    showBg={false}
+                  />
+                </div>
+                {nickname && (
+                  <div className="mt-2 font-extrabold text-lg" style={{ color: selectedColor.hex }}>
+                    {nickname}
+                  </div>
+                )}
+              </div>
+
               {/* Nickname */}
               <div>
                 <label className="text-eq-ink font-bold text-sm block mb-1.5">Nama panggilan</label>
@@ -184,12 +242,6 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                     <span className="text-lg">✨</span>
                   </div>
                 )}
-                {age !== null && age < 3 && (
-                  <p className="mt-1.5 text-eq-orange text-xs">EQrel direka untuk anak 3 tahun ke atas 💛</p>
-                )}
-                {age !== null && age > 12 && (
-                  <p className="mt-1.5 text-eq-orange text-xs">EQrel direka untuk anak 3–12 tahun. Anak lebih tua boleh tetap guna 💛</p>
-                )}
               </div>
 
               {/* Gender */}
@@ -215,26 +267,104 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                 </div>
               </div>
 
-              {/* Avatar */}
+              {/* Skin Tone */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Avatar</label>
-                <div className="grid grid-cols-6 gap-2">
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">Warna kulit</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {SKIN_TONES.map((s) => {
+                    const isActive = skinTone === s.id
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setSkinTone(s.id)}
+                        className={`relative flex flex-col items-center gap-1 rounded-xl p-2 border-2 transition-all ${
+                          isActive ? 'border-eq-green bg-eq-green/5' : 'border-transparent bg-eq-cream/30 opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-full border-2 border-white shadow-sm"
+                          style={{ background: s.hex }}
+                        />
+                        <div className="text-[10px] font-semibold text-eq-ink">{s.label}</div>
+                        {isActive && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-eq-green rounded-full flex items-center justify-center ring-2 ring-white">
+                            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Head Style */}
+              <div>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">
+                  Gaya {gender === 'female' ? 'rambut / hijab' : 'kepala'}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
                   {AVATARS.filter(a => a.gender === gender).map((av) => {
                     const isActive = avatarType === av.id
                     return (
                       <button
                         key={av.id}
                         onClick={() => setAvatarType(av.id)}
-                        className={`relative aspect-square rounded-2xl flex items-center justify-center text-3xl bg-gradient-to-br ${av.bg} border-2 transition-all ${
-                          isActive ? 'border-eq-green shadow-eq-glow scale-105' : 'border-transparent opacity-60 hover:opacity-100'
+                        className={`relative flex flex-col items-center gap-1 rounded-xl p-2 border-2 transition-all ${
+                          isActive ? 'border-eq-green bg-eq-green/5 scale-105' : 'border-transparent bg-eq-cream/30 opacity-70 hover:opacity-100'
                         }`}
                       >
-                        {av.emoji}
+                        <Avatar
+                          type={av.id}
+                          skinTone={skinTone}
+                          hasGlasses={false}
+                          size={56}
+                        />
+                        <div className="text-[10px] font-semibold text-eq-ink text-center leading-tight">{av.label}</div>
                         {isActive && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 bg-eq-green rounded-full flex items-center justify-center ring-2 ring-white">
                             <Check className="w-3 h-3 text-white" strokeWidth={3} />
                           </div>
                         )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Accessories */}
+              <div>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">Aksesori</label>
+                <button
+                  onClick={() => setHasGlasses(!hasGlasses)}
+                  className={`w-full rounded-xl px-3 py-2.5 border-2 transition-all font-bold text-sm flex items-center justify-between ${
+                    hasGlasses
+                      ? 'bg-eq-green/10 border-eq-green text-eq-green'
+                      : 'bg-eq-cream/30 border-transparent text-eq-ink hover:bg-eq-cream/60'
+                  }`}
+                >
+                  <span className="flex items-center gap-2"><span className="text-lg">👓</span> Cermin mata</span>
+                  <span className={`w-9 h-5 rounded-full relative transition-colors ${hasGlasses ? 'bg-eq-green' : 'bg-eq-ink/20'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${hasGlasses ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+              </div>
+
+              {/* Favourite Color */}
+              <div>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">Warna kegemaran ✨</label>
+                <p className="text-eq-ink/50 text-[11px] mb-2">Warna dunia & progress ring anak</p>
+                <div className="grid grid-cols-8 gap-2">
+                  {FAVOURITE_COLORS.map((c) => {
+                    const isActive = favColor === c.id
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setFavColor(c.id)}
+                        aria-label={c.label}
+                        className={`aspect-square rounded-full transition-all ${isActive ? 'ring-4 ring-white scale-110 shadow-eq-card' : 'opacity-60 hover:opacity-100'}`}
+                        style={{ background: c.hex, boxShadow: isActive ? `0 0 0 3px ${c.hex}, 0 4px 12px ${c.hex}66` : undefined }}
+                      >
+                        {isActive && <Check className="w-4 h-4 text-white mx-auto" strokeWidth={3} />}
                       </button>
                     )
                   })}
@@ -271,9 +401,10 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                   disabled={!canSave}
                   className={`w-full font-extrabold py-3.5 rounded-2xl text-base active:scale-[0.99] transition-all ${
                     canSave
-                      ? 'bg-eq-green text-white shadow-eq-soft'
+                      ? 'text-white shadow-eq-soft'
                       : 'bg-eq-ink/10 text-eq-ink/40 cursor-not-allowed'
                   }`}
+                  style={canSave ? { background: selectedColor.hex } : undefined}
                 >
                   {isEdit ? 'Simpan Perubahan' : 'Tambah Anak'}
                 </button>

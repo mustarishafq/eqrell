@@ -7,6 +7,7 @@ import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
+import { Avatar } from '@/components/eqrel/Avatar'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -20,25 +21,20 @@ const ASSETS = {
   navProfile: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/fdu0on3o_nav-profile-avatar.png',
 }
 
-const AVATAR_MAP = {
-  'boy-kopiah': { emoji: '👦🏻', bg: 'from-green-100 to-green-200' },
-  'boy-2': { emoji: '👦🏽', bg: 'from-blue-100 to-blue-200' },
-  'boy-3': { emoji: '🧒🏻', bg: 'from-teal-100 to-teal-200' },
-  'girl-hijab': { emoji: '👧🏻', bg: 'from-purple-100 to-purple-200' },
-  'girl-2': { emoji: '👧🏽', bg: 'from-pink-100 to-pink-200' },
-  'girl-3': { emoji: '🧕🏻', bg: 'from-rose-100 to-rose-200' },
+const FAV_COLOR_MAP = {
+  green: '#00B894', yellow: '#FFB703', orange: '#FF8A00', coral: '#FF5D6E',
+  blue: '#2D9CDB', purple: '#9C7BD9', pink: '#EC4899', fresh: '#4CAF50',
 }
 
-const ChildAvatar = ({ type = 'boy-kopiah', size = 68 }) => {
-  const av = AVATAR_MAP[type] || AVATAR_MAP['boy-kopiah']
-  return (
-    <div style={{ width: size, height: size }} className={`relative rounded-full overflow-hidden bg-gradient-to-br ${av.bg} flex items-center justify-center`}>
-      <span style={{ fontSize: size * 0.5 }}>{av.emoji}</span>
-    </div>
-  )
+// Legacy avatar type migration (from earlier build)
+const migrateAvatarType = (t) => {
+  if (t === 'boy-kopiah') return 'boy-kopiah-white'
+  if (t === 'girl-hijab') return 'girl-hijab-purple'
+  return t || 'boy-hair'
 }
 
-const ChildProgressRing = ({ child, ringColor = '#00B894' }) => {
+const ChildProgressRing = ({ child }) => {
+  const ringColor = FAV_COLOR_MAP[child.favColor] || '#00B894'
   const pct = child.todayTotal > 0 ? (child.todayCompleted / child.todayTotal) : 0
   const radius = 42
   const stroke = 5
@@ -63,7 +59,12 @@ const ChildProgressRing = ({ child, ringColor = '#00B894' }) => {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <ChildAvatar type={child.avatarType} size={68} />
+          <Avatar
+            type={migrateAvatarType(child.avatarType)}
+            skinTone={child.skinTone || 'light'}
+            hasGlasses={child.hasGlasses}
+            size={68}
+          />
         </div>
         <div
           className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white shadow-eq-soft rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap"
@@ -72,7 +73,7 @@ const ChildProgressRing = ({ child, ringColor = '#00B894' }) => {
           {child.todayCompleted}/{child.todayTotal}
         </div>
       </div>
-      <div className="text-eq-ink font-semibold text-xs pt-1">{child.nickname}</div>
+      <div className="font-semibold text-xs pt-1" style={{ color: ringColor }}>{child.nickname}</div>
     </div>
   )
 }
@@ -261,17 +262,14 @@ const ParentDashboard = () => {
           </p>
 
           <div className="flex justify-center gap-4 mt-3 flex-wrap">
-            {children.map((child, idx) => (
+            {children.map((child) => (
               <button
                 key={child.id}
                 onClick={() => openEditSheet(child)}
                 className="active:scale-95 transition-transform"
                 aria-label={`Edit ${child.nickname}`}
               >
-                <ChildProgressRing
-                  child={child}
-                  ringColor={childColors[idx % childColors.length]}
-                />
+                <ChildProgressRing child={child} />
               </button>
             ))}
             {children.length < 20 && (
