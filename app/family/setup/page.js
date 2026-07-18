@@ -40,7 +40,7 @@ export default function FamilySetupPage() {
         body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Gagal')
+      if (!res.ok) throw new Error(data.error || t.setup_error_general)
       router.replace('/')
     } catch (e) {
       setError(e.message)
@@ -79,8 +79,8 @@ export default function FamilySetupPage() {
           </label>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { id: 'ibu',  emoji: '👩', label: t.setup_ibu,  hint: 'Mama' },
-              { id: 'bapa', emoji: '👨', label: t.setup_bapa, hint: 'Papa' },
+              { id: 'ibu',  emoji: '👩', label: t.setup_ibu,  hint: t.setup_ibu_hint },
+              { id: 'bapa', emoji: '👨', label: t.setup_bapa, hint: t.setup_bapa_hint },
             ].map(r => (
               <button key={r.id}
                 onClick={() => setRole(r.id)}

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles, Plus } from 'lucide-react'
-import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
@@ -82,8 +81,7 @@ const ChildProgressRing = ({ child, habitCount }) => {
   )
 }
 
-const BottomNav = ({ active = 'home', onChange }) => {
-  const t = strings.ms
+const BottomNav = ({ active = 'home', onChange, t }) => {
   const items = [
     { id: 'home', label: t.nav_home, icon: ASSETS.navHome, color: '#00B894' },
     { id: 'tasks', label: t.nav_tasks, icon: ASSETS.navTasks, color: '#2D9CDB' },
@@ -225,11 +223,11 @@ const ParentDashboard = () => {
   useEffect(() => {
     // Format names for greeting
     const names = children.map(c => c.nickname)
-    if (names.length === 0) setChildrenNames('keluarga anda')
+    if (names.length === 0) setChildrenNames(t.dashboard_family_fallback)
     else if (names.length === 1) setChildrenNames(names[0])
     else if (names.length === 2) setChildrenNames(names.join(' & '))
     else setChildrenNames(names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1])
-  }, [children])
+  }, [children, t])
 
   const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E', '#B39DDB', '#4CAF50']
 
@@ -316,7 +314,7 @@ const ParentDashboard = () => {
                   alert(`${t.setup_family_code_label}: ${family.code}`)
                 }}
                 className="inline-flex items-center gap-1 bg-white/70 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-800 shadow-sm border border-emerald-200/60 hover:bg-white"
-                title="Klik untuk salin kod"
+                title={t.dashboard_copy_code_hint}
               >
                 👨‍👩‍👧 {family.code}
               </button>
@@ -325,7 +323,7 @@ const ParentDashboard = () => {
           )}
         </div>
         <div className="flex items-center gap-2 pt-3">
-          <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label="Notifications">
+          <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label={t.nav_notifications}>
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
           </button>
@@ -337,7 +335,7 @@ const ParentDashboard = () => {
               }
             }}
             className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white shadow-eq-card bg-emerald-100 flex items-center justify-center"
-            title="Log keluar"
+            title={t.dashboard_logout_title}
           >
             {me?.picture ? (
               <img src={me.picture} alt="Profile" className="w-full h-full object-cover" />
@@ -436,7 +434,7 @@ const ParentDashboard = () => {
               <button
                 onClick={openAddSheet}
                 className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
-                aria-label="Tambah anak"
+                aria-label={t.add_child_aria}
               >
                 <div className="w-24 h-24 rounded-full border-2 border-dashed border-eq-green/40 bg-eq-green/5 flex items-center justify-center hover:bg-eq-green/10 transition-colors">
                   <Plus className="w-8 h-8 text-eq-green" strokeWidth={2.5} />
@@ -461,8 +459,8 @@ const ParentDashboard = () => {
           >
             <img src={ASSETS.fireStreak} alt="" className="w-7 h-7 object-contain flex-shrink-0" />
             <div className="flex-1 text-eq-ink text-xs leading-tight">
-              <span className="font-extrabold">{mockFamily.streakDays} hari</span>
-              <span className="text-eq-ink/70"> sepanjang perjalanan keluarga</span>
+              <span className="font-extrabold">{t.family_streak_days(mockFamily.streakDays)}</span>
+              <span className="text-eq-ink/70">{t.family_streak_suffix}</span>
             </div>
             <ChevronRight className="w-4 h-4 text-eq-ink/40 flex-shrink-0" />
           </motion.div>
@@ -508,7 +506,7 @@ const ParentDashboard = () => {
               <h3 className="text-eq-ink font-extrabold text-base drop-shadow-sm">{t.family_quest_title}</h3>
             </div>
             <p className="text-eq-ink/80 text-[11px] mb-2 leading-tight font-medium">
-              Akan tiba tidak lama lagi ✨
+              {t.family_quest_sub}
             </p>
             <button className="bg-eq-yellow text-eq-ink font-bold text-xs px-3 py-1.5 rounded-full shadow-eq-soft active:scale-95 flex items-center gap-0.5">
               {t.family_quest_cta}
@@ -519,7 +517,7 @@ const ParentDashboard = () => {
 
       </div>
 
-      <BottomNav active={activeTab} onChange={setActiveTab} />
+      <BottomNav active={activeTab} onChange={setActiveTab} t={t} />
 
       {/* PWA Install Prompt (smart: iOS tutorial / Android native) */}
       <InstallPrompt />

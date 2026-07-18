@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Share, Plus, Download, Sparkles } from 'lucide-react'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 const DISMISS_KEY = 'eqrel-install-dismissed'
 const DISMISS_DAYS = 3
 
 export function InstallPrompt() {
+  const { t } = useLang()
   const [visible, setVisible] = useState(false)
   const [showTutorial, setShowTutorial] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState(null)
@@ -90,21 +92,21 @@ export function InstallPrompt() {
                 <Sparkles className="w-6 h-6 text-eq-yellow" fill="#FFB703" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-extrabold text-sm leading-tight">Pasang EQrel</div>
+                <div className="font-extrabold text-sm leading-tight">{t.install_title}</div>
                 <div className="text-white/85 text-[11px] leading-tight mt-0.5">
-                  Pengalaman terbaik di skrin utama ✨
+                  {t.install_body}
                 </div>
               </div>
               <button
                 onClick={handleInstall}
                 className="bg-eq-yellow text-eq-ink font-bold text-xs px-3 py-2 rounded-xl shadow active:scale-95 flex-shrink-0"
               >
-                Pasang
+                {t.install_cta}
               </button>
               <button
                 onClick={dismiss}
                 className="w-7 h-7 flex items-center justify-center text-white/80 hover:text-white flex-shrink-0"
-                aria-label="Tutup"
+                aria-label={t.install_close}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -132,14 +134,15 @@ export function InstallPrompt() {
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-eq-ink font-extrabold text-xl">Pasang EQrel</h3>
+                  <h3 className="text-eq-ink font-extrabold text-xl">{t.install_title}</h3>
                   <p className="text-eq-ink/60 text-sm mt-0.5">
-                    {platform === 'ios' ? 'Untuk iPhone / iPad' : 'Untuk peranti anda'}
+                    {platform === 'ios' ? t.install_tutorial_ios : t.install_tutorial_other}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowTutorial(false)}
                   className="w-8 h-8 rounded-full hover:bg-eq-cream flex items-center justify-center"
+                  aria-label={t.install_close}
                 >
                   <X className="w-5 h-5 text-eq-ink/60" />
                 </button>
@@ -148,22 +151,22 @@ export function InstallPrompt() {
               <div className="space-y-3 mt-4">
                 {platform === 'ios' ? (
                   <>
-                    <Step num="1" text="Tap butang" icon={<Share className="w-5 h-5" />} suffix="Share di bawah skrin" />
-                    <Step num="2" text="Scroll & pilih" icon={<Plus className="w-5 h-5" />} suffix='"Add to Home Screen"' />
-                    <Step num="3" text='Tap "Add" untuk pasang EQrel' />
+                    <Step num="1" text={t.install_ios_1_text} icon={<Share className="w-5 h-5" />} suffix={t.install_ios_1_suffix} />
+                    <Step num="2" text={t.install_ios_2_text} icon={<Plus className="w-5 h-5" />} suffix={t.install_ios_2_suffix} />
+                    <Step num="3" text={t.install_ios_3_text} />
                   </>
                 ) : (
                   <>
-                    <Step num="1" text="Buka menu Chrome" suffix="(butang ⋮ di penjuru atas)" />
-                    <Step num="2" text='Pilih "Install app"' icon={<Download className="w-5 h-5" />} suffix='atau "Add to Home Screen"' />
-                    <Step num="3" text='Tap "Install" untuk pasang EQrel' />
+                    <Step num="1" text={t.install_and_1_text} suffix={t.install_and_1_suffix} />
+                    <Step num="2" text={t.install_and_2_text} icon={<Download className="w-5 h-5" />} suffix={t.install_and_2_suffix} />
+                    <Step num="3" text={t.install_and_3_text} />
                   </>
                 )}
               </div>
 
               <div className="mt-5 bg-eq-cream/60 rounded-xl p-3">
                 <p className="text-eq-ink/80 text-xs leading-relaxed">
-                  <strong className="text-eq-green">Alhamdulillah</strong> — selepas pasang, EQrel akan buka fullscreen tanpa toolbar, seperti app biasa ✨
+                  <strong className="text-eq-green">{t.install_final_pre}</strong>{t.install_final_body}
                 </p>
               </div>
 
@@ -171,7 +174,7 @@ export function InstallPrompt() {
                 onClick={dismiss}
                 className="w-full mt-4 bg-eq-green text-white font-bold py-3 rounded-xl active:scale-95"
               >
-                Faham, terima kasih
+                {t.install_understand}
               </button>
             </motion.div>
           </motion.div>

@@ -494,10 +494,69 @@ agent_communication:
           - AR renders full RTL — html[dir=rtl][lang=ar], language picker order flipped naturally, Google button icon moves to right side, all copy right-aligned, Arabic script (including harakat) rendering crisply.
           Also added AR/ID variants of the daily parent quote pool in OnboardingScaffold.js.
 
+  - task: "i18n audit — remove ALL hardcoded strings across UI, translate templates & taxonomy"
+    implemented: true
+    working: true
+    file: "app/page.js, components/eqrel/HabitsSheet.js, components/eqrel/ChildSheet.js, components/eqrel/InstallPrompt.js, components/eqrel/BrandLogo.js, app/family/setup/page.js, lib/habitTemplates.js, lib/i18n/strings.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          User reported many UI strings not switching language ("loading, streak, family quest, banyak lagi"). Full sweep audit performed:
+          
+          strings.js: Added ~55 new keys across all 4 languages including
+            momentum_week, dashboard_family_fallback, dashboard_logout_title, dashboard_copy_code_hint, family_streak_days/suffix, nav_notifications, add_child_aria, brand_tagline,
+            band_3_4/5_6/7_9/10_12/all, color_green..fresh (8 colors),
+            cat_ibadah/akhlak/pembelajaran/kesihatan/keluarga,
+            habits_help_aria, habits_undo, habits_mark_done, habits_delete_aria, habits_points_word,
+            habits_brief_for(name), habits_brief_step1..4_title/body, habits_brief_tip,
+            habits_add_header_age, habits_add_header_count(n), habits_custom_title_placeholder, habits_custom_desc_placeholder, habits_custom_badge,
+            install_title/body/cta/close/tutorial_ios/tutorial_other, install_ios_1..3_text/suffix, install_and_1..3_text/suffix, install_final_pre/body, install_understand,
+            setup_ibu_hint, setup_bapa_hint, setup_error_general.
+          
+          page.js: BottomNav was using `strings.ms` hardcoded → refactored to receive `t` prop from parent that uses useLang(). Also fixed 'keluarga anda' fallback, `Klik untuk salin kod` title, `Log keluar` title, aria-label 'Tambah anak', hardcoded `X hari sepanjang perjalanan keluarga` streak text, hardcoded `Akan tiba tidak lama lagi ✨` family quest sub, hardcoded aria-label 'Notifications', added missing t.momentum_week key. Removed unused import of `strings`. Dependency array of children names effect now includes `t` so display updates on language switch.
+          
+          HabitsSheet.js: 
+            - Brief popup 4 steps + tip + start CTA now use t functions
+            - Delete confirm() uses t.habits_delete_confirm
+            - Help button title uses t.habits_help_aria
+            - Stats cards ("Selesai hari ni" / "Mata Bina") → t.habits_done_today / t.habits_mata
+            - Habit list items: category label via getCategoryLabel(catId, t), title/desc via getHabitTitle/getHabitDesc so template-based habits render in current language
+            - "mata" word → t.habits_points_word
+            - CUSTOM badge → t.habits_custom_badge
+            - Aria-labels: mark done / undo / delete
+            - Template picker: "← Balik" → t.setup_back, "Umur X · N habit" → t.habits_add_header_age + t.habits_add_header_count(n), template hint, "Semua" pill, category pill labels, template title/desc via getTemplateTitle/getTemplateDesc, "Selesai (N habit dipilih) →" → t.habits_pick_done(n)
+            - Custom form: title label, placeholders, desc label, category label + labels, points label + labels, submit button
+          
+          ChildSheet.js: 
+            - FAVOURITE_COLORS now use labelKey → resolved via t
+            - Removed hardcoded LANGS array, replaced with SUPPORTED_LANGS from i18n (all 4 languages) with dir + flag
+            - Removed hardcoded GENDERS constant (already used t inline elsewhere)
+            - BAND_LABEL replaced with dynamic t[bandLabelKey(band)] lookup
+          
+          InstallPrompt.js: 100% rewritten to use useLang(). All 15+ hardcoded MS strings including install title, body, CTA, tutorial steps (iOS + Android), final blessing, dismiss button.
+          
+          BrandLogo.js: Tagline no longer hardcoded English, now uses t.brand_tagline (each language has appropriate version).
+          
+          family/setup/page.js: role hints "Mama"/"Papa" → t.setup_ibu_hint / t.setup_bapa_hint. Error message "Gagal" → t.setup_error_general.
+          
+          habitTemplates.js: BIG addition — HABIT_TEMPLATE_I18N map with all 30 templates translated into MS/EN/ID/AR (title + desc each), plus helpers getTemplateTitle/getTemplateDesc/getHabitTitle/getHabitDesc/getCategoryLabel/getAgeBandLabel with graceful fallback chain.
+          
+          Verified end-to-end via screenshot tool on 420×900 viewport, authenticated session with real user + 34 assigned habits:
+          - Dashboard in AR/ID/EN: header, greeting, subtitle, momentum badge, streak, verify queue, family quest, install prompt, bottom nav — all switch language ✓
+          - Habits sheet LIST in AR/ID/EN: header ("Habits for" / "Kebiasaan untuk" / "عادات"), stats cards, all 30 template titles + descs, category labels (Ibadah/العبادة/etc), points word (pts/poin/نقطة) — all localised ✓
+          - Habits sheet BRIEF popup in Arabic: 4 explanatory steps + tip fully translated with RTL layout, CTA "→ ابدأ بتحديد العادات" ✓
+          - RTL preservation: Arabic mode flips layout naturally (nav order, buttons, icons); no broken layouts observed.
+          
+          Zero remaining hardcoded UI strings detected via grep sweep of app/page.js + components/eqrel/*.js.
+
 metadata:
   updated_by: "main_agent"
-  update_note: "i18n expanded to MS/EN/ID/AR with RTL support and browser auto-detect (2026-01-18)"
+  update_note: "Complete i18n audit — 100% UI + 30 habit templates localised across MS/EN/ID/AR (2026-01-18)"
 
 agent_communication:
     -agent: "main"
-    -message: "i18n expansion complete. 4 languages now supported (MS default, EN, ID, AR-Fusha). Arabic triggers full RTL on html element. Browser language auto-detected on first visit; user selection persists. Verified via screenshot tool — login screen renders correctly in all 4 languages including RTL for Arabic. No backend changes needed."
+    -message: "Full i18n audit completed. Every visible UI string (dashboard, habits sheet incl. all 30 template titles/descs, install prompt, child sheet color/gender/lang picker, band labels, category labels, brand tagline, family setup) now dynamically translates. Verified via screenshot tool with authenticated session — AR/ID/EN dashboards + habits list all render correct language. RTL layout in Arabic preserved. No backend changes needed."

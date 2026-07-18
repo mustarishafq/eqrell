@@ -1,10 +1,13 @@
 'use client'
 
+import { useLang } from '@/lib/i18n/LangProvider'
+
 /**
  * EQrel Brand Logo — wordmark with mascot icon option
  * Uses brand colors: emerald green + golden accent
  */
 export function BrandLogo({ size = 'md', showTagline = true, className = '' }) {
+  const { t } = useLang()
   const sizes = {
     sm: { icon: 32,  text: 'text-xl',  tag: 'text-[10px]' },
     md: { icon: 48,  text: 'text-3xl', tag: 'text-xs' },
@@ -50,7 +53,7 @@ export function BrandLogo({ size = 'md', showTagline = true, className = '' }) {
 
       {showTagline && (
         <p className={`${s.tag} text-emerald-800/70 font-semibold mt-1.5 tracking-wide uppercase`}>
-          Build Habits · Grow Iman
+          {t.brand_tagline}
         </p>
       )}
     </div>

@@ -5,26 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, Trash2, Calendar } from 'lucide-react'
 import { BOY_AVATARS, GIRL_AVATARS, AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
+import { SUPPORTED_LANGS } from '@/lib/i18n/strings'
 
 const FAVOURITE_COLORS = [
-  { id: 'green',  hex: '#00B894', label: 'Hijau' },
-  { id: 'yellow', hex: '#FFB703', label: 'Kuning' },
-  { id: 'orange', hex: '#FF8A00', label: 'Oren' },
-  { id: 'coral',  hex: '#FF5D6E', label: 'Coral' },
-  { id: 'blue',   hex: '#2D9CDB', label: 'Biru' },
-  { id: 'purple', hex: '#9C7BD9', label: 'Ungu' },
-  { id: 'pink',   hex: '#EC4899', label: 'Pink' },
-  { id: 'fresh',  hex: '#4CAF50', label: 'Fresh' },
-]
-
-const LANGS = [
-  { id: 'ms', label: 'Bahasa Malaysia' },
-  { id: 'en', label: 'English' },
-]
-
-const GENDERS = [
-  { id: 'male',   label: 'Lelaki' },
-  { id: 'female', label: 'Perempuan' },
+  { id: 'green',  hex: '#00B894', labelKey: 'color_green' },
+  { id: 'yellow', hex: '#FFB703', labelKey: 'color_yellow' },
+  { id: 'orange', hex: '#FF8A00', labelKey: 'color_orange' },
+  { id: 'coral',  hex: '#FF5D6E', labelKey: 'color_coral' },
+  { id: 'blue',   hex: '#2D9CDB', labelKey: 'color_blue' },
+  { id: 'purple', hex: '#9C7BD9', labelKey: 'color_purple' },
+  { id: 'pink',   hex: '#EC4899', labelKey: 'color_pink' },
+  { id: 'fresh',  hex: '#4CAF50', labelKey: 'color_fresh' },
 ]
 
 // -------- Age helpers (kept exported for backward compat with page.js) --------
@@ -47,12 +38,8 @@ export function ageBandFromAge(age) {
   return '10-12'
 }
 
-const BAND_LABEL = {
-  '3-4':   'Toddler (3–4)',
-  '5-6':   'Prasekolah (5–6)',
-  '7-9':   'Awal sekolah (7–9)',
-  '10-12': 'Pra-remaja (10–12)',
-}
+// Locale-aware band label lookup
+const bandLabelKey = (band) => 'band_' + String(band).replace('-', '_')
 
 export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
   const { t } = useLang()
@@ -213,7 +200,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                     <div className="text-eq-ink text-sm">
                       <span className="font-bold">{t.age_years(age)}</span>
                       <span className="text-eq-ink/60"> · {t.age_group} </span>
-                      <span className="font-bold text-eq-green">{BAND_LABEL[ageBand]}</span>
+                      <span className="font-bold text-eq-green">{t[bandLabelKey(ageBand)] || ageBand}</span>
                     </div>
                     <span className="text-lg">✨</span>
                   </div>
@@ -293,7 +280,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                       <button
                         key={c.id}
                         onClick={() => setFavColor(c.id)}
-                        aria-label={c.label}
+                        aria-label={t[c.labelKey] || c.id}
                         className={`aspect-square rounded-full transition-all ${isActive ? 'ring-4 ring-white scale-110 shadow-eq-card' : 'opacity-60 hover:opacity-100'}`}
                         style={{ background: c.hex, boxShadow: isActive ? `0 0 0 3px ${c.hex}, 0 4px 12px ${c.hex}66` : undefined }}
                       >
@@ -308,19 +295,21 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
               <div>
                 <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_pref_lang}</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {LANGS.map((lang) => {
-                    const isActive = preferredLang === lang.id
+                  {SUPPORTED_LANGS.map((L) => {
+                    const isActive = preferredLang === L.code
                     return (
                       <button
-                        key={lang.id}
-                        onClick={() => setPreferredLang(lang.id)}
-                        className={`rounded-xl px-3 py-2.5 border-2 transition-all font-bold text-sm ${
+                        key={L.code}
+                        onClick={() => setPreferredLang(L.code)}
+                        dir={L.dir}
+                        className={`rounded-xl px-3 py-2.5 border-2 transition-all font-bold text-sm flex items-center justify-center gap-1.5 ${
                           isActive
                             ? 'bg-eq-green/10 border-eq-green text-eq-green'
                             : 'bg-eq-cream/30 border-transparent text-eq-ink hover:bg-eq-cream/60'
                         }`}
                       >
-                        {lang.label}
+                        <span>{L.flag}</span>
+                        <span>{L.label}</span>
                       </button>
                     )
                   })}

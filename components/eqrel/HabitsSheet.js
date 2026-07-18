@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil } from 'lucide-react'
-import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand } from '@/lib/habitTemplates'
+import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 
@@ -16,7 +16,7 @@ const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
  * Views: 'brief' (first-time popup) → 'list' (assigned habits) → 'add' (template picker) → 'custom' (custom habit form)
  */
 export function HabitsSheet({ open, onClose, child, onCountChange }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const [view, setView] = useState('list')
   const [habits, setHabits] = useState([])
   const [loading, setLoading] = useState(true)
@@ -137,7 +137,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   }
 
   const removeHabit = async (habitId) => {
-    if (!confirm('Padam habit ini?')) return
+    if (!confirm(t.habits_delete_confirm)) return
     unassignHabit(habitId)
   }
 
@@ -225,7 +225,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 <button
                   onClick={() => { setView('brief') }}
                   className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
-                  title="Bantuan"
+                  title={t.habits_help_aria}
                 >
                   <Info className="w-5 h-5 text-eq-ink/60" />
                 </button>
@@ -240,15 +240,15 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 <div className="text-center">
                   <div className="text-4xl mb-1">🌱</div>
-                  <h3 className="text-lg font-extrabold text-emerald-900">Cara Habits berfungsi</h3>
-                  <p className="text-emerald-800/60 text-xs mt-0.5">Untuk {child.nickname}</p>
+                  <h3 className="text-lg font-extrabold text-emerald-900">{t.habits_brief_title}</h3>
+                  <p className="text-emerald-800/60 text-xs mt-0.5">{t.habits_brief_for(child.nickname)}</p>
                 </div>
 
                 {[
-                  { icon: '📚', title: 'Pilih dari 30 template', body: `Habit disusun ikut umur ${child.ageBand} (Ibadah, Akhlak, Pembelajaran, Kesihatan, Keluarga).` },
-                  { icon: '✏️', title: 'Atau cipta habit sendiri', body: 'Anda boleh tulis habit khas untuk anak (contoh: "Ulangkaji Matematik 20 min").' },
-                  { icon: '✨', title: 'Anak claim, anda verify', body: 'Anak tandakan selesai di Kid Mode. Anda semak di Verify Queue → sah = dapat Mata Bina.' },
-                  { icon: '💛', title: 'Progres real, bukan game', body: 'Setiap Mata Bina daripada perbuatan sebenar. Dunia anak berkembang dari amalan harian.' },
+                  { icon: '📚', title: t.habits_brief_step1_title, body: t.habits_brief_step1_body(child.ageBand) },
+                  { icon: '✏️', title: t.habits_brief_step2_title, body: t.habits_brief_step2_body },
+                  { icon: '✨', title: t.habits_brief_step3_title, body: t.habits_brief_step3_body },
+                  { icon: '💛', title: t.habits_brief_step4_title, body: t.habits_brief_step4_body },
                 ].map((item, i) => (
                   <div key={i} className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-3">
                     <div className="text-2xl">{item.icon}</div>
@@ -260,16 +260,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 ))}
 
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mt-2">
-                  <p className="text-amber-900 text-xs leading-relaxed">
-                    💡 <b>Tip:</b> Mula dengan 3–5 habit ringan dulu. Tambah lagi bila anak dah biasa. Konsistensi &gt; banyak.
-                  </p>
+                  <p className="text-amber-900 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: t.habits_brief_tip }} />
                 </div>
 
                 <button
                   onClick={dismissBrief}
                   className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
                 >
-                  Mula tetapkan habits →
+                  {t.habits_brief_start}
                 </button>
               </div>
             )}
@@ -280,13 +278,13 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 {habits.length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200">
-                      <div className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Selesai hari ni</div>
+                      <div className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">{t.habits_done_today}</div>
                       <div className="text-2xl font-extrabold text-emerald-800 mt-0.5">
                         {completedCount}<span className="text-sm opacity-60">/{habits.length}</span>
                       </div>
                     </div>
                     <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200">
-                      <div className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Mata Bina</div>
+                      <div className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">{t.habits_mata}</div>
                       <div className="text-2xl font-extrabold text-amber-800 mt-0.5 flex items-baseline gap-1">
                         +{totalPoints}<Sparkles className="w-4 h-4 text-amber-500" fill="#FFB703" />
                       </div>
@@ -310,7 +308,10 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
                 {!loading && habits.map(habit => {
                   const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
+                  const catLabel = getCategoryLabel(habit.category, t)
                   const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+                  const displayTitle = getHabitTitle(habit, lang)
+                  const displayDesc  = getHabitDesc(habit, lang)
                   return (
                     <div key={habit.id} className={`rounded-2xl p-3 border-2 transition-all ${
                       isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
@@ -323,31 +324,31 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                               ? 'bg-emerald-500 border-emerald-500 scale-105'
                               : 'bg-white border-eq-ink/20 hover:border-emerald-400'
                           }`}
-                          aria-label={isDone ? 'Undo' : 'Tandakan selesai'}
+                          aria-label={isDone ? t.habits_undo : t.habits_mark_done}
                         >
                           {isDone && <Check className="w-5 h-5 text-white" strokeWidth={3} />}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                             <span className="text-sm">{cat.icon}</span>
-                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{cat.label}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{catLabel}</span>
                             <span className="text-[10px] text-eq-ink/40">·</span>
-                            <span className="text-[10px] text-amber-600 font-bold">+{habit.points} mata</span>
+                            <span className="text-[10px] text-amber-600 font-bold">+{habit.points} {t.habits_points_word}</span>
                             {!habit.templateId && (
-                              <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">CUSTOM</span>
+                              <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
                             )}
                           </div>
                           <div className={`font-bold text-sm leading-tight ${isDone ? 'text-emerald-900 line-through opacity-70' : 'text-eq-ink'}`}>
-                            {habit.title}
+                            {displayTitle}
                           </div>
-                          {habit.desc && (
-                            <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{habit.desc}</div>
+                          {displayDesc && (
+                            <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{displayDesc}</div>
                           )}
                         </div>
                         <button
                           onClick={() => removeHabit(habit.id)}
                           className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0"
-                          aria-label="Padam habit"
+                          aria-label={t.habits_delete_aria}
                         >
                           <Trash2 className="w-4 h-4 text-red-500/70" />
                         </button>
@@ -384,14 +385,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 <div className="sticky top-0 bg-white z-10 px-5 pt-3 pb-2 border-b border-eq-cream/50">
                   <div className="flex items-center justify-between mb-2">
                     <button onClick={() => setView('list')} className="text-emerald-700 font-bold text-sm flex items-center gap-1">
-                      ← Balik
+                      {t.setup_back}
                     </button>
                     <div className="text-xs text-eq-ink/60">
-                      Umur <span className="font-bold text-emerald-700">{child.ageBand}</span> · {habits.length} habit
+                      {t.habits_add_header_age} <span className="font-bold text-emerald-700">{child.ageBand}</span> · {t.habits_add_header_count(habits.length)}
                     </div>
                   </div>
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5 mb-2 text-[11px] text-emerald-800">
-                    💡 Klik untuk tambah, klik semula untuk buang. Boleh pilih seberapa banyak.
+                    {t.habits_template_hint}
                   </div>
                   <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 py-1 no-scrollbar">
                     <button
@@ -400,7 +401,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                         activeCategory === null ? 'bg-emerald-500 text-white' : 'bg-eq-cream/50 text-eq-ink'
                       }`}
                     >
-                      Semua
+                      {t.habits_all_category}
                     </button>
                     {Object.entries(HABIT_CATEGORIES).map(([id, cat]) => (
                       <button key={id}
@@ -410,7 +411,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                         }`}
                         style={activeCategory === id ? { background: cat.color } : {}}
                       >
-                        <span>{cat.icon}</span> {cat.label}
+                        <span>{cat.icon}</span> {getCategoryLabel(id, t)}
                       </button>
                     ))}
                   </div>
@@ -418,17 +419,18 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
                 <div className="px-5 py-3 space-y-2">
                   {templates
-                    .filter(t => activeCategory === null || t.category === activeCategory)
-                    .map(t => {
-                      const cat = HABIT_CATEGORIES[t.category]
-                      const assignedHabit = templateIdToHabit[t.id]
+                    .filter(tpl => activeCategory === null || tpl.category === activeCategory)
+                    .map(tpl => {
+                      const cat = HABIT_CATEGORIES[tpl.category]
+                      const catLabel = getCategoryLabel(tpl.category, t)
+                      const assignedHabit = templateIdToHabit[tpl.id]
                       const isAssigned = !!assignedHabit
-                      const isBusy = busyTemplateId === t.id || busyTemplateId === '__unassign__' + assignedHabit?.id
+                      const isBusy = busyTemplateId === tpl.id || busyTemplateId === '__unassign__' + assignedHabit?.id
                       return (
                         <button
-                          key={t.id}
+                          key={tpl.id}
                           disabled={isBusy}
-                          onClick={() => toggleTemplate(t)}
+                          onClick={() => toggleTemplate(tpl)}
                           className={`w-full text-left rounded-2xl p-3 border-2 transition-all flex items-start gap-2 active:scale-[0.99] ${
                             isAssigned
                               ? 'bg-emerald-50 border-emerald-400'
@@ -443,11 +445,11 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{cat.label}</span>
-                              <span className="text-[10px] text-amber-600 font-bold">+{t.points} mata</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{catLabel}</span>
+                              <span className="text-[10px] text-amber-600 font-bold">+{tpl.points} {t.habits_points_word}</span>
                             </div>
-                            <div className="font-bold text-sm text-eq-ink leading-tight">{t.title}</div>
-                            <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{t.desc}</div>
+                            <div className="font-bold text-sm text-eq-ink leading-tight">{getTemplateTitle(tpl, lang)}</div>
+                            <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{getTemplateDesc(tpl, lang)}</div>
                           </div>
                           <div className="flex-shrink-0 self-center">
                             {isAssigned ? (
@@ -472,7 +474,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     onClick={() => setView('list')}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-2xl active:scale-[0.99]"
                   >
-                    Selesai ({habits.length} habit dipilih) →
+                    {t.habits_pick_done(habits.length)}
                   </button>
                 </div>
               </div>
@@ -483,31 +485,31 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between mb-1">
                   <button onClick={() => setView('list')} className="text-emerald-700 font-bold text-sm flex items-center gap-1">
-                    ← Balik
+                    {t.setup_back}
                   </button>
                   <div className="text-xs text-eq-ink/60 flex items-center gap-1">
-                    <Pencil className="w-3 h-3" /> Custom habit
+                    <Pencil className="w-3 h-3" /> {t.habits_custom_title}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Tajuk habit</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">{t.habits_custom_title_label}</label>
                   <input
                     type="text"
                     value={customTitle}
                     onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="Contoh: Ulangkaji Matematik 20 minit"
+                    placeholder={t.habits_custom_title_placeholder}
                     className="w-full bg-eq-cream/50 border-2 border-transparent focus:border-eq-green focus:bg-white outline-none rounded-xl px-4 py-3 text-eq-ink font-medium"
                     maxLength={80}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Penerangan (optional)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">{t.habits_custom_desc}</label>
                   <textarea
                     value={customDesc}
                     onChange={(e) => setCustomDesc(e.target.value)}
-                    placeholder="Detail tambahan..."
+                    placeholder={t.habits_custom_desc_placeholder}
                     rows={2}
                     className="w-full bg-eq-cream/50 border-2 border-transparent focus:border-eq-green focus:bg-white outline-none rounded-xl px-4 py-2 text-eq-ink text-sm resize-none"
                     maxLength={200}
@@ -515,7 +517,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Kategori</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">{t.habits_custom_category}</label>
                   <div className="grid grid-cols-5 gap-1.5">
                     {Object.entries(HABIT_CATEGORIES).map(([id, cat]) => (
                       <button key={id}
@@ -528,14 +530,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           : { borderColor: 'transparent', background: '#F5F5F0' }}
                       >
                         <span className="text-lg">{cat.icon}</span>
-                        <span className="text-[9px] font-bold text-eq-ink text-center leading-tight">{cat.label}</span>
+                        <span className="text-[9px] font-bold text-eq-ink text-center leading-tight">{getCategoryLabel(id, t)}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">Mata Bina (1–50)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-eq-ink block mb-1">{t.habits_custom_points}</label>
                   <div className="flex gap-2">
                     {[5, 10, 15, 20].map(p => (
                       <button key={p}
@@ -563,7 +565,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   disabled={!customTitle.trim()}
                   className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 disabled:from-eq-ink/20 disabled:to-eq-ink/20 disabled:cursor-not-allowed hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
                 >
-                  Cipta habit ini
+                  {t.habits_custom_create}
                 </button>
                 <div className="h-2" />
               </div>
