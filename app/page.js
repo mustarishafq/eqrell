@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Bell, ChevronRight, Sparkles } from 'lucide-react'
+import { Bell, ChevronRight, Sparkles, Plus } from 'lucide-react'
 import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
+import { ChildSheet } from '@/components/eqrel/ChildSheet'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -19,14 +20,20 @@ const ASSETS = {
   navProfile: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/fdu0on3o_nav-profile-avatar.png',
 }
 
+const AVATAR_MAP = {
+  'boy-kopiah': { emoji: '👦🏻', bg: 'from-green-100 to-green-200' },
+  'boy-2': { emoji: '👦🏽', bg: 'from-blue-100 to-blue-200' },
+  'boy-3': { emoji: '🧒🏻', bg: 'from-teal-100 to-teal-200' },
+  'girl-hijab': { emoji: '👧🏻', bg: 'from-purple-100 to-purple-200' },
+  'girl-2': { emoji: '👧🏽', bg: 'from-pink-100 to-pink-200' },
+  'girl-3': { emoji: '🧕🏻', bg: 'from-rose-100 to-rose-200' },
+}
+
 const ChildAvatar = ({ type = 'boy-kopiah', size = 68 }) => {
-  const emoji = type === 'girl-hijab' ? '👧🏻' : '👦🏻'
-  const bg = type === 'girl-hijab'
-    ? 'from-purple-100 to-purple-200'
-    : 'from-green-100 to-green-200'
+  const av = AVATAR_MAP[type] || AVATAR_MAP['boy-kopiah']
   return (
-    <div style={{ width: size, height: size }} className={`relative rounded-full overflow-hidden bg-gradient-to-br ${bg} flex items-center justify-center`}>
-      <span style={{ fontSize: size * 0.5 }}>{emoji}</span>
+    <div style={{ width: size, height: size }} className={`relative rounded-full overflow-hidden bg-gradient-to-br ${av.bg} flex items-center justify-center`}>
+      <span style={{ fontSize: size * 0.5 }}>{av.emoji}</span>
     </div>
   )
 }
@@ -115,15 +122,50 @@ const ParentDashboard = () => {
   const t = strings.ms
   const [activeTab, setActiveTab] = useState('home')
   const [childrenNames, setChildrenNames] = useState('')
+  const [children, setChildren] = useState(mockChildren)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editingChild, setEditingChild] = useState(null)
 
   useEffect(() => {
-    const names = mockChildren.map(c => c.nickname)
-    if (names.length === 1) setChildrenNames(names[0])
-    else if (names.length === 2) setChildrenNames(names.join(' & '))
-    else setChildrenNames(names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1])
+    // Load from localStorage if exists
+    try {
+      const stored = localStorage.getItem('eqrel-children')
+      if (stored) setChildren(JSON.parse(stored))
+    } catch (e) {}
   }, [])
 
-  const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E']
+  useEffect(() => {
+    // Persist to localStorage
+    try {
+      localStorage.setItem('eqrel-children', JSON.stringify(children))
+    } catch (e) {}
+
+    // Format names
+    const names = children.map(c => c.nickname)
+    if (names.length === 0) setChildrenNames('keluarga anda')
+    else if (names.length === 1) setChildrenNames(names[0])
+    else if (names.length === 2) setChildrenNames(names.join(' & '))
+    else setChildrenNames(names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1])
+  }, [children])
+
+  const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E', '#B39DDB', '#4CAF50']
+
+  const openAddSheet = () => { setEditingChild(null); setSheetOpen(true) }
+  const openEditSheet = (child) => { setEditingChild(child); setSheetOpen(true) }
+  const handleSaveChild = (child) => {
+    setChildren(prev => {
+      const idx = prev.findIndex(c => c.id === child.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = child
+        return next
+      }
+      return [...prev, child]
+    })
+  }
+  const handleDeleteChild = (id) => {
+    setChildren(prev => prev.filter(c => c.id !== id))
+  }
 
   return (
     <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden relative">
@@ -207,14 +249,32 @@ const ParentDashboard = () => {
             {t.dashboard_sub}
           </p>
 
-          <div className="flex justify-center gap-5 mt-3">
-            {mockChildren.map((child, idx) => (
-              <ChildProgressRing
+          <div className="flex justify-center gap-4 mt-3 flex-wrap">
+            {children.map((child, idx) => (
+              <button
                 key={child.id}
-                child={child}
-                ringColor={childColors[idx % childColors.length]}
-              />
+                onClick={() => openEditSheet(child)}
+                className="active:scale-95 transition-transform"
+                aria-label={`Edit ${child.nickname}`}
+              >
+                <ChildProgressRing
+                  child={child}
+                  ringColor={childColors[idx % childColors.length]}
+                />
+              </button>
             ))}
+            {children.length < 6 && (
+              <button
+                onClick={openAddSheet}
+                className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
+                aria-label="Tambah anak"
+              >
+                <div className="w-24 h-24 rounded-full border-2 border-dashed border-eq-green/40 bg-eq-green/5 flex items-center justify-center hover:bg-eq-green/10 transition-colors">
+                  <Plus className="w-8 h-8 text-eq-green" strokeWidth={2.5} />
+                </div>
+                <div className="text-eq-green font-semibold text-xs pt-1">Tambah</div>
+              </button>
+            )}
           </div>
 
           <motion.div
@@ -287,6 +347,15 @@ const ParentDashboard = () => {
 
       {/* PWA Install Prompt (smart: iOS tutorial / Android native) */}
       <InstallPrompt />
+
+      {/* Add/Edit Child bottom sheet */}
+      <ChildSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        initial={editingChild}
+        onSave={handleSaveChild}
+        onDelete={handleDeleteChild}
+      />
     </div>
   )
 }
