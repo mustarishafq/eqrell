@@ -6,7 +6,7 @@ import { Bell, ChevronRight, Sparkles, Plus } from 'lucide-react'
 import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
-import { ChildSheet } from '@/components/eqrel/ChildSheet'
+import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -130,7 +130,18 @@ const ParentDashboard = () => {
     // Load from localStorage if exists
     try {
       const stored = localStorage.getItem('eqrel-children')
-      if (stored) setChildren(JSON.parse(stored))
+      if (stored) {
+        const loaded = JSON.parse(stored)
+        // Auto-recompute age band from DOB (in case anak dah berubah umur)
+        const refreshed = loaded.map(c => {
+          if (c.dob) {
+            const age = calculateAge(c.dob)
+            return { ...c, ageBand: ageBandFromAge(age) }
+          }
+          return c
+        })
+        setChildren(refreshed)
+      }
     } catch (e) {}
   }, [])
 
@@ -263,7 +274,7 @@ const ParentDashboard = () => {
                 />
               </button>
             ))}
-            {children.length < 6 && (
+            {children.length < 20 && (
               <button
                 onClick={openAddSheet}
                 className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
