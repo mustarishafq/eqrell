@@ -9,6 +9,8 @@ import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
 import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
+import { LangPicker } from '@/components/eqrel/LangPicker'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -122,7 +124,7 @@ const BottomNav = ({ active = 'home', onChange }) => {
 }
 
 const ParentDashboard = () => {
-  const t = strings.ms
+  const { t, lang } = useLang()
   const [activeTab, setActiveTab] = useState('home')
   const [childrenNames, setChildrenNames] = useState('')
   const [children, setChildren] = useState([])
@@ -307,16 +309,19 @@ const ParentDashboard = () => {
             {(me?.name || 'Mama').split(' ')[0]} <span className="animate-gentle-pulse text-2xl">👋</span>
           </h1>
           {family?.code && (
-            <button
-              onClick={() => {
-                navigator.clipboard?.writeText(family.code)
-                alert(`Kod keluarga disalin: ${family.code}`)
-              }}
-              className="mt-1 inline-flex items-center gap-1 bg-white/70 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-800 shadow-sm border border-emerald-200/60 hover:bg-white"
-              title="Klik untuk salin kod (kongsi dengan pasangan)"
-            >
-              👨‍👩‍👧 {family.code}
-            </button>
+            <div className="mt-1 inline-flex items-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(family.code)
+                  alert(`${t.setup_family_code_label}: ${family.code}`)
+                }}
+                className="inline-flex items-center gap-1 bg-white/70 backdrop-blur px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-800 shadow-sm border border-emerald-200/60 hover:bg-white"
+                title="Klik untuk salin kod"
+              >
+                👨‍👩‍👧 {family.code}
+              </button>
+              <LangPicker variant="compact" />
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2 pt-3">
@@ -326,7 +331,7 @@ const ParentDashboard = () => {
           </button>
           <button
             onClick={async () => {
-              if (confirm('Log keluar dari EQrel?')) {
+              if (confirm(t.logout_confirm)) {
                 await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
                 window.location.href = '/login'
               }
@@ -387,10 +392,10 @@ const ParentDashboard = () => {
           className="bg-white rounded-3xl p-4 shadow-eq-card flex-shrink-0"
         >
           <h2 className="text-eq-ink font-extrabold text-xl leading-tight">
-            {t.alhamdulillah},
+            {t.dashboard_headline}
           </h2>
           <p className="text-eq-ink font-extrabold text-lg leading-snug mt-0.5">
-            perjalanan {childrenNames} semakin bercahaya <span className="inline-block">💛</span>
+            {t.dashboard_headline_2(childrenNames)}
           </p>
           <p className="text-eq-ink/60 text-xs mt-2 leading-relaxed">
             {t.dashboard_sub}
@@ -436,7 +441,7 @@ const ParentDashboard = () => {
                 <div className="w-24 h-24 rounded-full border-2 border-dashed border-eq-green/40 bg-eq-green/5 flex items-center justify-center hover:bg-eq-green/10 transition-colors">
                   <Plus className="w-8 h-8 text-eq-green" strokeWidth={2.5} />
                 </div>
-                <div className="text-eq-green font-semibold text-xs pt-1">Tambah</div>
+                <div className="text-eq-green font-semibold text-xs pt-1">{t.add_child}</div>
               </button>
             )}
           </div>
@@ -444,7 +449,7 @@ const ParentDashboard = () => {
           {/* Hint */}
           {children.length > 0 && (
             <p className="text-center text-[11px] text-eq-ink/50 mt-2 leading-tight">
-              👆 Tap untuk habits · 🔒 Tekan tahan untuk edit anak
+              {t.dashboard_hint}
             </p>
           )}
 
@@ -472,9 +477,7 @@ const ParentDashboard = () => {
           <img src={ASSETS.verifyClip} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
           <div className="flex-1 text-left">
             <div className="font-bold text-eq-ink text-sm">
-              {pendingVerifyCount > 0
-                ? `${pendingVerifyCount} tugasan sedia disemak`
-                : 'Belum ada tugasan untuk disemak'}
+              {pendingVerifyCount > 0 ? t.verify_pending(pendingVerifyCount) : t.verify_none}
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-eq-blue flex-shrink-0" strokeWidth={2.5} />

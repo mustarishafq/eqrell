@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand } from '@/lib/habitTemplates'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
 
@@ -15,6 +16,7 @@ const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
  * Views: 'brief' (first-time popup) → 'list' (assigned habits) → 'add' (template picker) → 'custom' (custom habit form)
  */
 export function HabitsSheet({ open, onClose, child, onCountChange }) {
+  const { t } = useLang()
   const [view, setView] = useState('list')
   const [habits, setHabits] = useState([])
   const [loading, setLoading] = useState(true)
@@ -216,7 +218,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 {avatarSrc && <img src={avatarSrc} alt={child.nickname} className="w-full h-full object-contain object-top" />}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-eq-ink/60">Habits untuk</div>
+                <div className="text-xs text-eq-ink/60">{t.habits_for}</div>
                 <div className="font-extrabold text-eq-ink text-lg leading-tight truncate">{child.nickname}</div>
               </div>
               {view === 'list' && (
@@ -301,8 +303,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 {!loading && habits.length === 0 && (
                   <div className="text-center py-6">
                     <div className="text-5xl mb-2">🌱</div>
-                    <p className="text-eq-ink font-bold">Belum ada habits</p>
-                    <p className="text-eq-ink/60 text-sm mt-1 mb-3">Tambah dari template atau cipta sendiri</p>
+                    <p className="text-eq-ink font-bold">{t.habits_no_habit}</p>
+                    <p className="text-eq-ink/60 text-sm mt-1 mb-3">{t.habits_empty_hint}</p>
                   </div>
                 )}
 
@@ -361,13 +363,13 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                       onClick={() => { setActiveCategory(null); setView('add') }}
                       className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white font-extrabold py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md active:scale-[0.99]"
                     >
-                      <Plus className="w-5 h-5" strokeWidth={3} /> Tambah dari template
+                      <Plus className="w-5 h-5" strokeWidth={3} /> {t.habits_add_template}
                     </button>
                     <button
                       onClick={() => setView('custom')}
                       className="w-full bg-white border-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-extrabold py-2.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]"
                     >
-                      <Pencil className="w-4 h-4" strokeWidth={2.5} /> Cipta habit sendiri
+                      <Pencil className="w-4 h-4" strokeWidth={2.5} /> {t.habits_add_custom}
                     </button>
                   </div>
                 )}

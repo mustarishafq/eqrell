@@ -2,33 +2,41 @@
 
 /**
  * Onboarding Scaffold — shared layout for login / family setup / other onboarding pages.
- * Features:
- *  - EQrel brand logo at top
- *  - Optional mascot on the side or top
- *  - Motivational Islamic parent quote at bottom
- *  - Fully mobile-safe (respects safe-area, scrolls if content taller than viewport)
  */
 
 import { motion } from 'framer-motion'
 import { BrandLogo } from './BrandLogo'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 const MASCOT_URL = 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/33belexr_eq-greeting-companion.png'
 
-const PARENT_QUOTES = [
-  { text: 'Anak soleh & solehah bermula di rumah.', by: 'Doa untuk keluarga' },
-  { text: 'Rutin yang berkat, hasil yang barakah.', by: 'EQrel' },
-  { text: 'Setiap habits adalah sedekah untuk anak.', by: 'EQrel' },
-  { text: 'Bina habits, bina iman.', by: 'EQrel' },
-  { text: 'Keluarga yang berdoa bersama, kekal bersama.', by: 'Hadis' },
-  { text: 'Ibubapa adalah rumah pertama untuk hati anak.', by: 'EQrel' },
-  { text: 'Setiap langkah kecil hari ini, hijrah besar esok.', by: 'EQrel' },
-]
+const PARENT_QUOTES = {
+  ms: [
+    { text: 'Anak soleh & solehah bermula di rumah.', by: 'Doa untuk keluarga' },
+    { text: 'Rutin yang berkat, hasil yang barakah.', by: 'EQrel' },
+    { text: 'Setiap habits adalah sedekah untuk anak.', by: 'EQrel' },
+    { text: 'Bina habits, bina iman.', by: 'EQrel' },
+    { text: 'Keluarga yang berdoa bersama, kekal bersama.', by: 'Hadis' },
+    { text: 'Ibubapa adalah rumah pertama untuk hati anak.', by: 'EQrel' },
+    { text: 'Setiap langkah kecil hari ini, hijrah besar esok.', by: 'EQrel' },
+  ],
+  en: [
+    { text: 'Righteous children begin at home.', by: 'A family prayer' },
+    { text: 'Blessed routines, blessed outcomes.', by: 'EQrel' },
+    { text: 'Every habit is a gift you give your child.', by: 'EQrel' },
+    { text: 'Build habits, grow iman.', by: 'EQrel' },
+    { text: 'The family that prays together, stays together.', by: 'Hadith' },
+    { text: 'Parents are the first home for a child\u2019s heart.', by: 'EQrel' },
+    { text: 'Every small step today, a great journey tomorrow.', by: 'EQrel' },
+  ],
+}
 
 export function useDailyQuote() {
-  // Same quote for the entire day (based on day-of-year)
+  const { lang } = useLang()
   const d = new Date()
   const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000)
-  return PARENT_QUOTES[dayOfYear % PARENT_QUOTES.length]
+  const pool = PARENT_QUOTES[lang] || PARENT_QUOTES.ms
+  return pool[dayOfYear % pool.length]
 }
 
 export function OnboardingScaffold({

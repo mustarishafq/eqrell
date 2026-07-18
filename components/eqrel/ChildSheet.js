@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check, Trash2, Calendar } from 'lucide-react'
 import { BOY_AVATARS, GIRL_AVATARS, AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 const FAVOURITE_COLORS = [
   { id: 'green',  hex: '#00B894', label: 'Hijau' },
@@ -54,6 +55,7 @@ const BAND_LABEL = {
 }
 
 export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
+  const { t } = useLang()
   const isEdit = !!initial
   const [nickname, setNickname] = useState('')
   const [dob, setDob] = useState('')
@@ -145,7 +147,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
             <div className="flex items-center justify-between px-5 py-2">
               <h2 className="text-eq-ink font-extrabold text-xl">
-                {isEdit ? 'Kemaskini Anak' : 'Tambah Anak'}
+                {isEdit ? t.child_edit_title : t.child_add_title}
               </h2>
               <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center">
                 <X className="w-5 h-5 text-eq-ink/60" />
@@ -180,12 +182,12 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
               {/* Nickname */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Nama panggilan</label>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_nickname}</label>
                 <input
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  placeholder="Contoh: Adam, Aisyah, Yusuf..."
+                  placeholder={t.child_nickname_placeholder}
                   className="w-full bg-eq-cream/50 border-2 border-transparent focus:border-eq-green focus:bg-white outline-none rounded-xl px-4 py-3 text-eq-ink placeholder:text-eq-ink/40 font-medium transition-all"
                   maxLength={20}
                 />
@@ -193,7 +195,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
               {/* Date of Birth */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Tarikh lahir</label>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_dob}</label>
                 <div className="relative">
                   <input
                     type="date"
@@ -209,8 +211,8 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                 {age !== null && age >= 0 && (
                   <div className="mt-2 bg-eq-green/10 border border-eq-green/20 rounded-xl px-3 py-2 flex items-center justify-between">
                     <div className="text-eq-ink text-sm">
-                      <span className="font-bold">{age} tahun</span>
-                      <span className="text-eq-ink/60"> · Kumpulan </span>
+                      <span className="font-bold">{t.age_years(age)}</span>
+                      <span className="text-eq-ink/60"> · {t.age_group} </span>
                       <span className="font-bold text-eq-green">{BAND_LABEL[ageBand]}</span>
                     </div>
                     <span className="text-lg">✨</span>
@@ -220,9 +222,9 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
               {/* Gender */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Jantina</label>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_gender}</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {GENDERS.map((g) => {
+                  {[{id: 'male', label: t.child_gender_male}, {id: 'female', label: t.child_gender_female}].map((g) => {
                     const isActive = gender === g.id
                     return (
                       <button
@@ -244,10 +246,10 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
               {/* Avatar Picker — 32 characters */}
               <div>
                 <label className="text-eq-ink font-bold text-sm block mb-1.5">
-                  Pilih karakter ({avatarPool.length})
+                  {t.child_avatar_picker(avatarPool.length)}
                 </label>
                 <p className="text-eq-ink/50 text-[11px] mb-2">
-                  Pilih yang paling menyerupai anak anda 💛
+                  {t.child_avatar_hint}
                 </p>
                 <div className="grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto p-1 -m-1">
                   {avatarPool.map((av) => {
@@ -282,8 +284,8 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
               {/* Favourite Color */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Warna kegemaran ✨</label>
-                <p className="text-eq-ink/50 text-[11px] mb-2">Warna dunia & progress ring anak</p>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_fav_color}</label>
+                <p className="text-eq-ink/50 text-[11px] mb-2">{t.child_fav_color_hint}</p>
                 <div className="grid grid-cols-8 gap-2">
                   {FAVOURITE_COLORS.map((c) => {
                     const isActive = favColor === c.id
@@ -304,7 +306,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
 
               {/* Language */}
               <div>
-                <label className="text-eq-ink font-bold text-sm block mb-1.5">Bahasa pilihan</label>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.child_pref_lang}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {LANGS.map((lang) => {
                     const isActive = preferredLang === lang.id
@@ -337,12 +339,12 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                   }`}
                   style={canSave ? { background: selectedColor.hex } : undefined}
                 >
-                  {isEdit ? 'Simpan Perubahan' : 'Tambah Anak'}
+                  {isEdit ? t.child_save_edit : t.child_save_add}
                 </button>
                 {isEdit && onDelete && (
                   <button
                     onClick={() => {
-                      if (confirm(`Padam ${nickname}? Progres akan hilang.`)) {
+                      if (confirm(t.child_delete_confirm(nickname))) {
                         onDelete(initial.id)
                         onClose()
                       }
@@ -350,7 +352,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                     className="w-full text-eq-coral font-bold py-2.5 text-sm hover:bg-eq-coral/5 rounded-xl active:scale-[0.99] flex items-center justify-center gap-1.5"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Padam anak ini
+                    {t.child_delete}
                   </button>
                 )}
               </div>

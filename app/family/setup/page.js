@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, LogIn, Copy, Check } from 'lucide-react'
+import { Plus, LogIn } from 'lucide-react'
 import { OnboardingScaffold } from '@/components/eqrel/OnboardingScaffold'
+import { LangPicker } from '@/components/eqrel/LangPicker'
+import { useLang } from '@/lib/i18n/LangProvider'
 
 export default function FamilySetupPage() {
   const router = useRouter()
+  const { t } = useLang()
   const [me, setMe] = useState(null)
   const [mode, setMode] = useState('choose')  // choose | create | join
   const [role, setRole] = useState('ibu')
@@ -58,21 +61,26 @@ export default function FamilySetupPage() {
     <OnboardingScaffold showMascot={true} showQuote={true} mascotSize={92}>
       <div className="bg-white rounded-3xl shadow-xl p-5 border-2 border-emerald-100">
         <h2 className="text-lg font-extrabold text-emerald-900 text-center leading-tight">
-          Selamat datang, {me.name.split(' ')[0]}! 🌙
+          {t.setup_welcome(me.name.split(' ')[0])}
         </h2>
         <p className="text-emerald-800/60 text-xs text-center mt-1 mb-4">
-          Setup keluarga anda untuk mula
+          {t.setup_sub}
         </p>
+
+        {/* Language picker compact */}
+        <div className="flex justify-center mb-3">
+          <LangPicker variant="compact" />
+        </div>
 
         {/* Role picker */}
         <div className="mb-4">
           <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide block mb-1.5">
-            Anda ialah
+            {t.setup_role_label}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { id: 'ibu',  emoji: '👩', label: 'Ibu',  hint: 'Mama' },
-              { id: 'bapa', emoji: '👨', label: 'Bapa', hint: 'Papa' },
+              { id: 'ibu',  emoji: '👩', label: t.setup_ibu,  hint: 'Mama' },
+              { id: 'bapa', emoji: '👨', label: t.setup_bapa, hint: 'Papa' },
             ].map(r => (
               <button key={r.id}
                 onClick={() => setRole(r.id)}
@@ -94,16 +102,14 @@ export default function FamilySetupPage() {
           <div className="space-y-2">
             <button onClick={() => setMode('create')}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white rounded-2xl py-3 font-extrabold text-sm flex items-center justify-center gap-2 shadow-md active:scale-[0.99]">
-              <Plus className="w-4 h-4" strokeWidth={3} /> Cipta keluarga baru
+              <Plus className="w-4 h-4" strokeWidth={3} /> {t.setup_create_new}
             </button>
             <button onClick={() => setMode('join')}
               className="w-full bg-white border-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 rounded-2xl py-3 font-extrabold text-sm flex items-center justify-center gap-2 active:scale-[0.99]">
-              <LogIn className="w-4 h-4" strokeWidth={3} /> Sertai keluarga sedia ada
+              <LogIn className="w-4 h-4" strokeWidth={3} /> {t.setup_join}
             </button>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2">
-              <p className="text-amber-900 text-[11px] leading-relaxed">
-                💡 <b>Cipta</b> jika anda parent pertama. <b>Sertai</b> jika pasangan anda dah cipta akaun.
-              </p>
+              <p className="text-amber-900 text-[11px] leading-relaxed" dangerouslySetInnerHTML={{ __html: t.setup_helper }} />
             </div>
           </div>
         )}
@@ -113,15 +119,15 @@ export default function FamilySetupPage() {
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2">
               <span className="text-lg">✨</span>
               <p className="text-emerald-900 text-[11px] leading-relaxed">
-                Kod keluarga 6-huruf akan dijana. Kongsi dengan pasangan supaya boleh sertai bersama.
+                {t.setup_create_hint}
               </p>
             </div>
             <button onClick={submit} disabled={busy}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 text-white rounded-2xl py-3 font-extrabold text-sm shadow-md disabled:opacity-50 active:scale-[0.99]">
-              {busy ? 'Sedang cipta…' : `Cipta keluarga saya (${role === 'ibu' ? 'Ibu' : 'Bapa'})`}
+              {busy ? t.setup_creating : t.setup_create_btn(role === 'ibu' ? t.setup_ibu : t.setup_bapa)}
             </button>
             <button onClick={() => setMode('choose')} className="w-full text-emerald-700 text-xs py-1 font-semibold">
-              ← Balik
+              {t.setup_back}
             </button>
           </div>
         )}
@@ -129,7 +135,7 @@ export default function FamilySetupPage() {
         {mode === 'join' && (
           <div className="space-y-3">
             <div>
-              <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide block mb-1">Kod keluarga</label>
+              <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide block mb-1">{t.setup_family_code_label}</label>
               <input
                 type="text"
                 value={familyCode}
@@ -142,10 +148,10 @@ export default function FamilySetupPage() {
             </div>
             <button onClick={submit} disabled={busy || familyCode.length !== 6}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl py-3 font-extrabold text-sm shadow-md disabled:opacity-50 active:scale-[0.99]">
-              {busy ? 'Menyertai…' : `Sertai keluarga sebagai ${role === 'ibu' ? 'Ibu' : 'Bapa'}`}
+              {busy ? t.setup_joining : t.setup_join_btn(role === 'ibu' ? t.setup_ibu : t.setup_bapa)}
             </button>
             <button onClick={() => setMode('choose')} className="w-full text-emerald-700 text-xs py-1 font-semibold">
-              ← Balik
+              {t.setup_back}
             </button>
           </div>
         )}
