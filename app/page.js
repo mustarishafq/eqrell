@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles } from 'lucide-react'
 import { strings } from '@/lib/i18n/strings'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 
-// Asset URLs (from user-uploaded Asset Factory)
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
   eqMascot: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/33belexr_eq-greeting-companion.png',
@@ -20,37 +18,32 @@ const ASSETS = {
   navProfile: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/fdu0on3o_nav-profile-avatar.png',
 }
 
-// Child avatar SVG placeholders (until real assets)
-const ChildAvatar = ({ type = 'boy-kopiah', size = 88 }) => {
-  if (type === 'girl-hijab') {
-    return (
-      <div style={{ width: size, height: size }} className="relative rounded-full overflow-hidden bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
-        <span className="text-4xl">👧🏻</span>
-      </div>
-    )
-  }
+const ChildAvatar = ({ type = 'boy-kopiah', size = 68 }) => {
+  const emoji = type === 'girl-hijab' ? '👧🏻' : '👦🏻'
+  const bg = type === 'girl-hijab'
+    ? 'from-purple-100 to-purple-200'
+    : 'from-green-100 to-green-200'
   return (
-    <div style={{ width: size, height: size }} className="relative rounded-full overflow-hidden bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
-      <span className="text-4xl">👦🏻</span>
+    <div style={{ width: size, height: size }} className={`relative rounded-full overflow-hidden bg-gradient-to-br ${bg} flex items-center justify-center`}>
+      <span style={{ fontSize: size * 0.5 }}>{emoji}</span>
     </div>
   )
 }
 
-// Progress ring around child avatar
 const ChildProgressRing = ({ child, ringColor = '#00B894' }) => {
   const pct = child.todayTotal > 0 ? (child.todayCompleted / child.todayTotal) : 0
-  const radius = 52
-  const stroke = 6
+  const radius = 42
+  const stroke = 5
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference * (1 - pct)
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: 120, height: 120 }}>
-        <svg width="120" height="120" className="absolute inset-0 -rotate-90">
-          <circle cx="60" cy="60" r={radius} stroke="#F0EAD6" strokeWidth={stroke} fill="none" />
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="relative" style={{ width: 96, height: 96 }}>
+        <svg width="96" height="96" className="absolute inset-0 -rotate-90">
+          <circle cx="48" cy="48" r={radius} stroke="#F0EAD6" strokeWidth={stroke} fill="none" />
           <motion.circle
-            cx="60" cy="60" r={radius}
+            cx="48" cy="48" r={radius}
             stroke={ringColor}
             strokeWidth={stroke}
             fill="none"
@@ -62,18 +55,20 @@ const ChildProgressRing = ({ child, ringColor = '#00B894' }) => {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <ChildAvatar type={child.avatarType} size={88} />
+          <ChildAvatar type={child.avatarType} size={68} />
         </div>
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white shadow-eq-soft rounded-full px-3 py-0.5 text-sm font-bold text-eq-ink whitespace-nowrap">
+        <div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white shadow-eq-soft rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap"
+          style={{ color: ringColor }}
+        >
           {child.todayCompleted}/{child.todayTotal}
         </div>
       </div>
-      <div className="text-eq-ink font-semibold text-sm pt-2">{child.nickname}</div>
+      <div className="text-eq-ink font-semibold text-xs pt-1">{child.nickname}</div>
     </div>
   )
 }
 
-// Bottom navigation
 const BottomNav = ({ active = 'home', onChange }) => {
   const t = strings.ms
   const items = [
@@ -83,7 +78,7 @@ const BottomNav = ({ active = 'home', onChange }) => {
     { id: 'profile', label: t.nav_profile, icon: ASSETS.navProfile, color: '#B39DDB' },
   ]
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-eq-cream/50 z-40 safe-bottom">
+    <nav className="flex-shrink-0 bg-white border-t border-eq-cream/50 safe-bottom">
       <div className="grid grid-cols-4 max-w-md mx-auto">
         {items.map(item => {
           const isActive = active === item.id
@@ -91,19 +86,19 @@ const BottomNav = ({ active = 'home', onChange }) => {
             <button
               key={item.id}
               onClick={() => onChange?.(item.id)}
-              className="flex flex-col items-center justify-center py-2.5 px-2 relative transition-transform active:scale-95"
+              className="flex flex-col items-center justify-center py-1.5 px-2 relative transition-transform active:scale-95"
               aria-label={item.label}
             >
-              <div className={`w-10 h-10 flex items-center justify-center transition-all ${isActive ? 'scale-110' : 'scale-100 opacity-60'}`}>
-                <img src={item.icon} alt="" className="w-9 h-9 object-contain" />
+              <div className={`w-8 h-8 flex items-center justify-center transition-all ${isActive ? 'scale-110' : 'scale-100 opacity-60'}`}>
+                <img src={item.icon} alt="" className="w-8 h-8 object-contain" />
               </div>
-              <span className={`text-[11px] font-semibold mt-0.5 transition-colors ${isActive ? 'text-eq-ink' : 'text-eq-ink/50'}`}>
+              <span className={`text-[10px] font-semibold mt-0.5 transition-colors ${isActive ? 'text-eq-ink' : 'text-eq-ink/50'}`}>
                 {item.label}
               </span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className="absolute bottom-0 h-1 w-8 rounded-full"
+                  className="absolute bottom-0 h-1 w-6 rounded-full"
                   style={{ backgroundColor: item.color }}
                 />
               )}
@@ -115,14 +110,12 @@ const BottomNav = ({ active = 'home', onChange }) => {
   )
 }
 
-// Main Dashboard
 const ParentDashboard = () => {
   const t = strings.ms
   const [activeTab, setActiveTab] = useState('home')
   const [childrenNames, setChildrenNames] = useState('')
 
   useEffect(() => {
-    // Format children names: "Adam & Aisyah" atau "Adam, Aisyah & Yusuf"
     const names = mockChildren.map(c => c.nickname)
     if (names.length === 1) setChildrenNames(names[0])
     else if (names.length === 2) setChildrenNames(names.join(' & '))
@@ -132,89 +125,72 @@ const ParentDashboard = () => {
   const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E']
 
   return (
-    <div className="min-h-screen bg-eq-warm pb-24 relative overflow-x-hidden">
-      {/* ===== HERO SECTION ===== */}
-      <div className="relative overflow-hidden" style={{ minHeight: 320 }}>
-        {/* Landscape backdrop */}
+    <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden">
+      {/* HERO (compact) */}
+      <div className="relative flex-shrink-0" style={{ height: '28dvh', minHeight: 190, maxHeight: 240 }}>
         <div className="absolute inset-0">
-          <img
-            src={ASSETS.heroLandscape}
-            alt=""
-            className="w-full h-full object-cover"
-          />
+          <img src={ASSETS.heroLandscape} alt="" className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/95" />
         </div>
 
-        {/* Top bar */}
-        <div className="relative z-10 flex items-start justify-between px-5 pt-6">
+        <div className="relative z-10 flex items-start justify-between px-4 pt-3 safe-top">
           <div>
-            <p className="text-eq-ink/70 text-[13px] font-medium leading-tight">{t.salam},</p>
-            <h1 className="text-eq-ink font-extrabold text-3xl leading-tight mt-0.5 flex items-center gap-2">
-              {mockParent.name} <span className="animate-gentle-pulse">👋</span>
+            <p className="text-eq-ink/70 text-[11px] font-medium leading-tight">{t.salam},</p>
+            <h1 className="text-eq-ink font-extrabold text-2xl leading-tight mt-0 flex items-center gap-1.5">
+              {mockParent.name} <span className="animate-gentle-pulse text-lg">👋</span>
             </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="w-11 h-11 bg-white rounded-full shadow-eq-soft flex items-center justify-center relative" aria-label="Notifications">
-              <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
+          <div className="flex items-center gap-1.5">
+            <button className="w-9 h-9 bg-white rounded-full shadow-eq-soft flex items-center justify-center relative" aria-label="Notifications">
+              <Bell className="w-4 h-4 text-eq-ink" strokeWidth={2.5} />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-eq-coral rounded-full ring-2 ring-white" />
             </button>
-            <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white shadow-eq-soft">
+            <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-white shadow-eq-soft">
               <img src={ASSETS.navProfile} alt="Profile" className="w-full h-full object-cover" />
             </div>
           </div>
         </div>
 
-        {/* EQ Mascot */}
-        <div className="relative z-10 flex justify-center mt-2 pointer-events-none">
+        <div className="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
             className="animate-float"
           >
-            <img src={ASSETS.eqMascot} alt="EQ mascot" className="w-52 h-52 object-contain drop-shadow-2xl" />
+            <img src={ASSETS.eqMascot} alt="EQ" className="w-[130px] h-[130px] object-contain drop-shadow-2xl" />
           </motion.div>
         </div>
       </div>
 
-      {/* ===== MOMENTUM BADGE (floating) ===== */}
-      <div className="relative z-20 flex justify-center -mt-8">
+      {/* MOMENTUM BADGE */}
+      <div className="relative z-20 flex justify-center flex-shrink-0 -mt-3">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
-          className="bg-white shadow-eq-card rounded-full px-5 py-2.5 flex items-center gap-2 border border-eq-cream/60"
+          transition={{ delay: 0.4, duration: 0.4 }}
+          className="bg-white shadow-eq-card rounded-full px-3.5 py-1.5 flex items-center gap-1.5 border border-eq-cream/60"
         >
-          <img src={ASSETS.momentumStar} alt="" className="w-6 h-6 object-contain" />
-          <span className="text-eq-ink font-bold text-[11px] tracking-wider">{t.momentum_week}</span>
-          <Sparkles className="w-4 h-4 text-eq-yellow" fill="#FFB703" />
+          <img src={ASSETS.momentumStar} alt="" className="w-4 h-4 object-contain" />
+          <span className="text-eq-ink font-bold text-[10px] tracking-wider">{t.momentum_week}</span>
+          <Sparkles className="w-3 h-3 text-eq-yellow" fill="#FFB703" />
         </motion.div>
       </div>
 
-      {/* ===== MAIN CONTENT ===== */}
-      <div className="px-4 mt-6 space-y-4 max-w-md mx-auto">
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0">
 
-        {/* HEADLINE CARD */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          className="bg-white rounded-3xl p-5 shadow-eq-card"
+          transition={{ delay: 0.3, duration: 0.4 }}
+          className="bg-white rounded-3xl p-4 shadow-eq-card flex-shrink-0"
         >
-          <h2 className="text-eq-ink font-extrabold text-2xl leading-tight">
-            {t.alhamdulillah},
+          <h2 className="text-eq-ink font-extrabold text-base leading-snug">
+            {t.alhamdulillah}, perjalanan {childrenNames} semakin bercahaya <span className="inline-block">💛</span>
           </h2>
-          <p className="text-eq-ink font-extrabold text-2xl leading-tight mt-1">
-            perjalanan {childrenNames}
-            <br />
-            semakin bercahaya <span className="inline-block">💛</span>
-          </p>
-          <p className="text-eq-ink/60 text-sm mt-3 leading-relaxed">
-            {t.dashboard_sub}
-          </p>
 
-          {/* Progress rings */}
-          <div className="flex justify-center gap-6 mt-6 pt-2">
+          <div className="flex justify-center gap-5 mt-3">
             {mockChildren.map((child, idx) => (
               <ChildProgressRing
                 key={child.id}
@@ -224,47 +200,43 @@ const ParentDashboard = () => {
             ))}
           </div>
 
-          {/* Family streak bar */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-6 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl px-4 py-3 flex items-center gap-3 cursor-pointer hover:shadow-eq-soft transition-shadow"
+            transition={{ delay: 0.7 }}
+            className="mt-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl px-3 py-2 flex items-center gap-2 cursor-pointer active:scale-[0.99] transition-transform"
           >
-            <img src={ASSETS.fireStreak} alt="" className="w-9 h-9 object-contain" />
-            <div className="flex-1 text-eq-ink text-sm">
-              <span className="font-extrabold text-eq-ink">{mockFamily.streakDays} hari</span>
+            <img src={ASSETS.fireStreak} alt="" className="w-7 h-7 object-contain flex-shrink-0" />
+            <div className="flex-1 text-eq-ink text-xs leading-tight">
+              <span className="font-extrabold">{mockFamily.streakDays} hari</span>
               <span className="text-eq-ink/70"> sepanjang perjalanan keluarga</span>
             </div>
-            <ChevronRight className="w-5 h-5 text-eq-ink/40" />
+            <ChevronRight className="w-4 h-4 text-eq-ink/40 flex-shrink-0" />
           </motion.div>
         </motion.div>
 
-        {/* VERIFY QUEUE CTA */}
         <motion.button
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
-          className="w-full bg-eq-blue/10 border-2 border-eq-blue/20 rounded-2xl px-4 py-4 flex items-center gap-3 hover:bg-eq-blue/15 transition-all active:scale-[0.99]"
+          transition={{ delay: 0.45, duration: 0.4 }}
+          className="w-full bg-eq-blue/10 border-2 border-eq-blue/20 rounded-2xl px-3 py-2.5 flex items-center gap-2.5 hover:bg-eq-blue/15 transition-all active:scale-[0.99] flex-shrink-0"
         >
-          <img src={ASSETS.verifyClip} alt="" className="w-11 h-11 object-contain" />
+          <img src={ASSETS.verifyClip} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
           <div className="flex-1 text-left">
-            <div className="font-bold text-eq-ink text-base">
+            <div className="font-bold text-eq-ink text-sm">
               {mockFamily.pendingVerifications} tugasan sedia disemak
             </div>
           </div>
-          <ChevronRight className="w-6 h-6 text-eq-blue" strokeWidth={2.5} />
+          <ChevronRight className="w-5 h-5 text-eq-blue flex-shrink-0" strokeWidth={2.5} />
         </motion.button>
 
-        {/* FAMILY QUEST CARD */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.5 }}
-          className="relative rounded-3xl overflow-hidden shadow-eq-card bg-gradient-to-br from-sky-100 to-blue-50"
+          transition={{ delay: 0.6, duration: 0.4 }}
+          className="relative rounded-2xl overflow-hidden shadow-eq-card bg-gradient-to-br from-sky-100 to-blue-50 flex-shrink-0"
         >
-          {/* Island illustration mini */}
-          <div className="absolute right-0 top-0 bottom-0 w-32 opacity-90 pointer-events-none">
+          <div className="absolute right-0 top-0 bottom-0 w-24 opacity-95 pointer-events-none">
             <img
               src={ASSETS.heroLandscape}
               alt=""
@@ -272,29 +244,23 @@ const ParentDashboard = () => {
               style={{ objectPosition: 'right center' }}
             />
           </div>
-
-          <div className="relative p-5 pr-32">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 bg-white rounded-lg shadow-eq-soft flex items-center justify-center">
-                <span className="text-lg">🚩</span>
-              </div>
-              <h3 className="text-eq-ink font-extrabold text-xl">{t.family_quest_title}</h3>
+          <div className="relative p-3 pr-24">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-base">🚩</span>
+              <h3 className="text-eq-ink font-extrabold text-base">{t.family_quest_title}</h3>
             </div>
-            <p className="text-eq-ink/70 text-sm mt-1 mb-4 leading-snug">
-              {t.family_quest_sub}
+            <p className="text-eq-ink/70 text-[11px] mb-2 leading-tight">
+              Akan tiba tidak lama lagi ✨
             </p>
-            <button className="bg-eq-yellow text-eq-ink font-bold text-sm px-4 py-2 rounded-full shadow-eq-soft hover:shadow-eq-glow transition-all active:scale-95 flex items-center gap-1">
+            <button className="bg-eq-yellow text-eq-ink font-bold text-xs px-3 py-1.5 rounded-full shadow-eq-soft active:scale-95 flex items-center gap-0.5">
               {t.family_quest_cta}
-              <ChevronRight className="w-4 h-4" strokeWidth={3} />
+              <ChevronRight className="w-3.5 h-3.5" strokeWidth={3} />
             </button>
           </div>
         </motion.div>
 
-        {/* Placeholder for future sections */}
-        <div className="h-4" />
       </div>
 
-      {/* Bottom navigation */}
       <BottomNav active={activeTab} onChange={setActiveTab} />
     </div>
   )
