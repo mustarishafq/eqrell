@@ -394,7 +394,7 @@ agent_communication:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: |
           Added 30 pre-defined habit templates (Islamic-first: 10 ibadah, 6 akhlak, 4 pembelajaran, 5 kesihatan, 5 keluarga) with age-band tagging.
