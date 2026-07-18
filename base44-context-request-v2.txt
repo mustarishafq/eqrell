@@ -1,0 +1,259 @@
+====================================================================
+EQrel Base44 Context Request v2 (Refined)
+For: Claude Code / Faizal (Base44)
+From: Emergent AI (Cohort A PWA build)
+====================================================================
+
+CONTEXT:
+I've received the "EQrel — Cara World Anak Berfungsi (Full Context)"
+document confirming that world engine is ALREADY BUILT and WORKING at
+Base44 /world-demo. Faizal confirmed 17 Julai: "mekanik ada, cuma
+nak kena tukar semua UI bagi cantik".
+
+Emergent's role = build UI + wire to real family/task data (not
+rebuild mechanics from scratch).
+
+However, there are still gaps that need clarification before I can
+finalize the Cohort A PWA architecture. Please answer the following.
+
+Base44 App ID: 6a4d6ab9c0adff45abf52e6c
+
+
+====================================================================
+SECTION A: CRITICAL OPEN QUESTIONS (from world context doc)
+====================================================================
+
+A1. ISLANDS COUNT — 6 or 7?
+    The doc flags discrepancy:
+    - Ledger/Journey Framework (5 Julai): 7 islands (1 default + 2
+      fully-built for MVP + 4 locked "coming soon")
+    - Code comment world-demo (8 Julai): "pulau sendiri + 5 pulau
+      berkunci" = 6 total
+    Which is CURRENT truth? Which will Cohort A ship with?
+
+A2. POINT WIRING STATUS
+    Per 8 Julai note: "pool mata masih local-only" (not wired to real
+    Task Bank/Reward). Has this been wired since 8 Julai?
+    - Are Mata Bina / Mata Reward now persisted to Base44 backend?
+    - Which entity/field stores the balance? (Child schema? Separate
+      PointsBalance entity?)
+    - Any function that awards points on TaskCompletion.status = verified?
+
+A3. BUILDING COST TABLE
+    Progressive unlock is by BUILDING COUNT (confirmed). But do
+    buildings ALSO cost Mata Bina to place?
+    - If yes: full cost table for all 17 building types
+    - If no: is claiming a building just "spend 1 Mata Bina credit"
+      regardless of type?
+    - Where is this logic stored (function name, schema field)?
+
+
+====================================================================
+SECTION B: CAHAYA / LIGHT LAYER MECHANICS
+====================================================================
+
+B1. Exact triggers and deltas for light_level change:
+    - Verified habit → light_level +? (per event)
+    - Missed habit → light_level -? (per event)
+    - Demerit event (band 7+) → light_level -? (per severity level)
+    - Istighfar/Taubat → restore to 100? gradual? per event?
+    - Any daily decay?
+
+B2. Demerit rubric details:
+    - What are the demerit "bands"? What does "band 7+" mean exactly?
+    - Is there a Demerit entity/schema?
+    - Who flags demerit — parent only?
+    - Age-gated (7+ only)?
+
+B3. Recovery/Taubat flow implementation:
+    - Is there a dedicated action/entity for Istighfar/Taubat session?
+    - Kid-initiated? Parent-guided? Both?
+    - Cooldown or unlimited?
+    - Any UI/UX design for this flow already built?
+
+
+====================================================================
+SECTION C: TASK BANK & VERIFICATION
+====================================================================
+
+C1. Task Bank current content:
+    - How many tasks pre-loaded?
+    - Full list with: name, category, merit_points, verification type,
+      age_band, schedule (BM + EN if bilingual).
+
+C2. Rubric verification (3-level):
+    - Level names in code (e.g., "independent", "with_reminder",
+      "repeated_reminders")?
+    - Do levels affect Mata Bina/Mata Reward earned?
+    - If yes, provide multipliers.
+
+C3. Daily task generation:
+    - Cron job exists? What time?
+    - Timezone handling (Family.timezone field?)
+    - How immutable is the daily list once generated?
+
+C4. Verification flow code:
+    - Provide (or describe) the complete-task and verify-task function
+      logic — inputs, side effects, mutations.
+
+
+====================================================================
+SECTION D: OTHER SYSTEMS STATUS
+====================================================================
+
+D1. Family Quest — implemented?
+    - Schema? Progress aggregation logic? Any templates seeded?
+
+D2. Achievement System — implemented?
+    - Schema? Unlock rules? Existing achievements list?
+
+D3. Quiz / Learning content system:
+    - Does ANY quiz system exist in Base44 currently?
+    - If yes: schema, flow, integration with points
+    - If no: this is greenfield for Emergent to design
+
+D4. Reward system full status:
+    - Reward creation flow — full or partial?
+    - Reward request flow (kid initiates) — implemented?
+    - Reward approval flow (parent) — implemented?
+    - Any reward templates seeded?
+
+D5. Notification system:
+    - Push? Email? In-app only?
+    - Any triggers wired (pending verification, reward request, etc.)?
+
+D6. Weekly Report:
+    - Any generation logic? Data model?
+
+
+====================================================================
+SECTION E: AUTHENTICATION & DEVICE MODEL
+====================================================================
+
+E1. Parent authentication in Base44:
+    - Current method (email/password? Google OAuth? Base44 built-in?)
+    - Session management?
+
+E2. Kid identification in Kid Mode:
+    - How does Kid Mode know which child is using the app?
+    - Device pairing exists?
+    - PIN or session token?
+
+E3. Multi-device model:
+    - Parent phone vs Kid own iPad vs Family Display TV — any device
+      role concept in Base44?
+    - Any pairing mechanism?
+
+
+====================================================================
+SECTION F: PHASER / VISUAL ASSETS
+====================================================================
+
+F1. /world-demo Phaser scene:
+    - Share the Phaser scene structure (scenes, tile system, camera,
+      layers)
+    - Any tilemap/tileset files?
+    - Framework version (Phaser 3.60+? 3.80+?)
+
+F2. Existing visual assets:
+    - Building sprites (17 types × states) — file paths, dimensions
+    - Villager NPC sprites — animation frames
+    - Nature elements (trees, flowers, grass)
+    - EQ mascot poses (sprite sheets or PNG per pose)
+    - Effects (sparkles, glow, fog, sunset)
+    - Grid tile assets
+
+F3. Construction ritual animation:
+    - How is Bismillah → build → Alhamdulillah sequenced?
+    - Any audio files? (Or silent visual only?)
+
+
+====================================================================
+SECTION G: BACKEND FUNCTION SOURCE CODE
+====================================================================
+
+G1. Provide source code (or detailed pseudocode) for:
+    - complete-task
+    - verify-task
+    - record-progress
+    - award-points (Mata Bina + Mata Reward)
+    - place-building
+    - demerit-record
+    - istighfar-restore
+    - daily-task-generate (if cron)
+    - Any other function touching WorldState, WorldBuilding, or
+      point balances
+
+G2. RLS (Row-Level Security) rules for all entities:
+    - Child, Family, Task, TaskCompletion, WorldState, WorldBuilding,
+      Reward, RewardRequest, PointsBalance (or wherever points stored)
+    - Format: entity → { create, read, update, delete }
+
+
+====================================================================
+SECTION H: EXTERNAL INTEGRATIONS
+====================================================================
+
+H1. Prayer time API — wired to Aladhan or JAKIM already?
+H2. Family geolocation — captured on onboarding?
+H3. Push notifications — any provider (FCM, OneSignal)?
+H4. Email/SMS — provider?
+H5. Analytics — any tracking already?
+
+
+====================================================================
+SECTION I: STRATEGIC / PRODUCT DECISIONS
+====================================================================
+
+I1. Seasonal / Ramadan / Eid overlays — designed? built? planned?
+
+I2. Building "upgrade" path — is there any concept of rumah_kayu
+    "becoming" rumah_batu, or are they always separate placements?
+    (G1 says no removal — so upgrade would need special handling)
+
+I3. Family Display Mode (ambient TV/iPad for whole family) — was
+    this concept ever discussed with Faizal? Any thinking exists?
+
+I4. Islamic calendar (Hijri date) — any integration?
+
+
+====================================================================
+SECTION J: MIGRATION STRATEGY (Base44 -> Emergent PWA)
+====================================================================
+
+J1. Should Emergent PWA:
+    (a) REPLICATE Base44 mechanics in Next.js + MongoDB from scratch,
+        using Base44 as reference only?
+    (b) CONNECT to Base44 as backend API (if Base44 exposes API)?
+    (c) HYBRID — some entities in Base44, some in MongoDB?
+
+J2. Data migration needs:
+    - Any existing family/child/task data that needs migration?
+    - Or Emergent PWA starts fresh with own database?
+
+J3. Long-term Base44 role:
+    - Is Base44 being deprecated post-Cohort A?
+    - Or Base44 remains as prototype/admin tool while PWA is
+      production?
+
+
+====================================================================
+OUTPUT FORMAT REQUEST
+====================================================================
+
+Please answer by section (A-J) with clear headers. Include:
+- Direct quotes from schema/code where possible
+- File paths / function names for cross-reference
+- Flag "UNKNOWN — needs Faizal input" if not verifiable from schema/code
+
+If any question requires access blocked by Base44 Bug 3 (function code),
+list them separately as "REQUIRES FAIZAL DIRECT ANSWER" so we compile
+a single question set to send to Faizal.
+
+Goal: Give Emergent AI complete picture to build Cohort A PWA that
+either replicates Base44 mechanics faithfully or connects to Base44 —
+depending on Section J1 answer.
+
+====================================================================
+END OF REQUEST
+====================================================================
