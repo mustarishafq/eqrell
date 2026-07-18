@@ -57,11 +57,12 @@ const ChildProgressRing = ({ child }) => {
             transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full">
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-50 to-white">
           <img
             src={resolveAvatarSrc(child)}
             alt={child.nickname}
-            className="w-full h-full object-cover object-top scale-125"
+            className="w-full h-full object-contain"
+            style={{ objectPosition: 'center top' }}
           />
         </div>
         <div
@@ -298,8 +299,8 @@ const ParentDashboard = () => {
         </div>
       </div>
 
-      {/* EQ MASCOT — full body, feet overlap card */}
-      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '22dvh', minHeight: 180 }}>
+      {/* EQ MASCOT — full body, feet overlap card. Scaled down on smaller phones. */}
+      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: 'clamp(140px, 20dvh, 220px)' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -310,7 +311,8 @@ const ParentDashboard = () => {
           <img
             src={ASSETS.eqMascot}
             alt="EQ"
-            className="w-[220px] h-[240px] object-contain drop-shadow-2xl"
+            className="object-contain drop-shadow-2xl"
+            style={{ width: 'clamp(160px, 40vw, 220px)', height: '100%' }}
           />
         </motion.div>
       </div>
@@ -329,8 +331,8 @@ const ParentDashboard = () => {
         </motion.div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10">
+      {/* MAIN CONTENT — scrollable when content taller than viewport, so BottomNav always stays visible */}
+      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10 overflow-y-auto overscroll-contain">
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -348,7 +350,7 @@ const ParentDashboard = () => {
             {t.dashboard_sub}
           </p>
 
-          <div className="flex justify-center gap-4 mt-3 flex-wrap">
+          <div className="flex justify-center gap-3 mt-3 flex-wrap">
             {children.map((child) => (
               <button
                 key={child.id}

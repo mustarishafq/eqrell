@@ -167,7 +167,8 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                   <img
                     src={selectedAvatar.src}
                     alt={selectedAvatar.id}
-                    className="w-full h-full object-cover object-top scale-125"
+                    className="w-full h-full object-contain"
+                    style={{ objectPosition: 'center top' }}
                   />
                 </div>
                 {nickname && (
@@ -264,7 +265,8 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                         <img
                           src={av.src}
                           alt={av.id}
-                          className="w-full h-full object-cover object-top scale-110"
+                          className="w-full h-full object-contain"
+                          style={{ objectPosition: 'center top' }}
                           loading="lazy"
                         />
                         {isActive && (
