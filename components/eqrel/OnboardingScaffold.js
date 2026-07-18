@@ -29,6 +29,24 @@ const PARENT_QUOTES = {
     { text: 'Parents are the first home for a child\u2019s heart.', by: 'EQrel' },
     { text: 'Every small step today, a great journey tomorrow.', by: 'EQrel' },
   ],
+  id: [
+    { text: 'Anak salih & salihah dimulai dari rumah.', by: 'Doa untuk keluarga' },
+    { text: 'Rutin yang berkat, hasil yang barakah.', by: 'EQrel' },
+    { text: 'Setiap kebiasaan adalah sedekah untuk anak.', by: 'EQrel' },
+    { text: 'Bina kebiasaan, tumbuhkan iman.', by: 'EQrel' },
+    { text: 'Keluarga yang berdoa bersama, tetap bersama.', by: 'Hadis' },
+    { text: 'Orang tua adalah rumah pertama bagi hati anak.', by: 'EQrel' },
+    { text: 'Setiap langkah kecil hari ini, hijrah besar esok.', by: 'EQrel' },
+  ],
+  ar: [
+    { text: 'الأبناء الصالحون يبدؤون من البيت.', by: 'دعاء الأسرة' },
+    { text: 'روتين مبارك، نتائج مباركة.', by: 'EQrel' },
+    { text: 'كل عادة هدية تُهديها لطفلك.', by: 'EQrel' },
+    { text: 'ابنِ عاداتك، ينمُ إيمانك.', by: 'EQrel' },
+    { text: 'الأسرة التي تصلّي معاً، تبقى معاً.', by: 'حديث' },
+    { text: 'الوالدان هما البيت الأول لقلب الطفل.', by: 'EQrel' },
+    { text: 'خطوة صغيرة اليوم، رحلة عظيمة غداً.', by: 'EQrel' },
+  ],
 }
 
 export function useDailyQuote() {

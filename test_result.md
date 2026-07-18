@@ -468,3 +468,36 @@ agent_communication:
           - All test data cleaned up successfully
           
           NO ISSUES FOUND. Habit backend is production-ready.
+
+
+  - task: "i18n — add Indonesian (ID) & Arabic (AR/RTL) support + browser auto-detect"
+    implemented: true
+    working: true
+    file: "lib/i18n/strings.js, lib/i18n/LangProvider.js, components/eqrel/LangPicker.js, components/eqrel/OnboardingScaffold.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Expanded i18n from 2 → 4 languages:
+          - Added 'id' (Bahasa Indonesia) — full string set + 7 parent quotes
+          - Added 'ar' (Modern Standard Arabic / Fusha) — full string set with proper Arabic script incl. tashkeel on Islamic phrases + 7 parent quotes
+          - SUPPORTED_LANGS entries now carry `dir` metadata ('ltr' | 'rtl')
+          - LangProvider now:
+              (a) sets document.documentElement.dir dynamically (rtl for Arabic)
+              (b) auto-detects browser language on first visit (navigator.languages fallback to navigator.language) when no saved preference; explicit user choice still persists to localStorage
+          - LangPicker updated to 2x2 grid for 4 languages, each button carries its own `dir` attribute so labels render correctly regardless of active locale.
+          Verified via screenshot tool at /login on 420×900 viewport:
+          - BM, EN, ID render LTR cleanly with correct translations
+          - AR renders full RTL — html[dir=rtl][lang=ar], language picker order flipped naturally, Google button icon moves to right side, all copy right-aligned, Arabic script (including harakat) rendering crisply.
+          Also added AR/ID variants of the daily parent quote pool in OnboardingScaffold.js.
+
+metadata:
+  updated_by: "main_agent"
+  update_note: "i18n expanded to MS/EN/ID/AR with RTL support and browser auto-detect (2026-01-18)"
+
+agent_communication:
+    -agent: "main"
+    -message: "i18n expansion complete. 4 languages now supported (MS default, EN, ID, AR-Fusha). Arabic triggers full RTL on html element. Browser language auto-detected on first visit; user selection persists. Verified via screenshot tool — login screen renders correctly in all 4 languages including RTL for Arabic. No backend changes needed."
