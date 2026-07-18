@@ -125,53 +125,58 @@ const ParentDashboard = () => {
   const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E']
 
   return (
-    <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden">
-      {/* HERO (compact) */}
-      <div className="relative flex-shrink-0" style={{ height: '28dvh', minHeight: 190, maxHeight: 240 }}>
-        <div className="absolute inset-0">
-          <img src={ASSETS.heroLandscape} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/95" />
-        </div>
+    <div className="h-[100dvh] bg-eq-warm flex flex-col overflow-hidden relative">
+      {/* HERO — full-bleed, extends behind main card */}
+      <div className="absolute inset-x-0 top-0 pointer-events-none z-0" style={{ height: '52dvh' }}>
+        <img src={ASSETS.heroLandscape} alt="" className="w-full h-full object-cover" />
+        {/* Fade to warm bg at bottom edge */}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-eq-warm" />
+      </div>
 
-        <div className="relative z-10 flex items-start justify-between px-4 pt-6 safe-top">
-          <div>
-            <p className="text-eq-ink/70 text-[13px] font-semibold leading-tight">{t.salam},</p>
-            <h1 className="text-eq-ink font-extrabold text-3xl leading-tight mt-0.5 flex items-center gap-2">
-              {mockParent.name} <span className="animate-gentle-pulse text-2xl">👋</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <button className="w-10 h-10 bg-white rounded-full shadow-eq-soft flex items-center justify-center relative" aria-label="Notifications">
-              <Bell className="w-4.5 h-4.5 text-eq-ink" strokeWidth={2.5} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-eq-coral rounded-full ring-2 ring-white" />
-            </button>
-            <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-white shadow-eq-soft">
-              <img src={ASSETS.navProfile} alt="Profile" className="w-full h-full object-cover" />
-            </div>
-          </div>
+      {/* TOP BAR — over hero */}
+      <div className="relative z-20 flex items-start justify-between px-5 pt-8 safe-top flex-shrink-0 pointer-events-auto">
+        <div>
+          <p className="text-eq-ink/70 text-sm font-semibold leading-tight">{t.salam},</p>
+          <h1 className="text-eq-ink font-extrabold text-[32px] leading-tight mt-0.5 flex items-center gap-2">
+            {mockParent.name} <span className="animate-gentle-pulse text-2xl">👋</span>
+          </h1>
         </div>
-
-        {/* EQ Mascot — half body only (crop bottom, like Master Reference) */}
-        <div className="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none z-10 overflow-hidden" style={{ height: '55%' }}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="animate-float"
-            style={{ marginBottom: '-70px' }}
-          >
-            <img src={ASSETS.eqMascot} alt="EQ" className="w-[180px] h-[180px] object-contain drop-shadow-2xl" />
-          </motion.div>
+        <div className="flex items-center gap-2 mt-2">
+          <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label="Notifications">
+            <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
+            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
+          </button>
+          <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white shadow-eq-card">
+            <img src={ASSETS.navProfile} alt="Profile" className="w-full h-full object-cover" />
+          </div>
         </div>
       </div>
 
-      {/* MOMENTUM BADGE */}
-      <div className="relative z-20 flex justify-center flex-shrink-0 -mt-3">
+      {/* EQ MASCOT — half-body, sits over hero */}
+      <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: '18dvh', minHeight: 140 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+          className="animate-float absolute inset-x-0 flex justify-center overflow-hidden"
+          style={{ top: 0, bottom: 0 }}
+        >
+          <img
+            src={ASSETS.eqMascot}
+            alt="EQ"
+            className="w-[210px] h-[210px] object-contain drop-shadow-2xl"
+            style={{ objectPosition: 'top center' }}
+          />
+        </motion.div>
+      </div>
+
+      {/* MOMENTUM BADGE — floating between hero and card */}
+      <div className="relative z-30 flex justify-center flex-shrink-0 -mt-1">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4, duration: 0.4 }}
-          className="bg-white shadow-eq-card rounded-full px-3.5 py-1.5 flex items-center gap-1.5 border border-eq-cream/60"
+          className="bg-white shadow-eq-card rounded-full px-4 py-1.5 flex items-center gap-1.5 border border-eq-cream/60"
         >
           <img src={ASSETS.momentumStar} alt="" className="w-4 h-4 object-contain" />
           <span className="text-eq-ink font-bold text-[10px] tracking-wider">{t.momentum_week}</span>
@@ -180,7 +185,7 @@ const ParentDashboard = () => {
       </div>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0">
+      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10">
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}
