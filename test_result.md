@@ -113,7 +113,7 @@ backend:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "GET /api/health returns {status:'healthy', mongo:'connected'}. Uses MONGO_URL from env, DB_NAME='eqrel'."
       - working: true
@@ -128,7 +128,7 @@ backend:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "POST /api/auth/callback accepts {session_id}, calls demobackend.emergentagent.com/auth/v1/env/oauth/session-data with X-Session-ID header, upserts user in DB, creates JWT session cookie 'eqrel_session' (HttpOnly, Secure, SameSite=Lax, 30d TTL). Returns {ok, user, familyId, role, needsFamilySetup}. Cannot be unit-tested without a real Emergent session_id — please verify the endpoint returns 400 when session_id missing, and gracefully handles invalid IDs (401)."
       - working: true
@@ -143,7 +143,7 @@ backend:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "GET /api/auth/me → 401 if no cookie, else returns {user, family, parents[], needsFamilySetup}. Verified 401 works via curl. Full flow depends on real login."
       - working: true
@@ -158,7 +158,7 @@ backend:
     priority: "medium"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "POST /api/auth/logout removes session from DB + clears cookie. Returns {ok:true}."
       - working: true
@@ -173,7 +173,7 @@ backend:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "POST /api/family/create-or-join accepts {role:'ibu'|'bapa', familyCode?:string}. If familyCode present → join (checks role not taken). Else → creates new family with 6-char code (uppercase, avoids ambiguous chars). Links user via familyId + role. Cannot be tested without auth cookie."
       - working: true
@@ -188,7 +188,7 @@ backend:
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: |
           GET /api/children → lists children of current user's family.
@@ -203,49 +203,49 @@ backend:
 frontend:
   - task: "Login page with Emergent Google auth"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/login/page.js"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "Simple login page with EQ mascot + Google button. Clicking button redirects to https://auth.emergentagent.com/?redirect=<callback>. Not tested (user should verify)."
 
   - task: "Auth callback page /auth/callback"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/auth/callback/page.js"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "Reads session_id from URL fragment (#session_id=xxx), POSTs to /api/auth/callback, then redirects to /family/setup or /."
 
   - task: "Family setup page /family/setup"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/family/setup/page.js"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "Role picker (Ibu/Bapa), then Create new family OR Join existing (6-char code input). Auto-redirects to / after success."
 
   - task: "Dashboard auth guard + API integration"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/page.js"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
         comment: "Dashboard fetches /api/auth/me on mount; redirects to /login if not authed, /family/setup if no family. Loads children from /api/children. Save/edit/delete now hit API. Header shows real user name + family code chip (click to copy for sharing with spouse)."
 
