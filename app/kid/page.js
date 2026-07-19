@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Check, LogOut, Star } from 'lucide-react'
+import { Sparkles, Check, LogOut, Star, Plus, X } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
 import { PinModal } from '@/components/eqrel/PinModal'
+
+const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
 function KidHomeInner() {
   const router = useRouter()
@@ -19,29 +21,38 @@ function KidHomeInner() {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
   const [rewardRequests, setRewardRequests] = useState([])
+  const [customRewards, setCustomRewards] = useState([])
+  const [myProposals, setMyProposals] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyHabit, setBusyHabit] = useState(null)
   const [busyReward, setBusyReward] = useState(null)
   const [toast, setToast] = useState(null)
   const [exitPinOpen, setExitPinOpen] = useState(false)
   const [showRewards, setShowRewards] = useState(false)
+  const [proposeOpen, setProposeOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!childId) return
     setLoading(true)
     try {
-      const [cRes, hRes, rRes] = await Promise.all([
+      const [cRes, hRes, rRes, catRes, pRes] = await Promise.all([
         fetch('/api/children', { credentials: 'include' }),
         fetch(`/api/children/${childId}/habits`, { credentials: 'include' }),
         fetch(`/api/rewards/requests?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
+        fetch('/api/rewards/catalog', { credentials: 'include' }),
+        fetch(`/api/rewards/proposals?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
       ])
-      const cData = await cRes.json()
-      const hData = await hRes.json()
-      const rData = await rRes.json()
+      const cData   = await cRes.json()
+      const hData   = await hRes.json()
+      const rData   = await rRes.json()
+      const catData = await catRes.json()
+      const pData   = await pRes.json()
       const found = (cData.children || []).find(c => c.id === childId)
       setChild(found || null)
       setHabits(hData.habits || [])
       setRewardRequests(rData.requests || [])
+      setCustomRewards(catData.custom || [])
+      setMyProposals(pData.proposals || [])
     } finally {
       setLoading(false)
     }
@@ -82,7 +93,7 @@ function KidHomeInner() {
     setTimeout(() => setToast(null), 2000)
   }
 
-  const requestReward = async (r) => {
+  const requestReward = async (r, isTemplate) => {
     if (!child) return
     const balance = Number(child.mataReward || 0)
     if (balance < r.cost) { showToast('locked', t.reward_not_enough); return }
@@ -91,16 +102,14 @@ function KidHomeInner() {
     if (already) { showToast('locked', t.reward_requested); return }
     setBusyReward(r.id)
     try {
+      const title = isTemplate ? getRewardTitle(r, lang) : r.title
+      const desc  = isTemplate ? getRewardDesc(r, lang)  : (r.desc || '')
       const res = await fetch('/api/rewards/request', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          childId: child.id, rewardId: r.id, isTemplate: true,
-          snapshot: {
-            title: getRewardTitle(r, lang),
-            desc:  getRewardDesc(r, lang),
-            cost: r.cost, icon: r.icon, category: r.category,
-          },
+          childId: child.id, rewardId: r.id, isTemplate: !!isTemplate,
+          snapshot: { title, desc, cost: r.cost, icon: r.icon, category: r.category },
         }),
       })
       if (res.ok) {
@@ -113,6 +122,33 @@ function KidHomeInner() {
     } finally {
       setBusyReward(null)
     }
+  }
+
+  const submitProposal = async ({ title, desc, cost, icon, category }) => {
+    if (!child) return
+    const res = await fetch('/api/rewards/proposals', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ childId: child.id, title, desc, cost, icon, category }),
+    })
+    if (res.ok) {
+      showToast('success', t.reward_propose_ok)
+      setProposeOpen(false)
+      await load()
+      return true
+    } else {
+      const d = await res.json().catch(() => ({}))
+      showToast('locked', d.error || t.verify_error)
+      return false
+    }
+  }
+
+  const cancelProposal = async (id) => {
+    setBusyReward(id)
+    try {
+      const res = await fetch(`/api/rewards/proposals/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (res.ok) await load()
+    } finally { setBusyReward(null) }
   }
 
   const avatarSrc = child?.avatarId ? AVATAR_BY_ID[child.avatarId]?.src : null
@@ -216,42 +252,140 @@ function KidHomeInner() {
 
         {/* Rewards grid — shown when toggled on */}
         {showRewards && !loading && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {REWARD_TEMPLATES.map(r => {
-              const balance = Number(child?.mataReward || 0)
-              const affordable = balance >= r.cost
-              const pending = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')
-              const cat = REWARD_CATEGORIES[r.category] || REWARD_CATEGORIES.activity
-              const isBusy = busyReward === r.id
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => requestReward(r)}
-                  disabled={!affordable || !!pending || isBusy}
-                  className={`text-left rounded-2xl p-2.5 border-2 transition-all active:scale-[0.98] ${
-                    pending    ? 'bg-amber-50 border-amber-200' :
-                    affordable ? 'bg-white border-eq-cream hover:border-purple-300' :
-                                 'bg-eq-cream/40 border-transparent opacity-60'
-                  } ${isBusy ? 'opacity-70' : ''}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="text-2xl">{r.icon}</div>
-                    <div className="text-[10px] font-extrabold text-amber-700 flex items-center gap-0.5">
-                      {r.cost}<Sparkles className="w-3 h-3" fill="#FFB703" />
+          <div className="mt-3 space-y-3">
+            {/* Propose new reward CTA */}
+            <button
+              onClick={() => setProposeOpen(true)}
+              className="w-full rounded-2xl border-2 border-dashed border-purple-300 bg-purple-50/70 py-2.5 px-3 flex items-center justify-center gap-2 font-extrabold text-sm text-purple-800 active:scale-[0.98]"
+            >
+              <Plus className="w-4 h-4" /> {t.reward_propose_cta}
+            </button>
+
+            {/* My pending proposals */}
+            {myProposals.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-purple-700/80 mb-1.5">
+                  {t.reward_my_proposals}
+                </div>
+                <div className="space-y-1.5">
+                  {myProposals.slice(0, 6).map(p => {
+                    const badgeCls =
+                      p.status === 'pending'  ? 'bg-amber-100 text-amber-800' :
+                      p.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                                                'bg-red-100 text-red-800'
+                    const badgeText =
+                      p.status === 'pending'  ? t.reward_proposal_status_pending :
+                      p.status === 'approved' ? t.reward_proposal_status_approved :
+                                                t.reward_proposal_status_rejected
+                    return (
+                      <div key={p.id} className={`rounded-xl border-2 p-2 flex items-center gap-2 ${
+                        p.status === 'pending' ? 'bg-white border-purple-200' : 'bg-eq-cream/40 border-transparent'
+                      }`}>
+                        <div className="text-xl">{p.icon}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-extrabold text-xs text-eq-ink truncate">{p.title}</div>
+                          <div className="text-[10px] text-amber-700 font-bold flex items-center gap-0.5">
+                            {p.finalCost ?? p.cost}<Sparkles className="w-2.5 h-2.5" fill="#FFB703" />
+                          </div>
+                        </div>
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${badgeCls}`}>
+                          {badgeText}
+                        </span>
+                        {p.status === 'pending' && (
+                          <button
+                            onClick={() => cancelProposal(p.id)}
+                            disabled={busyReward === p.id}
+                            className="w-6 h-6 rounded-full bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center disabled:opacity-40"
+                            aria-label="cancel"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Reward grid: custom (family) + templates */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Family custom rewards first */}
+              {customRewards.map(r => {
+                const balance = Number(child?.mataReward || 0)
+                const affordable = balance >= r.cost
+                const pending = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')
+                const cat = REWARD_CATEGORIES[r.category] || REWARD_CATEGORIES.activity
+                const isBusy = busyReward === r.id
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => requestReward(r, false)}
+                    disabled={!affordable || !!pending || isBusy}
+                    className={`text-left rounded-2xl p-2.5 border-2 transition-all active:scale-[0.98] relative ${
+                      pending    ? 'bg-amber-50 border-amber-200' :
+                      affordable ? 'bg-white border-emerald-200 hover:border-emerald-300' :
+                                   'bg-eq-cream/40 border-transparent opacity-60'
+                    } ${isBusy ? 'opacity-70' : ''}`}
+                  >
+                    <span className="absolute top-1 left-1 text-[8px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">
+                      {t.reward_custom_badge}
+                    </span>
+                    <div className="flex items-start justify-between pt-3">
+                      <div className="text-2xl">{r.icon}</div>
+                      <div className="text-[10px] font-extrabold text-amber-700 flex items-center gap-0.5">
+                        {r.cost}<Sparkles className="w-3 h-3" fill="#FFB703" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>
-                    {getRewardCategoryLabel(r.category, t)}
-                  </div>
-                  <div className="font-bold text-xs text-eq-ink leading-tight mt-0.5 line-clamp-2">
-                    {getRewardTitle(r, lang)}
-                  </div>
-                  {pending && (
-                    <div className="text-[10px] mt-1 text-amber-700 font-bold">{t.reward_requested}</div>
-                  )}
-                </button>
-              )
-            })}
+                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>
+                      {getRewardCategoryLabel(r.category, t)}
+                    </div>
+                    <div className="font-bold text-xs text-eq-ink leading-tight mt-0.5 line-clamp-2">
+                      {r.title}
+                    </div>
+                    {pending && (
+                      <div className="text-[10px] mt-1 text-amber-700 font-bold">{t.reward_requested}</div>
+                    )}
+                  </button>
+                )
+              })}
+              {/* Templates */}
+              {REWARD_TEMPLATES.map(r => {
+                const balance = Number(child?.mataReward || 0)
+                const affordable = balance >= r.cost
+                const pending = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')
+                const cat = REWARD_CATEGORIES[r.category] || REWARD_CATEGORIES.activity
+                const isBusy = busyReward === r.id
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => requestReward(r, true)}
+                    disabled={!affordable || !!pending || isBusy}
+                    className={`text-left rounded-2xl p-2.5 border-2 transition-all active:scale-[0.98] ${
+                      pending    ? 'bg-amber-50 border-amber-200' :
+                      affordable ? 'bg-white border-eq-cream hover:border-purple-300' :
+                                   'bg-eq-cream/40 border-transparent opacity-60'
+                    } ${isBusy ? 'opacity-70' : ''}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="text-2xl">{r.icon}</div>
+                      <div className="text-[10px] font-extrabold text-amber-700 flex items-center gap-0.5">
+                        {r.cost}<Sparkles className="w-3 h-3" fill="#FFB703" />
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>
+                      {getRewardCategoryLabel(r.category, t)}
+                    </div>
+                    <div className="font-bold text-xs text-eq-ink leading-tight mt-0.5 line-clamp-2">
+                      {getRewardTitle(r, lang)}
+                    </div>
+                    {pending && (
+                      <div className="text-[10px] mt-1 text-amber-700 font-bold">{t.reward_requested}</div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -326,7 +460,132 @@ function KidHomeInner() {
           router.push('/')
         }}
       />
+
+      {/* Propose reward modal */}
+      <ProposeRewardModal
+        open={proposeOpen}
+        onClose={() => setProposeOpen(false)}
+        onSubmit={submitProposal}
+        t={t}
+      />
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+const ProposeRewardModal = ({ open, onClose, onSubmit, t }) => {
+  const [title, setTitle] = useState('')
+  const [desc, setDesc] = useState('')
+  const [cost, setCost] = useState(20)
+  const [icon, setIcon] = useState('🎁')
+  const [category, setCategory] = useState('activity')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open) { setTitle(''); setDesc(''); setCost(20); setIcon('🎁'); setCategory('activity') }
+  }, [open])
+
+  const canSave = title.trim() && Number.isInteger(cost) && cost >= 1 && cost <= 999
+
+  const submit = async () => {
+    if (!canSave) return
+    setBusy(true)
+    try {
+      await onSubmit({ title: title.trim(), desc: desc.trim(), cost, icon, category })
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center"
+        >
+          <motion.div
+            initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+          >
+            <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-purple-900">{t.reward_propose_title}</h3>
+                <p className="text-[11px] text-purple-700/70 mt-0.5">{t.reward_propose_subtitle}</p>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 rounded-full bg-eq-cream/60 flex items-center justify-center">
+                <X className="w-4 h-4 text-eq-ink/70" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3">
+              <label className="block">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-purple-900/70 mb-1">
+                  {t.reward_propose_title_label}
+                </div>
+                <input value={title} onChange={e => setTitle(e.target.value)} maxLength={80}
+                  placeholder={t.reward_propose_title_ph}
+                  className="w-full rounded-xl border-2 border-eq-cream focus:border-purple-300 outline-none px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-purple-900/70 mb-1">
+                  {t.reward_propose_desc_label}
+                </div>
+                <textarea value={desc} onChange={e => setDesc(e.target.value)} maxLength={200} rows={2}
+                  placeholder={t.reward_propose_desc_ph}
+                  className="w-full rounded-xl border-2 border-eq-cream focus:border-purple-300 outline-none px-3 py-2 text-sm resize-none" />
+              </label>
+              <label className="block">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-purple-900/70 mb-1">
+                  {t.reward_propose_cost_label}
+                </div>
+                <input type="number" min={1} max={999} value={cost}
+                  onChange={e => setCost(parseInt(e.target.value || '0', 10))}
+                  className="w-full rounded-xl border-2 border-eq-cream focus:border-purple-300 outline-none px-3 py-2 text-sm" />
+              </label>
+              <div className="block">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-purple-900/70 mb-1">
+                  {t.reward_propose_icon_label}
+                </div>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {KID_REWARD_EMOJIS.map(e => (
+                    <button key={e} type="button" onClick={() => setIcon(e)}
+                      className={`aspect-square rounded-lg border-2 flex items-center justify-center text-lg transition-all ${
+                        icon === e ? 'border-purple-400 bg-purple-50 scale-105' : 'border-eq-cream bg-white'
+                      }`}>{e}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="block">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-purple-900/70 mb-1">
+                  {t.reward_custom_category_label}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {['screen','food','learning','outing','activity','spiritual'].map(id => {
+                    const cat = REWARD_CATEGORIES[id]
+                    return (
+                      <button key={id} type="button" onClick={() => setCategory(id)}
+                        className={`rounded-lg border-2 py-1.5 px-2 text-[11px] font-extrabold transition-all flex flex-col items-center gap-0.5 ${
+                          category === id ? 'border-purple-400 bg-purple-50' : 'border-eq-cream bg-white'
+                        }`}
+                        style={category === id ? { color: cat.color } : undefined}>
+                        <span className="text-base">{cat.icon}</span>
+                        <span>{getRewardCategoryLabel(id, t)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-eq-cream/60 px-5 py-3">
+              <button onClick={submit} disabled={!canSave || busy}
+                className="w-full rounded-2xl bg-purple-500 text-white font-extrabold py-3 text-sm active:scale-[0.99] disabled:opacity-40">
+                {busy ? t.reward_propose_submitting : t.reward_propose_submit}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

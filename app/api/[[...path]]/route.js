@@ -726,18 +726,140 @@ async function handleRoute(request, { params }) {
     }
 
     // ═══ Reward Shop ═══
-    // GET /rewards/catalog  → union of family-custom + built-in template ids (frontend joins with rewardTemplates.js)
+    // GET /rewards/catalog  → family-custom rewards (frontend joins with rewardTemplates.js for built-ins)
     if (route === '/rewards/catalog' && method === 'GET') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
-      if (!user?.familyId) return json({ templates: [], custom: [] })
+      if (!user?.familyId) return json({ custom: [] })
       const custom = await db.collection('rewards_custom')
         .find({ familyId: user.familyId })
+        .sort({ createdAt: -1 })
         .project({ _id: 0 })
         .toArray()
       return json({ custom })
+    }
+
+    // ═══ Reward Proposals (kid → parent) ═══
+    // POST /rewards/proposals  → kid (or parent-on-behalf) proposes a new custom reward
+    // Body: { childId, title, desc?, cost, icon?, category? }
+    if (route === '/rewards/proposals' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const childId = String(body.childId || '')
+      const title = String(body.title || '').trim().slice(0, 80)
+      const cost = Number(body.cost)
+      if (!childId) return err('childId required', 400)
+      if (!title) return err('Title required', 400)
+      if (!Number.isInteger(cost) || cost < 1 || cost > 999) return err('Invalid cost', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Child not found', 404)
+      const rec = {
+        id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        familyId: user.familyId,
+        childId,
+        title,
+        desc: String(body.desc || '').trim().slice(0, 200),
+        cost,
+        icon: String(body.icon || '🎁').slice(0, 4),
+        category: ['screen','food','learning','outing','activity','spiritual'].includes(body.category) ? body.category : 'activity',
+        status: 'pending',   // pending | approved | rejected
+        proposedAt: new Date(),
+        proposedBy: session.userId,
+      }
+      await db.collection('reward_proposals').insertOne(rec)
+      return json({ ok: true, proposal: rec })
+    }
+
+    // GET /rewards/proposals?childId=&status=  → list proposals
+    if (route === '/rewards/proposals' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ proposals: [] })
+      const url = new URL(request.url)
+      const qChildId = url.searchParams.get('childId')
+      const qStatus = url.searchParams.get('status')
+      const q = { familyId: user.familyId }
+      if (qChildId) q.childId = qChildId
+      if (qStatus) q.status = qStatus
+      const proposals = await db.collection('reward_proposals')
+        .find(q)
+        .sort({ proposedAt: -1 })
+        .limit(100)
+        .project({ _id: 0 })
+        .toArray()
+      return json({ proposals })
+    }
+
+    // PATCH /rewards/proposals/:id  → parent decide: { decision: 'approved'|'rejected', title?, desc?, cost?, icon?, category?, note? }
+    // On approve, a custom reward is created (with any parent modifications) and proposal is stored with resulting rewardId.
+    if (route.match(/^\/rewards\/proposals\/[^/]+$/) && method === 'PATCH') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const propId = route.split('/')[3]
+      const body = await request.json().catch(() => ({}))
+      const decision = body.decision
+      if (!['approved', 'rejected'].includes(decision)) return err('Invalid decision', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const prop = await db.collection('reward_proposals').findOne({ id: propId, familyId: user.familyId })
+      if (!prop) return err('Proposal not found', 404)
+      if (prop.status !== 'pending') return err('Already decided', 409)
+
+      const note = String(body.note || '').trim().slice(0, 200)
+      const $set = { status: decision, decidedAt: new Date(), decidedBy: session.userId, decidedNote: note }
+
+      if (decision === 'approved') {
+        // Parent may adjust before approving
+        // If title is explicitly provided (even as empty string), validate it; otherwise use prop.title
+        const title = ('title' in body) 
+          ? String(body.title).trim().slice(0, 80)
+          : String(prop.title).trim().slice(0, 80)
+        const desc  = String(body.desc  ?? prop.desc  ?? '').trim().slice(0, 200)
+        const cost  = Number(body.cost ?? prop.cost)
+        if (!title || !Number.isInteger(cost) || cost < 1 || cost > 999) return err('Invalid title/cost', 400)
+        const icon  = String(body.icon || prop.icon || '🎁').slice(0, 4)
+        const category = ['screen','food','learning','outing','activity','spiritual'].includes(body.category || prop.category)
+          ? (body.category || prop.category) : 'activity'
+        const rw = {
+          id: `rw-c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          familyId: user.familyId,
+          title, desc, cost, icon, category,
+          fromProposalId: prop.id,
+          fromChildId: prop.childId,
+          createdAt: new Date(),
+          createdBy: session.userId,
+        }
+        await db.collection('rewards_custom').insertOne(rw)
+        $set.resultingRewardId = rw.id
+        $set.finalTitle = title
+        $set.finalCost = cost
+      }
+      await db.collection('reward_proposals').updateOne({ id: propId }, { $set })
+      const updated = await db.collection('reward_proposals').findOne({ id: propId }, { projection: { _id: 0 } })
+      return json({ ok: true, proposal: updated })
+    }
+
+    // DELETE /rewards/proposals/:id  → kid (or parent) cancels their own pending proposal
+    if (route.match(/^\/rewards\/proposals\/[^/]+$/) && method === 'DELETE') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const propId = route.split('/')[3]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const prop = await db.collection('reward_proposals').findOne({ id: propId, familyId: user.familyId, status: 'pending' })
+      if (!prop) return err('Not found or not pending', 404)
+      await db.collection('reward_proposals').deleteOne({ id: propId })
+      return json({ ok: true })
     }
 
     // POST /rewards/catalog  → add family-custom reward. body: { title, desc?, cost, icon?, category? }

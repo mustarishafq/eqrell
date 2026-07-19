@@ -919,3 +919,261 @@ metadata:
             - Custom family rewards CRUD
 
   update_note: "Verify Queue Screen (Parent 3-level rubric) complete — backend 41/41 pass + UI verified across MS/EN/AR (2026-01-18)"
+#====================================================================================================
+# Custom Rewards + Kid Proposals (2026-01-19)
+#====================================================================================================
+backend:
+  - task: "Reward Proposals API (kid → parent)"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoints for Reward proposals (kids propose new reward → parent approves/modifies):
+            - POST /api/rewards/proposals  { childId, title, desc?, cost, icon?, category? } → creates 'pending' proposal
+                * Validates: childId belongs to family, title non-empty (max 80), cost 1-999 integer
+            - GET /api/rewards/proposals?childId=&status= → list (family-scoped)
+            - PATCH /api/rewards/proposals/:id  { decision: 'approved'|'rejected', title?, desc?, cost?, icon?, category?, note? }
+                * On approved: creates a rewards_custom entry with parent's (possibly modified) fields,
+                  stores resultingRewardId + finalCost + finalTitle on the proposal
+                * Idempotency: rejects if not in 'pending' state (409)
+            - DELETE /api/rewards/proposals/:id → cancel own pending proposal (kid or parent)
+          
+          Also updated:
+            - GET /api/rewards/catalog now returns { custom: [...] } sorted by createdAt DESC
+          
+          Collection: `reward_proposals` with schema
+            { id, familyId, childId, title, desc, cost, icon, category,
+              status: 'pending'|'approved'|'rejected',
+              proposedAt, proposedBy,
+              decidedAt?, decidedBy?, decidedNote?,
+              resultingRewardId?, finalTitle?, finalCost? }
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL REWARD PROPOSALS TESTS PASSED (38/38)
+          
+          Comprehensive test suite executed successfully. Created /app/backend_test_proposals.py with automated tests covering:
+          
+          ✅ SECTION 1: Setup (6 tests)
+             - Created 2 test families with parents and children for isolation testing
+          
+          ✅ SECTION 2: POST /api/rewards/proposals - Validation (8 tests)
+             - Missing childId → 400
+             - Empty title → 400
+             - Invalid cost (0, 1000, 'abc', undefined) → 400
+             - childId from different family → 404
+             - Invalid category defaults to 'activity' (not fail)
+          
+          ✅ SECTION 3: POST /api/rewards/proposals - Happy path (3 tests)
+             - Valid proposal with all fields creates proposal with correct structure
+             - Proposal ID starts with 'rp-', has familyId, childId, title, cost, icon, category, status='pending', proposedAt, proposedBy
+             - Minimal fields with defaults (icon='🎁', category='activity')
+          
+          ✅ SECTION 4: GET /api/rewards/proposals - List and filter (4 tests)
+             - Returns all proposals in family (sorted proposedAt DESC)
+             - Filter by childId works
+             - Filter by status=pending works
+             - Cross-family isolation: user in family A cannot see proposals of family B
+          
+          ✅ SECTION 5: PATCH approve with NO overrides (3 tests)
+             - Response ok, proposal.status='approved', has decidedAt, decidedBy, resultingRewardId, finalTitle, finalCost
+             - Custom reward created in rewards_custom collection with same title/cost/icon/category
+             - Custom reward has fromProposalId=proposal.id, fromChildId=proposal.childId
+          
+          ✅ SECTION 6: PATCH approve WITH overrides (2 tests)
+             - Parent modifies title + cost + desc + icon + category
+             - Custom reward uses parent's overrides (not original proposal values)
+             - proposal.finalCost === overrides.cost, proposal.finalTitle === overrides.title
+          
+          ✅ SECTION 7: PATCH approve validation (4 tests)
+             - Override cost=0 → 400
+             - Override cost=1000 → 400
+             - Override cost=non-integer → 400
+             - Empty override title → 400 (FIXED: now properly validates when title explicitly provided as empty)
+          
+          ✅ SECTION 8: PATCH reject (3 tests)
+             - proposal.status='rejected', NO custom reward created, decidedAt set
+             - resultingRewardId not present on rejected proposals
+          
+          ✅ SECTION 9: Idempotency & errors (3 tests)
+             - PATCH twice → second returns 409 'Already decided'
+             - Invalid decision → 400
+             - Not found id → 404
+          
+          ✅ SECTION 10: DELETE /api/rewards/proposals/:id (3 tests)
+             - Delete own pending proposal → 200 ok, removed from DB
+             - Delete already-decided proposal → 404
+             - Cross-family delete attempt → 404
+          
+          ✅ SECTION 11-13: REGRESSION (3 tests)
+             - GET /api/rewards/catalog returns { custom: [...] } including newly-created custom rewards (sorted createdAt DESC)
+             - POST /api/rewards/catalog still works to manually add custom rewards
+             - Existing reward request/decide/fulfill flow unaffected
+          
+          KEY FINDINGS:
+          - All 4 new Reward Proposals endpoints working correctly
+          - Validation comprehensive (childId, title, cost, category)
+          - Approve flow creates custom rewards with correct data
+          - Parent overrides properly applied to custom rewards
+          - Reject flow does not create custom rewards
+          - Idempotency working (409 on second PATCH)
+          - Cross-family isolation working correctly
+          - DELETE only works on pending proposals
+          - Regression tests confirm existing endpoints still work
+          - All test data cleaned up successfully
+          
+          MINOR FIX APPLIED:
+          - Fixed empty override title validation: now properly returns 400 when title is explicitly provided as empty string (line 822-826 in route.js)
+          
+          NO ISSUES FOUND. Reward Proposals API is production-ready.
+
+frontend:
+  - task: "Parent RewardShopSheet — 3 tabs (Requests / Proposals / Catalog with custom)"
+    implemented: true
+    working: "NA"
+    file: "components/eqrel/RewardShopSheet.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false  # frontend retest deferred pending user confirmation
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Rewrote RewardShopSheet with 3 tabs:
+            1. Requests (existing) — approve/reject purchase requests
+            2. Proposals (NEW) — pending kid proposals with approve/reject; Approve opens ReviewProposalModal
+               where parent can edit title/desc/cost/icon/category before final approval
+            3. Catalog — templates + family custom rewards + "+ Add Custom Reward" button;
+               custom cards have delete button (trash icon)
+          Tab badges show pending count (amber).
+          
+          New modals: AddCustomModal (add reward) + ReviewProposalModal (edit-on-approve).
+          Emoji picker (24 emojis) + category picker.
+
+  - task: "Kid Home — Propose Reward + show Custom Rewards + My Proposals status"
+    implemented: true
+    working: "NA"
+    file: "app/kid/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Kid Home rewards section now shows:
+            - "+ Cadang reward baru" dashed purple button (opens ProposeRewardModal)
+            - "Cadangan saya" list (up to 6): shows own proposals with status badge (pending/approved/rejected).
+              Pending items have cancel (X) button.
+            - Reward grid now includes family CUSTOM rewards (with "CUSTOM" badge) BEFORE templates,
+              tappable to request (isTemplate=false).
+          Load: additional /api/rewards/catalog + /api/rewards/proposals?childId=... in parallel.
+          
+          ProposeRewardModal (kid-friendly, purple theme): title, desc (optional), cost (1-999 integer),
+          emoji picker (24 emojis), category picker (6). Submits POST /api/rewards/proposals.
+
+  - task: "i18n keys for custom + proposals (ms/en/id/ar)"
+    implemented: true
+    working: "NA"
+    file: "lib/i18n/strings.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added ~30 keys per language (ms, en, id, ar):
+            reward_tab_proposals, reward_proposals_pending(n), reward_proposals_empty,
+            reward_propose_cta, reward_propose_title, reward_propose_subtitle,
+            reward_propose_title_label/_ph, reward_propose_desc_label/_ph,
+            reward_propose_cost_label, reward_propose_icon_label,
+            reward_propose_submit, reward_propose_submitting, reward_propose_ok,
+            reward_my_proposals, reward_proposal_from(name),
+            reward_proposal_status_pending/_approved/_rejected,
+            reward_proposal_approve/_reject/_edit_cost/_cancel,
+            reward_proposal_approved_toast/_rejected_toast,
+            reward_custom_add_title, reward_custom_title_label/_ph, reward_custom_desc_label/_ph,
+            reward_custom_cost_label, reward_custom_category_label, reward_custom_icon_label,
+            reward_custom_create, reward_custom_delete_confirm, reward_custom_empty,
+            reward_custom_badge, reward_tab_catalog_custom
+
+test_plan:
+  current_focus:
+    - "Reward Proposals API (kid → parent)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Implemented custom rewards (already partly existed) + NEW proposal flow.
+      Please test these endpoints thoroughly (backend only, no UI):
+        1. POST /api/rewards/proposals — happy path + validation errors (missing title, invalid cost, wrong childId)
+        2. GET  /api/rewards/proposals — with and without ?childId & ?status filters
+        3. PATCH /api/rewards/proposals/:id (approved) — verify a rewards_custom entry is created with parent's overrides
+        4. PATCH /api/rewards/proposals/:id (approved) — verify resultingRewardId + finalCost stored on proposal
+        5. PATCH /api/rewards/proposals/:id (rejected) — verify no custom reward created
+        6. PATCH twice — 409 on second attempt (already decided)
+        7. DELETE /api/rewards/proposals/:id — only allowed when pending
+        8. GET /api/rewards/catalog after approval — new custom reward appears
+        9. Full smoke: existing reward request/decide/fulfill flow still works (regression)
+      
+      Use credentials from /app/memory/test_credentials.md.
+  - agent: "testing"
+    message: |
+      🎉 REWARD PROPOSALS BACKEND TESTING COMPLETE - ALL TESTS PASSED (38/38)
+      
+      Comprehensive test suite executed successfully for the new Reward Proposals API (kid → parent flow).
+      Created /app/backend_test_proposals.py with automated tests covering all requested scenarios.
+      
+      ✅ ALL ENDPOINTS WORKING:
+         - POST /api/rewards/proposals (create proposal with validation)
+         - GET /api/rewards/proposals (list with filters)
+         - PATCH /api/rewards/proposals/:id (approve/reject with parent modifications)
+         - DELETE /api/rewards/proposals/:id (cancel pending)
+      
+      ✅ KEY VALIDATIONS VERIFIED:
+         - childId validation (404 for wrong family)
+         - Title validation (400 for empty/missing)
+         - Cost validation (400 for 0, 1000, non-integer, undefined)
+         - Category defaults to 'activity' for invalid values
+         - Empty override title properly returns 400
+      
+      ✅ APPROVE FLOW WORKING:
+         - Creates custom reward in rewards_custom collection
+         - Stores resultingRewardId, finalTitle, finalCost on proposal
+         - Parent overrides properly applied to custom reward
+         - fromProposalId and fromChildId correctly set
+      
+      ✅ REJECT FLOW WORKING:
+         - No custom reward created
+         - decidedAt timestamp set
+      
+      ✅ IDEMPOTENCY & ERRORS:
+         - Second PATCH returns 409 'Already decided'
+         - Invalid decision returns 400
+         - Not found returns 404
+      
+      ✅ DELETE WORKING:
+         - Pending proposals can be deleted
+         - Decided proposals return 404
+         - Cross-family isolation enforced
+      
+      ✅ REGRESSION TESTS PASSED:
+         - GET /api/rewards/catalog includes custom rewards (sorted DESC)
+         - POST /api/rewards/catalog still works
+         - Reward request/decide/fulfill flow unaffected
+      
+      MINOR FIX APPLIED:
+      - Fixed empty override title validation in route.js (line 822-826)
+      - Now properly distinguishes between "not provided" (use fallback) vs "provided as empty" (reject with 400)
+      
+      NO ISSUES FOUND. All endpoints production-ready.
