@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, Sparkles, RotateCcw, Info } from 'lucide-react'
+import { X, Check, Sparkles, RotateCcw, Info, HelpCircle } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
+import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
+import { getTutorial } from '@/lib/tutorials'
 
 /**
  * VerifySheet — Parent Verify Queue with 3-level rubric.
@@ -23,6 +25,19 @@ export function VerifySheet({ open, onClose, onCountChange }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState(null) // { type: 'success' | 'reset' | 'error', text }
+
+  // Tutorial: Ihsan meaning — auto on first open + manual "?" trigger
+  const tutIhsan = useTutorial('ihsan_meaning', { autoOpenFirstTime: false })
+  useEffect(() => {
+    if (open && items.length > 0) {
+      try {
+        if (!localStorage.getItem('eqrel-tut-v1-ihsan_meaning')) {
+          const timer = setTimeout(() => tutIhsan.forceOpen(), 700)
+          return () => clearTimeout(timer)
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }, [open, items.length, tutIhsan])
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -237,14 +252,24 @@ export function VerifySheet({ open, onClose, onCountChange }) {
                     onClick={() => applyRubric('sah')}
                     disabled={busy}
                   />
-                  <RubricButton
-                    kind="ihsan"
-                    label={t.rubric_ihsan_label}
-                    hint={t.rubric_ihsan_hint}
-                    icon="🌟"
-                    onClick={() => applyRubric('ihsan')}
-                    disabled={busy}
-                  />
+                  <div className="relative">
+                    <button
+                      onClick={tutIhsan.forceOpen}
+                      className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-white shadow-md border-2 border-amber-300 text-amber-700 flex items-center justify-center active:scale-95"
+                      aria-label="What is Ihsan?"
+                      title="What is Ihsan?"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </button>
+                    <RubricButton
+                      kind="ihsan"
+                      label={t.rubric_ihsan_label}
+                      hint={t.rubric_ihsan_hint}
+                      icon="🌟"
+                      onClick={() => applyRubric('ihsan')}
+                      disabled={busy}
+                    />
+                  </div>
                 </div>
                 {busy && (
                   <div className="text-center text-[11px] text-eq-ink/50 mt-2">
@@ -256,6 +281,8 @@ export function VerifySheet({ open, onClose, onCountChange }) {
           </motion.div>
         </motion.div>
       )}
+      {/* Tutorial: Ihsan meaning */}
+      <Tutorial open={tutIhsan.open} onClose={tutIhsan.close} config={getTutorial('ihsan_meaning', lang)} />
     </AnimatePresence>
   )
 }

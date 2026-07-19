@@ -28,6 +28,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
   // Tutorial: category chips + focus (auto-opens on first LIST view)
   const tutCats = useTutorial('parent_habit_categories', { autoOpenFirstTime: false })
+  // Tutorial: Ihsan meaning (auto-opens on first rubric picker open + manual "?" trigger)
+  const tutIhsan = useTutorial('ihsan_meaning', { autoOpenFirstTime: false })
   useEffect(() => {
     if (open && view === 'list' && habits.length > 0) {
       try {
@@ -38,6 +40,16 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       } catch (e) { /* ignore */ }
     }
   }, [open, view, habits.length, tutCats])
+  useEffect(() => {
+    if (rubricPickerHabit) {
+      try {
+        if (!localStorage.getItem('eqrel-tut-v1-ihsan_meaning')) {
+          const timer = setTimeout(() => tutIhsan.forceOpen(), 300)
+          return () => clearTimeout(timer)
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }, [rubricPickerHabit, tutIhsan])
 
   // Custom habit form
   const [customTitle, setCustomTitle] = useState('')
@@ -812,11 +824,21 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
           >
-            <div className="px-5 pt-4 pb-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/60">{t.parent_log_choose}</div>
-              <div className="mt-1 font-extrabold text-emerald-900 text-base leading-tight">
-                {getHabitTitle(rubricPickerHabit, lang)}
+            <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/60">{t.parent_log_choose}</div>
+                <div className="mt-1 font-extrabold text-emerald-900 text-base leading-tight">
+                  {getHabitTitle(rubricPickerHabit, lang)}
+                </div>
               </div>
+              <button
+                onClick={tutIhsan.forceOpen}
+                className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 flex items-center justify-center active:scale-95"
+                aria-label="What is Ihsan?"
+                title="What is Ihsan?"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
             </div>
             <div className="p-4 grid grid-cols-3 gap-2">
               <button onClick={() => applyRubricPick('belum')}
@@ -847,7 +869,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         </motion.div>
       )}
       {/* Tutorial: parent habit categories */}
-      <Tutorial open={tutCats.open} onClose={tutCats.close} config={getTutorial('parent_habit_categories', lang)} />
+      <Tutorial open={tutCats.open}  onClose={tutCats.close}  config={getTutorial('parent_habit_categories', lang)} />
+      <Tutorial open={tutIhsan.open} onClose={tutIhsan.close} config={getTutorial('ihsan_meaning', lang)} />
     </AnimatePresence>
   )
 }
