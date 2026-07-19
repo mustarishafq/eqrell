@@ -799,7 +799,7 @@ async function handleRoute(request, { params }) {
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
-      const family = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, id: 1, familyName: 1, prayerLocation: 1 } })
+      const family = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, id: 1, familyName: 1, prayerLocation: 1, zikirCount: 1 } })
       const children = await db.collection('children')
         .find({ familyId: user.familyId })
         .project({ _id: 0, id: 1, nickname: 1, avatarId: 1, favColor: 1, mataBina: 1, mataReward: 1 })
@@ -833,7 +833,49 @@ async function handleRoute(request, { params }) {
       const allHabits = await db.collection('habits').find({ childId: { $in: childIds } })
         .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1 }).toArray()
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
-      return json({ family, children: childrenOut, undoneHabits })
+
+      // Ihsan Star: child with most ihsan-rated claims today (tiebreaker: highest mataBina)
+      const ihsanCountByChild = {}
+      const verifiedClaims = await db.collection('habit_claims').find({
+        childId: { $in: childIds }, dateStr, status: 'verified', rubric: 'ihsan'
+      }).project({ _id: 0, childId: 1 }).toArray()
+      verifiedClaims.forEach(c => { ihsanCountByChild[c.childId] = (ihsanCountByChild[c.childId] || 0) + 1 })
+      let ihsanStar = null
+      const maxIhsan = Math.max(0, ...Object.values(ihsanCountByChild))
+      if (maxIhsan > 0) {
+        const topKids = childrenOut.filter(c => (ihsanCountByChild[c.id] || 0) === maxIhsan)
+        // Tie-break by mataBina
+        topKids.sort((a, b) => (b.mataBina || 0) - (a.mataBina || 0))
+        const star = topKids[0]
+        ihsanStar = { id: star.id, nickname: star.nickname, avatarId: star.avatarId, favColor: star.favColor, ihsanCount: maxIhsan }
+      }
+
+      // Zikir counter (family-level, resets daily)
+      const zikirRaw = family?.zikirCount || {}
+      const zikirToday = (zikirRaw.dateKey === dateStr) ? (zikirRaw.today || 0) : 0
+      const zikirTotal = zikirRaw.total || 0
+
+      return json({ family, children: childrenOut, undoneHabits, ihsanStar, zikir: { today: zikirToday, total: zikirTotal } })
+    }
+
+    // POST /family/zikir/tap  → increment family-shared zikir counter by 1 (auto-reset new day)
+    if (route === '/family/zikir/tap' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const family = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, zikirCount: 1 } })
+      const now = new Date()
+      const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+      const raw = family?.zikirCount || {}
+      const today = (raw.dateKey === dateStr) ? (raw.today || 0) + 1 : 1
+      const total = (raw.total || 0) + 1
+      await db.collection('families').updateOne(
+        { id: user.familyId },
+        { $set: { zikirCount: { dateKey: dateStr, today, total, updatedAt: now } } }
+      )
+      return json({ ok: true, today, total })
     }
 
     // ═══ Quiz ══════════════════════════════════════════════════════

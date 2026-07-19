@@ -10,6 +10,7 @@ import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
 import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import MascotSpeech from '@/components/eqrel/MascotSpeech'
+import { formatHijri } from '@/lib/hijri'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 const PRAYER_EMOJI = { Fajr: '🌄', Sunrise: '☀️', Dhuhr: '🌞', Asr: '🌤️', Maghrib: '🌇', Isha: '🌙' }
@@ -100,7 +101,20 @@ export default function DisplayPage() {
 
   const timeStr = now.toLocaleTimeString(lang === 'ar' ? 'ar-EG' : lang, { hour: '2-digit', minute: '2-digit', hour12: false })
   const dateStr = now.toLocaleDateString(lang === 'ar' ? 'ar-EG' : lang, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const hijriStr = formatHijri(now, lang)
   const labelFor = (k) => (PRAYER_LABELS[lang] || PRAYER_LABELS.ms)[k]
+
+  // Zikir tap (optimistic update)
+  const [zikirBump, setZikirBump] = useState(false)
+  const tapZikir = useCallback(async () => {
+    setZikirBump(true)
+    setTimeout(() => setZikirBump(false), 200)
+    // Optimistically update local display
+    setDisplay(d => d ? { ...d, zikir: { today: (d.zikir?.today || 0) + 1, total: (d.zikir?.total || 0) + 1 } } : d)
+    try {
+      await fetch('/api/family/zikir/tap', { method: 'POST', credentials: 'include' })
+    } catch (e) { /* ignore */ }
+  }, [])
 
   const hadith = HADITH_BANK[hadithIdx % HADITH_BANK.length]
   const doa = DOA_BANK[hadithIdx % DOA_BANK.length]
@@ -291,6 +305,11 @@ export default function DisplayPage() {
           {timeStr}
         </div>
         <div className="mt-1 text-base md:text-xl text-white/85 capitalize drop-shadow">{dateStr}</div>
+        {hijriStr && (
+          <div className="mt-0.5 text-sm md:text-base text-amber-200/90 font-semibold drop-shadow" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+            🌙 {hijriStr}
+          </div>
+        )}
 
         {nextPrayer && (
           <div className="mt-4 inline-flex items-center gap-2.5 rounded-2xl bg-white/15 backdrop-blur border border-white/25 px-4 py-2 shadow-lg">
@@ -308,6 +327,50 @@ export default function DisplayPage() {
         {config?.familyMotto && (
           <div className="mt-4 text-sm md:text-base italic text-amber-100 max-w-md drop-shadow">
             ✨ {config.familyMotto}
+          </div>
+        )}
+
+        {/* Ihsan Star + Zikir counter row */}
+        {(display?.ihsanStar || display?.zikir) && (
+          <div className="mt-4 flex flex-wrap justify-center gap-3 max-w-lg">
+            {display?.ihsanStar && (() => {
+              const star = display.ihsanStar
+              const avatar = star.avatarId ? AVATAR_BY_ID[star.avatarId] : null
+              return (
+                <div className="rounded-2xl bg-gradient-to-br from-amber-400/30 to-amber-600/30 backdrop-blur border-2 border-amber-300/50 shadow-lg px-3 py-2 flex items-center gap-2.5">
+                  <div className="relative w-11 h-11 rounded-full overflow-hidden bg-white/20 border-2" style={{ borderColor: star.favColor || '#FFB703' }}>
+                    {avatar ? <img src={avatar.src} alt="" className="w-full h-full object-cover" /> :
+                      <div className="w-full h-full flex items-center justify-center text-xl">🧒</div>}
+                    <div className="absolute -bottom-1 -right-1 text-lg">🌟</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase tracking-widest text-amber-200 font-black leading-none">
+                      {t.display_ihsan_star_title}
+                    </div>
+                    <div className="text-base font-black text-white leading-tight mt-0.5">{star.nickname}</div>
+                    <div className="text-[10px] text-amber-100/80 leading-tight">{t.display_ihsan_star_sub(star.ihsanCount)}</div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {display?.zikir && (
+              <button onClick={tapZikir}
+                className={`rounded-2xl bg-gradient-to-br from-emerald-400/30 to-emerald-600/30 backdrop-blur border-2 border-emerald-300/50 shadow-lg px-3 py-2 flex items-center gap-2.5 active:scale-95 transition-transform ${zikirBump ? 'scale-105' : ''}`}>
+                <div className="text-3xl">📿</div>
+                <div className="text-left">
+                  <div className="text-[9px] uppercase tracking-widest text-emerald-200 font-black leading-none">
+                    {t.display_zikir_title}
+                  </div>
+                  <div className="text-xl font-black text-white tabular-nums leading-tight">
+                    {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
+                  </div>
+                  <div className="text-[10px] text-emerald-100/80 leading-tight">
+                    {t.display_zikir_sub_today} • {t.display_zikir_tap}
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
