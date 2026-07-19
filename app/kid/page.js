@@ -165,7 +165,7 @@ function KidHomeInner() {
 
   return (
     <div
-      className="min-h-[100dvh] w-full relative overflow-y-auto"
+      className="h-[100dvh] w-full relative overflow-y-auto overscroll-contain"
       style={{
         background: `linear-gradient(180deg, ${favColor}15 0%, ${favColor}08 50%, #FFF8E7 100%)`,
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
@@ -389,8 +389,8 @@ function KidHomeInner() {
           </div>
         )}
 
-        {/* Habit list */}
-        <div className="mt-4 space-y-2">
+        {/* Habit list — grouped by category */}
+        <div className="mt-4 space-y-3">
           {loading ? (
             <div className="text-center text-emerald-900/50 py-10">{t.loading}</div>
           ) : habits.length === 0 ? (
@@ -398,23 +398,59 @@ function KidHomeInner() {
               <div className="text-5xl mb-2">🌱</div>
               <p className="text-emerald-900/70 text-sm">{t.kid_empty}</p>
             </div>
-          ) : doneCount === habits.length ? (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-2">🌟</div>
-              <p className="text-emerald-900 font-extrabold">{t.kid_all_done}</p>
-            </div>
-          ) : null}
-
-          {habits.map((habit) => (
-            <KidHabitCard
-              key={habit.id}
-              habit={habit}
-              busy={busyHabit === habit.id}
-              onTap={() => claimHabit(habit)}
-              t={t}
-              lang={lang}
-            />
-          ))}
+          ) : (
+            <>
+              {doneCount === habits.length && (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  className="text-center rounded-3xl p-4 bg-gradient-to-br from-amber-100 to-emerald-100 border-2 border-amber-300"
+                >
+                  <div className="text-5xl mb-1">🌟</div>
+                  <p className="text-emerald-900 font-extrabold">{t.kid_all_done}</p>
+                </motion.div>
+              )}
+              {(() => {
+                // Group habits by category
+                const groups = {}
+                habits.forEach(h => {
+                  const c = h.category || 'ibadah'
+                  if (!groups[c]) groups[c] = []
+                  groups[c].push(h)
+                })
+                // Sort within group: incomplete first
+                Object.values(groups).forEach(list => {
+                  list.sort((a, b) => {
+                    const aDone = a.todayStatus === 'claimed' || a.todayStatus === 'verified'
+                    const bDone = b.todayStatus === 'claimed' || b.todayStatus === 'verified'
+                    return aDone === bDone ? 0 : (aDone ? 1 : -1)
+                  })
+                })
+                // Sort groups: incomplete groups first, then complete
+                const groupList = Object.entries(groups).map(([id, list]) => {
+                  const done = list.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+                  return { id, list, done, total: list.length, allDone: done === list.length }
+                })
+                groupList.sort((a, b) => {
+                  if (a.allDone !== b.allDone) return a.allDone ? 1 : -1
+                  return 0
+                })
+                return groupList.map(g => (
+                  <CategoryGroup
+                    key={g.id}
+                    catId={g.id}
+                    habitsInCat={g.list}
+                    done={g.done}
+                    total={g.total}
+                    allDone={g.allDone}
+                    busyHabit={busyHabit}
+                    onTap={claimHabit}
+                    t={t}
+                    lang={lang}
+                  />
+                ))
+              })()}
+            </>
+          )}
         </div>
       </div>
 
@@ -660,5 +696,66 @@ export default function KidHomePage() {
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-emerald-800">Loading…</div>}>
       <KidHomeInner />
     </Suspense>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CategoryGroup — visual grouping of habits with progress bar
+
+const CategoryGroup = ({ catId, habitsInCat, done, total, allDone, busyHabit, onTap, t, lang }) => {
+  const cat = HABIT_CATEGORIES[catId] || HABIT_CATEGORIES.ibadah
+  const catLabel = getCategoryLabel(catId, t)
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className={`rounded-3xl border-2 p-2.5 transition-all ${
+        allDone ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300' : 'bg-white/70 backdrop-blur border-white/90'
+      }`}
+      style={!allDone ? { boxShadow: `0 0 0 1px ${cat.color}22` } : undefined}
+    >
+      {/* Category header */}
+      <div className="flex items-center gap-2.5 px-1 pb-2">
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl flex-shrink-0"
+          style={{ background: allDone ? `${cat.color}33` : `${cat.color}22` }}
+        >
+          {allDone ? '✅' : cat.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="text-sm font-extrabold uppercase tracking-wide" style={{ color: cat.color }}>
+              {catLabel}
+            </div>
+            <div className="text-xs font-bold text-eq-ink/60">
+              {done}/{total}
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="mt-1 h-2 rounded-full bg-eq-cream/70 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="h-full rounded-full"
+              style={{ background: `linear-gradient(90deg, ${cat.color}, ${cat.color}dd)` }}
+            />
+          </div>
+        </div>
+      </div>
+      {/* Habits list */}
+      <div className="space-y-2 pt-1">
+        {habitsInCat.map(habit => (
+          <KidHabitCard
+            key={habit.id}
+            habit={habit}
+            busy={busyHabit === habit.id}
+            onTap={() => onTap(habit)}
+            t={t}
+            lang={lang}
+          />
+        ))}
+      </div>
+    </motion.div>
   )
 }

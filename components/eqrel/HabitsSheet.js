@@ -372,73 +372,142 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   </div>
                 )}
 
-                {!loading && habits.map(habit => {
-                  const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
-                  const catLabel = getCategoryLabel(habit.category, t)
-                  const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
-                  const isIhsan = habit.rubric === 'ihsan'
-                  const displayTitle = getHabitTitle(habit, lang)
-                  const displayDesc  = getHabitDesc(habit, lang)
-                  const shownPts = habit.pointsAwarded ?? habit.points
+                {!loading && habits.length > 0 && (() => {
+                  // Group habits by category
+                  const groups = {}
+                  habits.forEach(h => {
+                    const c = h.category || 'ibadah'
+                    if (!groups[c]) groups[c] = []
+                    groups[c].push(h)
+                  })
+                  // Sort within each group: incomplete first
+                  Object.values(groups).forEach(list => list.sort((a, b) => {
+                    const aDone = a.todayStatus === 'claimed' || a.todayStatus === 'verified'
+                    const bDone = b.todayStatus === 'claimed' || b.todayStatus === 'verified'
+                    return aDone === bDone ? 0 : (aDone ? 1 : -1)
+                  }))
+                  // Order groups by HABIT_CATEGORIES declaration; complete-all groups fall to bottom
+                  const groupList = Object.keys(HABIT_CATEGORIES)
+                    .filter(id => groups[id])
+                    .map(id => {
+                      const list = groups[id]
+                      const done = list.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+                      return { id, list, done, total: list.length, allDone: done === list.length }
+                    })
+                  groupList.sort((a, b) => (a.allDone === b.allDone ? 0 : a.allDone ? 1 : -1))
 
-                  // Long-press handling (only meaningful in parent-log mode)
-                  let pressTimer = null
-                  const startPress = () => {
-                    if (!isParentLogMode || isDone) return
-                    pressTimer = setTimeout(() => { openRubricPicker(habit); pressTimer = null }, 550)
-                  }
-                  const endPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+                  const renderHabit = (habit) => {
+                    const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
+                    const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+                    const isIhsan = habit.rubric === 'ihsan'
+                    const displayTitle = getHabitTitle(habit, lang)
+                    const displayDesc  = getHabitDesc(habit, lang)
+                    const shownPts = habit.pointsAwarded ?? habit.points
 
-                  return (
-                    <div key={habit.id} className={`rounded-2xl p-3 border-2 transition-all ${
-                      isIhsan ? 'bg-amber-50 border-amber-300' :
-                      isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
-                    }`}>
-                      <div className="flex items-start gap-2">
-                        <button
-                          onClick={() => toggleClaim(habit)}
-                          onPointerDown={startPress}
-                          onPointerUp={endPress}
-                          onPointerLeave={endPress}
-                          onContextMenu={(e) => { e.preventDefault(); openRubricPicker(habit) }}
-                          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all touch-none select-none ${
-                            isIhsan ? 'bg-amber-500 border-amber-500 scale-105' :
-                            isDone ? 'bg-emerald-500 border-emerald-500 scale-105' :
-                                     'bg-white border-eq-ink/20 hover:border-emerald-400'
-                          }`}
-                          aria-label={isDone ? t.habits_undo : t.habits_mark_done}
-                        >
-                          {isIhsan ? <Sparkles className="w-5 h-5 text-white" fill="white" /> :
-                           isDone ? <Check className="w-5 h-5 text-white" strokeWidth={3} /> : null}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                            <span className="text-sm">{cat.icon}</span>
-                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{catLabel}</span>
-                            <span className="text-[10px] text-eq-ink/40">·</span>
-                            <span className={`text-[10px] font-bold ${isIhsan ? 'text-amber-700' : 'text-amber-600'}`}>+{shownPts} {t.habits_points_word}{isIhsan ? ' 🌟' : ''}</span>
-                            {!habit.templateId && (
-                              <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
+                    let pressTimer = null
+                    const startPress = () => {
+                      if (!isParentLogMode || isDone) return
+                      pressTimer = setTimeout(() => { openRubricPicker(habit); pressTimer = null }, 550)
+                    }
+                    const endPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+
+                    return (
+                      <div key={habit.id} className={`rounded-2xl p-3 border-2 transition-all ${
+                        isIhsan ? 'bg-amber-50 border-amber-300' :
+                        isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
+                      }`}>
+                        <div className="flex items-start gap-2">
+                          <button
+                            onClick={() => toggleClaim(habit)}
+                            onPointerDown={startPress}
+                            onPointerUp={endPress}
+                            onPointerLeave={endPress}
+                            onContextMenu={(e) => { e.preventDefault(); openRubricPicker(habit) }}
+                            className={`w-9 h-9 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all touch-none select-none ${
+                              isIhsan ? 'bg-amber-500 border-amber-500 scale-105' :
+                              isDone ? 'bg-emerald-500 border-emerald-500 scale-105' :
+                                       'bg-white border-eq-ink/20 hover:border-emerald-400'
+                            }`}
+                            aria-label={isDone ? t.habits_undo : t.habits_mark_done}
+                          >
+                            {isIhsan ? <Sparkles className="w-5 h-5 text-white" fill="white" /> :
+                             isDone ? <Check className="w-5 h-5 text-white" strokeWidth={3} /> : null}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                              <span className={`text-[10px] font-bold ${isIhsan ? 'text-amber-700' : 'text-amber-600'}`}>+{shownPts} {t.habits_points_word}{isIhsan ? ' 🌟' : ''}</span>
+                              {!habit.templateId && (
+                                <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
+                              )}
+                            </div>
+                            <div className={`font-bold text-sm leading-tight ${isDone ? 'text-emerald-900 line-through opacity-70' : 'text-eq-ink'}`}>
+                              {displayTitle}
+                            </div>
+                            {displayDesc && (
+                              <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{displayDesc}</div>
                             )}
                           </div>
-                          <div className={`font-bold text-sm leading-tight ${isDone ? 'text-emerald-900 line-through opacity-70' : 'text-eq-ink'}`}>
-                            {displayTitle}
-                          </div>
-                          {displayDesc && (
-                            <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{displayDesc}</div>
-                          )}
+                          <button
+                            onClick={() => removeHabit(habit.id)}
+                            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0"
+                            aria-label={t.habits_delete_aria}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500/70" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => removeHabit(habit.id)}
-                          className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0"
-                          aria-label={t.habits_delete_aria}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500/70" />
-                        </button>
                       </div>
+                    )
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {groupList.map(g => {
+                        const cat = HABIT_CATEGORIES[g.id]
+                        const catLabel = getCategoryLabel(g.id, t)
+                        const pct = g.total > 0 ? Math.round((g.done / g.total) * 100) : 0
+                        return (
+                          <div key={g.id}
+                            className={`rounded-3xl border-2 p-2.5 ${
+                              g.allDone ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-300' : 'bg-eq-cream/30 border-eq-cream'
+                            }`}
+                            style={!g.allDone ? { boxShadow: `0 0 0 1px ${cat.color}22` } : undefined}
+                          >
+                            <div className="flex items-center gap-2.5 px-1 pb-2">
+                              <div
+                                className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg flex-shrink-0"
+                                style={{ background: g.allDone ? `${cat.color}33` : `${cat.color}22` }}
+                              >
+                                {g.allDone ? '✅' : cat.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="text-sm font-extrabold uppercase tracking-wide" style={{ color: cat.color }}>
+                                    {catLabel}
+                                  </div>
+                                  <div className="text-xs font-bold text-eq-ink/60">
+                                    {g.done}/{g.total}
+                                  </div>
+                                </div>
+                                <div className="mt-1 h-2 rounded-full bg-white overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{
+                                      width: `${pct}%`,
+                                      background: `linear-gradient(90deg, ${cat.color}, ${cat.color}dd)`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="space-y-2 pt-1">
+                              {g.list.map(renderHabit)}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
-                })}
+                })()}
 
                 {/* Add habit buttons — always visible */}
                 {!loading && (

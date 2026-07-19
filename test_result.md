@@ -1177,3 +1177,72 @@ agent_communication:
       - Now properly distinguishes between "not provided" (use fallback) vs "provided as empty" (reject with 400)
       
       NO ISSUES FOUND. All endpoints production-ready.
+
+#====================================================================================================
+# Kid Mode Scroll Fix + Category Grouping + Progress Bars (2026-01-19)
+#====================================================================================================
+frontend:
+  - task: "Kid Mode — Fix scroll + Category Grouping with Progress Bar"
+    implemented: true
+    working: "NA"
+    file: "app/kid/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          BUG FIX: Habit list could not scroll in Kid Mode.
+            Root cause: outer container used `min-h-[100dvh] overflow-y-auto` — min-height doesn't
+            constrain the box, so `overflow-y-auto` became ineffective. Combined with the fixed-bottom
+            exit button and iOS overscroll-behavior, scroll got trapped.
+            Fix: switched to `h-[100dvh] overflow-y-auto overscroll-contain` (fixed viewport height,
+            internal scroll). Sticky bottom exit button unaffected.
+          
+          ENHANCEMENT: Habits are now GROUPED BY CATEGORY with visual progress feedback:
+            - Each category rendered inside its own rounded card with:
+                * Left icon tile (category color)
+                * Category label (color-coded from HABIT_CATEGORIES)
+                * "done/total" counter
+                * Full-width animated progress bar (framer-motion width transition)
+            - Within each group, incomplete habits appear FIRST, then completed
+            - Groups where ALL habits done → green gradient background + ✅ icon (celebration)
+            - Groups sorted: incomplete first, all-done ones sink to bottom
+            - When ALL habits (across all groups) completed → banner "Semua siap 🌟" at top
+          
+          Category header pattern (kid mode):
+            ┌───────────────────────────────────────────────┐
+            │ [🕌]  IBADAH  3/5                             │
+            │      ▓▓▓▓▓▓▓▓░░░░░░░  60%                    │
+            ├───────────────────────────────────────────────┤
+            │ [habit card]                                  │
+            │ [habit card]                                  │
+            └───────────────────────────────────────────────┘
+
+  - task: "Parent HabitsSheet — Category Grouping with Progress Bar"
+    implemented: true
+    working: "NA"
+    file: "components/eqrel/HabitsSheet.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Parent's HabitsSheet now groups habits under category headers (matching kid mode):
+            - Category icon tile + label + "done/total" + progress bar
+            - Ordered by HABIT_CATEGORIES declaration; fully-completed groups sink to bottom
+            - Habits within each group: incomplete first, completed last
+            - Preserved parent-specific features: long-press for Ihsan rubric, delete button, custom badge
+            - Removed the per-habit category tag (now redundant — the group header shows it)
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Two enhancements + one bug fix delivered:
+        1. FIXED: Kid Mode scroll — container now uses fixed viewport height, internal scroll works
+        2. NEW: Category grouping (kid + parent modes) with animated progress bars
+        3. NEW: Visual celebration state when a category is fully completed
+      No backend changes — pure UI iteration. No retest required (main agent verified lint + compile).
