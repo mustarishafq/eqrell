@@ -665,6 +665,37 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
     }
 
+    // ═══ Family Display Config ═══════════════════════════════════
+    // Stored on families doc as `displayConfig`.
+    // GET /family/display-config
+    if (route === '/family/display-config' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ config: null })
+      const family = await db.collection('families').findOne({ id: user.familyId })
+      return json({ config: family?.displayConfig || null })
+    }
+    // POST /family/display-config  { photos:[url], slideshowSec, showHabits, familyMotto, showHadith, showDoa }
+    if (route === '/family/display-config' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const photos = Array.isArray(body.photos) ? body.photos.filter(u => typeof u === 'string' && u.length < 800).slice(0, 20) : []
+      const slideshowSec = Math.min(60, Math.max(3, Number(body.slideshowSec) || 10))
+      const showHabits = !!body.showHabits
+      const showHadith = body.showHadith !== false
+      const showDoa = body.showDoa !== false
+      const familyMotto = String(body.familyMotto || '').trim().slice(0, 140)
+      const config = { photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto, updatedAt: new Date() }
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      await db.collection('families').updateOne({ id: user.familyId }, { $set: { displayConfig: config } })
+      return json({ ok: true, config })
+    }
+
     // ═══ Family Display Mode (Prayer Times + ambient data) ══════════════
     // Aladhan API is used for prayer times. Free, no key, standard REST.
     // Prayer location is stored on families doc as { city, country, method, latitude?, longitude? }.
@@ -782,7 +813,15 @@ async function handleRoute(request, { params }) {
         habitsTotal: habitsByChild[c.id] || 0,
         habitsDone: doneByChild[c.id] || 0,
       }))
-      return json({ family, children: childrenOut })
+      // Undone habits list (for display "belum siap" section)
+      const undoneClaims = await db.collection('habit_claims').find({
+        childId: { $in: childIds }, dateStr, status: 'verified', rubric: { $in: ['sah', 'ihsan'] }
+      }).project({ _id: 0, habitId: 1, childId: 1 }).toArray()
+      const doneSet = new Set(undoneClaims.map(c => `${c.childId}:${c.habitId}`))
+      const allHabits = await db.collection('habits').find({ childId: { $in: childIds } })
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1 }).toArray()
+      const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
+      return json({ family, children: childrenOut, undoneHabits })
     }
 
     // ═══ Quiz ══════════════════════════════════════════════════════

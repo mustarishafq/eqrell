@@ -1,77 +1,72 @@
 'use client'
 
-/**
- * Family Display Mode — ambient landscape screen for family device.
- *
- * Shows: big clock + date, prayer times (Aladhan API), next-prayer countdown,
- * per-child today progress rings. Auto-refreshes every 60s.
- *
- * Requires: prayerLocation set on family. Provides inline setup if missing.
- */
-
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, MapPin, Loader2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Loader2, Settings } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
-import { useRouter } from 'next/navigation'
+import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 const PRAYER_EMOJI = { Fajr: '🌄', Sunrise: '☀️', Dhuhr: '🌞', Asr: '🌤️', Maghrib: '🌇', Isha: '🌙' }
-const PRAYER_LABEL_MS = { Fajr: 'Subuh', Sunrise: 'Syuruk', Dhuhr: 'Zohor', Asr: 'Asar', Maghrib: 'Maghrib', Isha: 'Isyak' }
-const PRAYER_LABEL_EN = { Fajr: 'Fajr',  Sunrise: 'Sunrise', Dhuhr: 'Dhuhr', Asr: 'Asr',  Maghrib: 'Maghrib', Isha: 'Isha' }
-const PRAYER_LABEL_ID = { Fajr: 'Subuh', Sunrise: 'Terbit',  Dhuhr: 'Zuhur', Asr: 'Ashar', Maghrib: 'Maghrib', Isha: 'Isya' }
-const PRAYER_LABEL_AR = { Fajr: 'الفجر', Sunrise: 'الشروق', Dhuhr: 'الظهر', Asr: 'العصر', Maghrib: 'المغرب', Isha: 'العشاء' }
-
-function labelFor(key, lang) {
-  return ({ ms: PRAYER_LABEL_MS, en: PRAYER_LABEL_EN, id: PRAYER_LABEL_ID, ar: PRAYER_LABEL_AR }[lang] || PRAYER_LABEL_MS)[key]
+const PRAYER_LABELS = {
+  ms: { Fajr: 'Subuh', Sunrise: 'Syuruk', Dhuhr: 'Zohor', Asr: 'Asar', Maghrib: 'Maghrib', Isha: 'Isyak' },
+  en: { Fajr: 'Fajr',  Sunrise: 'Sunrise', Dhuhr: 'Dhuhr', Asr: 'Asr',  Maghrib: 'Maghrib', Isha: 'Isha' },
+  id: { Fajr: 'Subuh', Sunrise: 'Terbit',  Dhuhr: 'Zuhur', Asr: 'Ashar', Maghrib: 'Maghrib', Isha: 'Isya' },
+  ar: { Fajr: 'الفجر', Sunrise: 'الشروق', Dhuhr: 'الظهر', Asr: 'العصر', Maghrib: 'المغرب', Isha: 'العشاء' },
 }
 
 export default function DisplayPage() {
   const router = useRouter()
   const { t, lang } = useLang()
-
   const [now, setNow] = useState(new Date())
+  const [config, setConfig] = useState(null)
   const [location, setLocation] = useState(null)
-  const [prayers, setPrayers] = useState(null)   // { timings, date }
-  const [display, setDisplay] = useState(null)   // { family, children[] }
-  const [loading, setLoading] = useState(true)
-  const [locOpen, setLocOpen] = useState(false)
+  const [prayers, setPrayers] = useState(null)
+  const [display, setDisplay] = useState(null)
+  const [photoIdx, setPhotoIdx] = useState(0)
+  const [hadithIdx, setHadithIdx] = useState(0)
 
-  // Refresh clock every second
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
 
-  // Refresh data every 60s
   const load = useCallback(async () => {
     try {
-      const [dRes, lRes] = await Promise.all([
+      const [cRes, dRes, lRes] = await Promise.all([
+        fetch('/api/family/display-config', { credentials: 'include' }),
         fetch('/api/family/display-data', { credentials: 'include' }),
         fetch('/api/family/prayer-location', { credentials: 'include' }),
       ])
+      const cData = await cRes.json()
       const dData = await dRes.json()
       const lData = await lRes.json()
+      setConfig(cData.config)
       setDisplay(dData)
       setLocation(lData.location)
-
       if (lData.location) {
         const pRes = await fetch('/api/family/prayer-times', { credentials: 'include' })
         if (pRes.ok) setPrayers(await pRes.json())
-        else setPrayers(null)
       }
     } catch (e) { /* ignore */ }
-    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t) }, [load])
+
+  // Photo slideshow rotation
+  const photos = config?.photos || []
+  const slideshowSec = config?.slideshowSec || 10
+  useEffect(() => {
+    if (photos.length < 2) return
+    const t = setInterval(() => setPhotoIdx(i => (i + 1) % photos.length), slideshowSec * 1000)
+    return () => clearInterval(t)
+  }, [photos.length, slideshowSec])
+
+  // Hadith rotation (every 20s)
+  useEffect(() => {
+    const t = setInterval(() => setHadithIdx(i => i + 1), 20_000)
+    return () => clearInterval(t)
   }, [])
 
-  useEffect(() => {
-    load()
-    const timer = setInterval(load, 60_000)
-    return () => clearInterval(timer)
-  }, [load])
-
-  // Compute next prayer + countdown
+  // Next prayer + countdown
   const nextPrayer = (() => {
     if (!prayers?.timings) return null
     for (const k of PRAYER_KEYS) {
@@ -82,341 +77,177 @@ export default function DisplayPage() {
       target.setHours(h, m, 0, 0)
       if (target > now) return { key: k, at: target, timeStr: time }
     }
-    // All prayers passed → next is tomorrow's Fajr
     return null
+  })()
+  const countdown = (() => {
+    if (!nextPrayer) return ''
+    const ms = nextPrayer.at - now
+    if (ms <= 0) return ''
+    const h = Math.floor(ms / 3600000)
+    const m = Math.floor((ms % 3600000) / 60000)
+    return h > 0 ? `${h}j ${m}m` : `${m}m`
   })()
 
   const timeStr = now.toLocaleTimeString(lang === 'ar' ? 'ar-EG' : lang, { hour: '2-digit', minute: '2-digit', hour12: false })
   const dateStr = now.toLocaleDateString(lang === 'ar' ? 'ar-EG' : lang, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const labelFor = (k) => (PRAYER_LABELS[lang] || PRAYER_LABELS.ms)[k]
 
-  const countdownStr = (() => {
-    if (!nextPrayer) return ''
-    const diffMs = nextPrayer.at - now
-    if (diffMs <= 0) return ''
-    const h = Math.floor(diffMs / 3600000)
-    const m = Math.floor((diffMs % 3600000) / 60000)
-    return h > 0 ? `${h}j ${m}m` : `${m}m`
-  })()
+  const hadith = HADITH_BANK[hadithIdx % HADITH_BANK.length]
+  const doa = DOA_BANK[hadithIdx % DOA_BANK.length]
+  const hasPhotos = photos.length > 0
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white overflow-hidden relative">
-      {/* Stars background */}
-      <div className="absolute inset-0 opacity-30" style={{
-        backgroundImage: `radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 80% 70%, white 1px, transparent 1px), radial-gradient(circle at 40% 80%, white 1px, transparent 1px)`,
-        backgroundSize: '80px 80px, 120px 120px, 100px 100px',
-      }} />
-
-      {/* Back button + edit location */}
-      <div className="absolute top-4 left-4 z-10 flex gap-2">
-        <button
-          onClick={() => router.push('/?parent=1')}
-          className="w-10 h-10 rounded-full bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 flex items-center justify-center"
-          aria-label="Back"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => setLocOpen(true)}
-          className="px-3 h-10 rounded-full bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 flex items-center gap-2 text-sm"
-          aria-label="Edit location"
-        >
-          <MapPin className="w-4 h-4" />
-          <span className="truncate max-w-[120px]">{location?.city || t.display_setup_cta}</span>
-        </button>
-      </div>
-
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center z-20">
-          <Loader2 className="w-8 h-8 animate-spin text-white/70" />
-        </div>
+    <div className="min-h-screen w-full relative overflow-hidden bg-slate-950 text-white">
+      {/* Photo slideshow background */}
+      {hasPhotos ? (
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={photoIdx}
+            src={photos[photoIdx]}
+            alt=""
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2 }}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </AnimatePresence>
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900" />
       )}
 
-      <div className="relative z-10 min-h-screen flex flex-col p-8">
-        {/* Center clock + date */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          <div className="text-8xl md:text-9xl font-black tracking-tighter tabular-nums drop-shadow-lg">
-            {timeStr}
-          </div>
-          <div className="mt-2 text-lg md:text-xl text-white/70 capitalize">
-            {dateStr}
-          </div>
+      {/* Overlay for readability */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/20 to-black/70 pointer-events-none" />
 
-          {nextPrayer && (
-            <div className="mt-6 inline-flex items-center gap-3 rounded-2xl bg-white/10 backdrop-blur border border-white/20 px-5 py-3">
-              <span className="text-3xl">{PRAYER_EMOJI[nextPrayer.key]}</span>
-              <div className="text-left">
-                <div className="text-[10px] uppercase tracking-widest text-white/60">{t.display_next_prayer}</div>
-                <div className="text-lg font-extrabold">
-                  {labelFor(nextPrayer.key, lang)} <span className="text-amber-300">{nextPrayer.timeStr}</span>
-                </div>
-                {countdownStr && <div className="text-xs text-white/60">{t.display_in_prefix} {countdownStr}</div>}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Prayer times row */}
-        {prayers?.timings && (
-          <div className="grid grid-cols-6 gap-2 mb-6">
+      {/* Top prayer strip */}
+      {prayers?.timings && (
+        <div className="absolute top-0 left-0 right-0 z-10 bg-black/40 backdrop-blur border-b border-white/10">
+          <div className="max-w-7xl mx-auto px-4 py-2 grid grid-cols-6 gap-1">
             {PRAYER_KEYS.map(k => {
               const isNext = nextPrayer?.key === k
               return (
-                <div
-                  key={k}
-                  className={`rounded-2xl px-2 py-3 text-center border transition-all ${
-                    isNext ? 'bg-amber-400/20 border-amber-300 shadow-lg scale-105' : 'bg-white/5 border-white/10'
-                  }`}
-                >
-                  <div className="text-2xl mb-1">{PRAYER_EMOJI[k]}</div>
-                  <div className={`text-[10px] uppercase tracking-wider ${isNext ? 'text-amber-200' : 'text-white/60'}`}>
-                    {labelFor(k, lang)}
-                  </div>
-                  <div className={`text-base font-extrabold tabular-nums ${isNext ? 'text-white' : 'text-white/90'}`}>
-                    {prayers.timings[k]}
-                  </div>
+                <div key={k} className={`text-center py-1 rounded-lg transition-all ${isNext ? 'bg-amber-400/20 scale-105' : ''}`}>
+                  <div className="text-lg leading-none">{PRAYER_EMOJI[k]}</div>
+                  <div className={`text-[9px] uppercase tracking-wider ${isNext ? 'text-amber-200' : 'text-white/60'}`}>{labelFor(k)}</div>
+                  <div className={`text-sm font-extrabold tabular-nums ${isNext ? 'text-white' : 'text-white/85'}`}>{prayers.timings[k]}</div>
                 </div>
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Top-left back + setup */}
+      <div className="absolute top-3 left-3 z-20 flex gap-2">
+        <button onClick={() => router.push('/?parent=1')} className="w-9 h-9 rounded-full bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 flex items-center justify-center">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <button onClick={() => router.push('/display/setup')} className="px-3 h-9 rounded-full bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 flex items-center gap-1.5 text-xs font-bold">
+          <Settings className="w-3.5 h-3.5" /> {t.setup_title}
+        </button>
+        {!location && (
+          <button onClick={() => router.push('/display?edit=1')} className="px-3 h-9 rounded-full bg-amber-500 text-slate-900 flex items-center gap-1.5 text-xs font-extrabold">
+            <MapPin className="w-3.5 h-3.5" /> {t.display_setup_cta}
+          </button>
+        )}
+      </div>
+
+      {/* Center content — clock + date + next prayer + family motto */}
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center pt-20 pb-6 px-6 text-center">
+        <div className="text-7xl md:text-9xl font-black tracking-tighter tabular-nums drop-shadow-2xl">
+          {timeStr}
+        </div>
+        <div className="mt-1 text-base md:text-xl text-white/85 capitalize drop-shadow">{dateStr}</div>
+
+        {nextPrayer && (
+          <div className="mt-4 inline-flex items-center gap-2.5 rounded-2xl bg-white/15 backdrop-blur border border-white/25 px-4 py-2 shadow-lg">
+            <span className="text-2xl">{PRAYER_EMOJI[nextPrayer.key]}</span>
+            <div className="text-left">
+              <div className="text-[9px] uppercase tracking-widest text-white/70">{t.display_next_prayer}</div>
+              <div className="font-extrabold text-sm">
+                {labelFor(nextPrayer.key)} <span className="text-amber-300">{nextPrayer.timeStr}</span>
+              </div>
+              {countdown && <div className="text-[10px] text-white/70">{t.display_in_prefix} {countdown}</div>}
+            </div>
+          </div>
         )}
 
-        {/* Children row */}
+        {config?.familyMotto && (
+          <div className="mt-4 text-sm md:text-base italic text-amber-100 max-w-md drop-shadow">
+            ✨ {config.familyMotto}
+          </div>
+        )}
+
+        {/* Children rings */}
         {display?.children && display.children.length > 0 && (
-          <div className="flex justify-center gap-4 flex-wrap">
+          <div className="mt-6 flex justify-center gap-3 flex-wrap">
             {display.children.map(c => {
               const avatar = c.avatarId ? AVATAR_BY_ID[c.avatarId] : null
               const total = c.habitsTotal || 0
               const done = c.habitsDone || 0
-              const pct = total > 0 ? (done / total) : 0
-              const color = c.favColor || '#00B894'
+              const pct = total > 0 ? done / total : 0
               return (
-                <div key={c.id} className="flex flex-col items-center gap-1.5">
-                  <div className="relative w-20 h-20">
-                    <svg viewBox="0 0 80 80" className="absolute inset-0 -rotate-90">
-                      <circle cx="40" cy="40" r="35" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="5" />
-                      <circle cx="40" cy="40" r="35" fill="none" stroke={color} strokeWidth="5"
-                        strokeDasharray={`${pct * 219.9} 219.9`} strokeLinecap="round" />
+                <div key={c.id} className="flex flex-col items-center gap-1">
+                  <div className="relative w-16 h-16">
+                    <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90">
+                      <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="4" />
+                      <circle cx="32" cy="32" r="28" fill="none" stroke={c.favColor || '#00B894'} strokeWidth="4"
+                        strokeDasharray={`${pct * 175.9} 175.9`} strokeLinecap="round" />
                     </svg>
-                    <div className="absolute inset-2 rounded-full overflow-hidden bg-white/10">
+                    <div className="absolute inset-1.5 rounded-full overflow-hidden bg-white/10">
                       {avatar ? <img src={avatar.src} alt="" className="w-full h-full object-cover" /> :
-                        <div className="w-full h-full flex items-center justify-center text-2xl">🧒</div>}
+                        <div className="w-full h-full flex items-center justify-center text-xl">🧒</div>}
                     </div>
                   </div>
-                  <div className="text-sm font-extrabold">{c.nickname}</div>
-                  <div className="text-xs text-white/70 tabular-nums">{done}/{total}</div>
+                  <div className="text-xs font-extrabold drop-shadow">{c.nickname}</div>
+                  <div className="text-[10px] text-white/80 tabular-nums">{done}/{total}</div>
                 </div>
               )
             })}
           </div>
         )}
 
-        {/* No location prompt */}
-        {!location && !loading && (
-          <div className="text-center mt-6">
-            <p className="text-white/70 text-sm mb-3">{t.display_no_location}</p>
-            <button
-              onClick={() => setLocOpen(true)}
-              className="rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold px-6 py-2.5 text-sm"
-            >{t.display_setup_cta}</button>
+        {/* Undone habits list */}
+        {config?.showHabits && display?.undoneHabits && display.undoneHabits.length > 0 && (
+          <div className="mt-5 max-w-md w-full rounded-2xl bg-black/40 backdrop-blur border border-white/15 px-4 py-3">
+            <div className="text-[10px] uppercase tracking-widest text-amber-200 mb-2 text-center">
+              {t.display_undone_title}
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {display.undoneHabits.slice(0, 6).map(h => (
+                <div key={h.id} className="flex items-center gap-1.5 text-white/85">
+                  <span>{h.icon || '•'}</span>
+                  <span className="truncate">{h.i18n?.[lang]?.title || h.title}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      <LocationEditor
-        open={locOpen}
-        current={location}
-        onClose={() => setLocOpen(false)}
-        onSaved={async () => { setLocOpen(false); await load() }}
-        t={t}
-      />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-const LocationEditor = ({ open, current, onClose, onSaved, t }) => {
-  const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
-  const [method, setMethod] = useState(3)
-  const [latitude, setLatitude] = useState(null)
-  const [longitude, setLongitude] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [gpsBusy, setGpsBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [suggestOpen, setSuggestOpen] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setCity(current?.city || '')
-      setCountry(current?.country || '')
-      setMethod(current?.method || 3)
-      setLatitude(current?.latitude ?? null)
-      setLongitude(current?.longitude ?? null)
-      setErr(''); setSuggestions([]); setSuggestOpen(false)
-    }
-  }, [open, current])
-
-  // GPS detect
-  const detectGps = () => {
-    if (!navigator.geolocation) { setErr(t.display_gps_unsupported); return }
-    setErr(''); setGpsBusy(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
-        setLatitude(lat); setLongitude(lng)
-        try {
-          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`)
-          const d = await r.json()
-          const a = d?.address || {}
-          const detectedCity = a.city || a.town || a.village || a.municipality || a.county || ''
-          const detectedCountry = a.country || ''
-          if (detectedCity) setCity(detectedCity)
-          if (detectedCountry) setCountry(detectedCountry)
-        } catch (e) { /* keep lat/lng even if reverse geocode fails */ }
-        setGpsBusy(false)
-      },
-      (err) => {
-        setGpsBusy(false)
-        setErr(err.code === 1 ? t.display_gps_denied : t.display_gps_failed)
-      },
-      { enableHighAccuracy: false, timeout: 15000 }
-    )
-  }
-
-  // City search suggestions (debounced)
-  useEffect(() => {
-    if (!open) return
-    if (!city || city.length < 3) { setSuggestions([]); return }
-    const handle = setTimeout(async () => {
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&format=json&limit=5&accept-language=en`)
-        const d = await r.json()
-        setSuggestions((d || []).map(x => ({
-          display: x.display_name,
-          lat: parseFloat(x.lat), lon: parseFloat(x.lon),
-          city: x.name || (x.display_name?.split(',')[0] || ''),
-          country: x.display_name?.split(',').pop()?.trim() || '',
-        })))
-      } catch (e) { /* ignore */ }
-    }, 400)
-    return () => clearTimeout(handle)
-  }, [city, open])
-
-  const pickSuggestion = (s) => {
-    setCity(s.city)
-    setCountry(s.country)
-    setLatitude(s.lat)
-    setLongitude(s.lon)
-    setSuggestOpen(false)
-    setSuggestions([])
-  }
-
-  const save = async () => {
-    if (!city.trim() || !country.trim()) { setErr(t.display_form_required); return }
-    setBusy(true); setErr('')
-    try {
-      const r = await fetch('/api/family/prayer-location', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          city: city.trim(), country: country.trim(), method,
-          latitude, longitude,
-        }),
-      })
-      if (r.ok) onSaved()
-      else { const d = await r.json().catch(() => ({})); setErr(d.error || 'Failed') }
-    } finally { setBusy(false) }
-  }
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-white text-eq-ink rounded-3xl shadow-2xl overflow-hidden"
-          >
-            <div className="p-5">
-              <h3 className="text-lg font-extrabold text-emerald-900 mb-1">{t.display_location_title}</h3>
-              <p className="text-xs text-emerald-800/60 mb-3">{t.display_location_sub}</p>
-
-              {/* GPS auto-detect button */}
-              <button
-                onClick={detectGps}
-                disabled={gpsBusy}
-                className="w-full mb-3 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 py-2.5 px-3 flex items-center justify-center gap-2 font-extrabold text-sm text-emerald-800 active:scale-[0.99] disabled:opacity-60"
-              >
-                {gpsBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-                {gpsBusy ? t.display_gps_locating : t.display_gps_detect}
-              </button>
-
-              <label className="block mb-3 relative">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 mb-1">{t.display_city_label}</div>
-                <input value={city}
-                  onChange={e => { setCity(e.target.value); setSuggestOpen(true) }}
-                  onFocus={() => setSuggestOpen(true)}
-                  onBlur={() => setTimeout(() => setSuggestOpen(false), 200)}
-                  placeholder="Kuala Lumpur"
-                  className="w-full rounded-xl border-2 border-eq-cream focus:border-emerald-300 outline-none px-3 py-2 text-sm" />
-                {suggestOpen && suggestions.length > 0 && (
-                  <div className="absolute z-10 left-0 right-0 top-full mt-1 rounded-xl border border-eq-cream bg-white shadow-lg max-h-52 overflow-y-auto">
-                    {suggestions.map((s, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onMouseDown={(e) => { e.preventDefault(); pickSuggestion(s) }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 border-b border-eq-cream/60 last:border-b-0"
-                      >
-                        <div className="font-bold text-eq-ink truncate">{s.city}</div>
-                        <div className="text-eq-ink/60 text-[10px] truncate">{s.display}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </label>
-              <label className="block mb-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 mb-1">{t.display_country_label}</div>
-                <input value={country} onChange={e => setCountry(e.target.value)}
-                  placeholder="Malaysia"
-                  className="w-full rounded-xl border-2 border-eq-cream focus:border-emerald-300 outline-none px-3 py-2 text-sm" />
-              </label>
-              <label className="block mb-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 mb-1">{t.display_method_label}</div>
-                <select value={method} onChange={e => setMethod(Number(e.target.value))}
-                  className="w-full rounded-xl border-2 border-eq-cream focus:border-emerald-300 outline-none px-3 py-2 text-sm bg-white">
-                  <option value={3}>Muslim World League (default)</option>
-                  <option value={17}>Kemenag (Indonesia)</option>
-                  <option value={2}>ISNA (North America)</option>
-                  <option value={5}>Egyptian General Authority</option>
-                  <option value={1}>University of Islamic Sciences, Karachi</option>
-                  <option value={11}>Majlis Ugama Islam Singapura</option>
-                  <option value={12}>Union Organization Islamic de France</option>
-                  <option value={13}>Diyanet İşleri Başkanlığı (Turkey)</option>
-                </select>
-              </label>
-              {latitude != null && longitude != null && (
-                <div className="text-[10px] font-mono text-emerald-700/70 mb-2">
-                  📍 {latitude.toFixed(4)}, {longitude.toFixed(4)}
-                </div>
+      {/* Bottom hadith / doa footer */}
+      {(config?.showHadith || config?.showDoa) && (
+        <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/50 backdrop-blur border-t border-white/10 px-6 py-3">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={hadithIdx}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.6 }}
+              className="text-center text-sm text-white/90 max-w-2xl mx-auto"
+            >
+              {config.showHadith && hadithIdx % 2 === 0 ? (
+                <><span className="text-amber-300">📖</span> {(hadith[lang] || hadith.ms)}</>
+              ) : config.showDoa ? (
+                <><span className="text-amber-300">🤲</span> {(doa[lang] || doa.ms)}</>
+              ) : (
+                <><span className="text-amber-300">📖</span> {(hadith[lang] || hadith.ms)}</>
               )}
-              {err && <div className="text-xs text-red-600 mb-2">{err}</div>}
-              <div className="flex gap-2 mt-4">
-                <button onClick={onClose} className="flex-1 rounded-xl border-2 border-eq-cream py-2 text-sm font-bold">{t.cancel}</button>
-                <button onClick={save} disabled={busy}
-                  className="flex-1 rounded-xl bg-emerald-500 text-white py-2 text-sm font-extrabold active:scale-[0.99] disabled:opacity-50">
-                  {busy ? '…' : t.save}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       )}
-    </AnimatePresence>
+    </div>
   )
 }
