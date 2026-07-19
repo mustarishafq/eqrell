@@ -141,17 +141,77 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     unassignHabit(habitId)
   }
 
+  const isParentLogMode = child?.claimMode === 'parent' || !child?.claimMode
+  const [rubricPickerHabit, setRubricPickerHabit] = useState(null)
+
+  // Quick tap in parent-log mode = auto-Sah (or undo if already done)
+  // Quick tap in self mode = classic toggle (claimed/pending)
   const toggleClaim = async (habit) => {
-    const nextStatus = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified' ? 'pending' : 'claimed'
+    const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+    try {
+      if (isDone) {
+        // Undo — allow removing today's claim regardless of mode
+        await fetch(`/api/habits/${habit.id}/claim`, {
+          method: 'DELETE', credentials: 'include',
+        })
+        setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
+        return
+      }
+      if (isParentLogMode) {
+        // Quick Sah
+        const res = await fetch(`/api/habits/${habit.id}/claim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ rubric: 'sah' }),
+        })
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}))
+          setHabits(prev => prev.map(h => h.id === habit.id ? {
+            ...h, todayStatus: 'verified', rubric: 'sah', pointsAwarded: data.points ?? h.points,
+          } : h))
+        }
+      } else {
+        // Self mode — legacy behavior: mark as pending claim
+        const res = await fetch(`/api/habits/${habit.id}/claim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ status: 'claimed' }),
+        })
+        if (res.ok) {
+          setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'claimed' } : h))
+        }
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  // Long-press in parent-log mode → open rubric picker
+  const openRubricPicker = (habit) => {
+    if (!isParentLogMode) return
+    setRubricPickerHabit(habit)
+  }
+
+  const applyRubricPick = async (rubric) => {
+    if (!rubricPickerHabit) return
+    const habit = rubricPickerHabit
+    setRubricPickerHabit(null)
     try {
       const res = await fetch(`/api/habits/${habit.id}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ rubric }),
       })
       if (res.ok) {
-        setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: nextStatus } : h))
+        const data = await res.json().catch(() => ({}))
+        if (rubric === 'belum') {
+          setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
+        } else {
+          setHabits(prev => prev.map(h => h.id === habit.id ? {
+            ...h, todayStatus: 'verified', rubric, pointsAwarded: data.points ?? h.points,
+          } : h))
+        }
       }
     } catch (e) { console.error(e) }
   }
@@ -306,34 +366,57 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   </div>
                 )}
 
+                {!loading && habits.length > 0 && isParentLogMode && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-[11px] text-amber-900 leading-snug">
+                    {t.parent_log_tap_hint}
+                  </div>
+                )}
+
                 {!loading && habits.map(habit => {
                   const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
                   const catLabel = getCategoryLabel(habit.category, t)
                   const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+                  const isIhsan = habit.rubric === 'ihsan'
                   const displayTitle = getHabitTitle(habit, lang)
                   const displayDesc  = getHabitDesc(habit, lang)
+                  const shownPts = habit.pointsAwarded ?? habit.points
+
+                  // Long-press handling (only meaningful in parent-log mode)
+                  let pressTimer = null
+                  const startPress = () => {
+                    if (!isParentLogMode || isDone) return
+                    pressTimer = setTimeout(() => { openRubricPicker(habit); pressTimer = null }, 550)
+                  }
+                  const endPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+
                   return (
                     <div key={habit.id} className={`rounded-2xl p-3 border-2 transition-all ${
+                      isIhsan ? 'bg-amber-50 border-amber-300' :
                       isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
                     }`}>
                       <div className="flex items-start gap-2">
                         <button
                           onClick={() => toggleClaim(habit)}
-                          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                            isDone
-                              ? 'bg-emerald-500 border-emerald-500 scale-105'
-                              : 'bg-white border-eq-ink/20 hover:border-emerald-400'
+                          onPointerDown={startPress}
+                          onPointerUp={endPress}
+                          onPointerLeave={endPress}
+                          onContextMenu={(e) => { e.preventDefault(); openRubricPicker(habit) }}
+                          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all touch-none select-none ${
+                            isIhsan ? 'bg-amber-500 border-amber-500 scale-105' :
+                            isDone ? 'bg-emerald-500 border-emerald-500 scale-105' :
+                                     'bg-white border-eq-ink/20 hover:border-emerald-400'
                           }`}
                           aria-label={isDone ? t.habits_undo : t.habits_mark_done}
                         >
-                          {isDone && <Check className="w-5 h-5 text-white" strokeWidth={3} />}
+                          {isIhsan ? <Sparkles className="w-5 h-5 text-white" fill="white" /> :
+                           isDone ? <Check className="w-5 h-5 text-white" strokeWidth={3} /> : null}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                             <span className="text-sm">{cat.icon}</span>
                             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{catLabel}</span>
                             <span className="text-[10px] text-eq-ink/40">·</span>
-                            <span className="text-[10px] text-amber-600 font-bold">+{habit.points} {t.habits_points_word}</span>
+                            <span className={`text-[10px] font-bold ${isIhsan ? 'text-amber-700' : 'text-amber-600'}`}>+{shownPts} {t.habits_points_word}{isIhsan ? ' 🌟' : ''}</span>
                             {!habit.templateId && (
                               <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
                             )}
@@ -570,6 +653,53 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 <div className="h-2" />
               </div>
             )}
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Rubric picker popup — for parent-log mode long-press */}
+      {rubricPickerHabit && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={() => setRubricPickerHabit(null)}
+        >
+          <motion.div
+            initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+          >
+            <div className="px-5 pt-4 pb-2">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/60">{t.parent_log_choose}</div>
+              <div className="mt-1 font-extrabold text-emerald-900 text-base leading-tight">
+                {getHabitTitle(rubricPickerHabit, lang)}
+              </div>
+            </div>
+            <div className="p-4 grid grid-cols-3 gap-2">
+              <button onClick={() => applyRubricPick('belum')}
+                className="rounded-2xl border-2 border-slate-300 bg-gradient-to-br from-slate-100 to-slate-200 py-3 active:scale-[0.97]">
+                <div className="text-xl">↩️</div>
+                <div className="text-[13px] font-extrabold text-slate-700 mt-1">{t.rubric_belum_label}</div>
+                <div className="text-[9px] font-semibold mt-0.5 opacity-80 text-slate-600">{t.rubric_belum_hint}</div>
+              </button>
+              <button onClick={() => applyRubricPick('sah')}
+                className="rounded-2xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-100 to-emerald-200 py-3 active:scale-[0.97]">
+                <div className="text-xl">✅</div>
+                <div className="text-[13px] font-extrabold text-emerald-900 mt-1">{t.rubric_sah_label}</div>
+                <div className="text-[9px] font-semibold mt-0.5 opacity-80 text-emerald-800">{t.rubric_sah_hint}</div>
+              </button>
+              <button onClick={() => applyRubricPick('ihsan')}
+                className="rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-100 to-amber-200 py-3 active:scale-[0.97]">
+                <div className="text-xl">🌟</div>
+                <div className="text-[13px] font-extrabold text-amber-900 mt-1">{t.rubric_ihsan_label}</div>
+                <div className="text-[9px] font-semibold mt-0.5 opacity-80 text-amber-800">{t.rubric_ihsan_hint}</div>
+              </button>
+            </div>
+            <div className="px-4 pb-4">
+              <button onClick={() => setRubricPickerHabit(null)} className="w-full text-center text-eq-ink/60 text-sm py-2 font-bold">
+                {t.cancel}
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

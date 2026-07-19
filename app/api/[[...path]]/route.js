@@ -262,6 +262,7 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
 
       const allowed = ['nickname', 'dob', 'gender', 'ageBand', 'avatarId', 'favColor', 'preferredLang',
+                       'claimMode',
                        'todayCompleted', 'todayTotal', 'lightLevel', 'blackClouds', 'buildingCount']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
@@ -312,14 +313,23 @@ async function handleRoute(request, { params }) {
         .project({ _id: 0 })
         .toArray()
 
-      // Attach today's claim status
+      // Attach today's claim status + rubric + pointsAwarded (needed by Kid Mode + parent-log UI)
       const todayStr = new Date().toISOString().slice(0, 10)
       const claims = await db.collection('habit_claims')
         .find({ childId, dateStr: todayStr })
-        .project({ _id: 0, habitId: 1, status: 1 })
+        .project({ _id: 0, habitId: 1, status: 1, rubric: 1, pointsAwarded: 1, note: 1 })
         .toArray()
-      const claimMap = Object.fromEntries(claims.map(c => [c.habitId, c.status]))
-      const enriched = habits.map(h => ({ ...h, todayStatus: claimMap[h.id] || 'pending' }))
+      const claimMap = Object.fromEntries(claims.map(c => [c.habitId, c]))
+      const enriched = habits.map(h => {
+        const c = claimMap[h.id]
+        return {
+          ...h,
+          todayStatus: c?.status || 'pending',
+          rubric: c?.rubric || null,
+          pointsAwarded: c?.pointsAwarded ?? null,
+          claimNote: c?.note || '',
+        }
+      })
 
       return json({ habits: enriched })
     }
@@ -397,8 +407,10 @@ async function handleRoute(request, { params }) {
       return json({ ok: true })
     }
 
-    // POST /habits/:id/claim  → child (or parent testing) marks habit as claimed for today
-    // Body: { childId, status: 'claimed' | 'skipped' }
+    // POST /habits/:id/claim  → child (Kid Mode) or parent (Parent Log) marks habit
+    // Body: { childId?, status?: 'claimed'|'skipped'|'verified', rubric?: 'ihsan'|'sah'|'belum', note? }
+    //  - If rubric provided (parent-log mode): create as verified with rubric + pointsAwarded (writes verify_log too)
+    //  - Otherwise: default 'claimed' → goes into verify queue (Kid Mode flow)
     if (route.match(/^\/habits\/[^/]+\/claim$/) && method === 'POST') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
@@ -412,6 +424,53 @@ async function handleRoute(request, { params }) {
       if (!habit) return err('Habit tidak dijumpai', 404)
 
       const dateStr = body.dateStr || new Date().toISOString().slice(0, 10)
+      const rubric = body.rubric
+      const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
+
+      // Parent-log inline verification: rubric provided → record as verified/deleted immediately
+      if (rubric) {
+        if (!['ihsan', 'sah', 'belum'].includes(rubric)) return err('Invalid rubric', 400)
+        if (rubric === 'belum') {
+          // Undo/delete existing claim if any
+          await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+          await db.collection('verify_log').insertOne({
+            habitId, dateStr, childId: habit.childId, familyId: user.familyId,
+            rubric, note, points: 0,
+            verifiedBy: session.userId, verifiedAt: new Date(),
+          })
+          return json({ ok: true, rubric, points: 0, removed: true })
+        }
+        const basePts = Number(habit.points) || 0
+        const points = rubric === 'ihsan' ? Math.round(basePts * 1.5) : basePts
+        const claimData = {
+          habitId,
+          childId: habit.childId,
+          familyId: habit.familyId,
+          dateStr,
+          status: 'verified',
+          rubric,
+          note,
+          pointsAwarded: points,
+          excellence: rubric === 'ihsan',
+          claimedAt: new Date(),
+          claimedBy: session.userId,
+          verifiedBy: session.userId,
+          verifiedAt: new Date(),
+        }
+        await db.collection('habit_claims').updateOne(
+          { habitId, dateStr },
+          { $set: claimData },
+          { upsert: true }
+        )
+        await db.collection('verify_log').insertOne({
+          habitId, dateStr, childId: habit.childId, familyId: user.familyId,
+          rubric, note, points,
+          verifiedBy: session.userId, verifiedAt: new Date(),
+        })
+        return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
+      }
+
+      // Regular claim (Kid Mode or plain toggle)
       const status = body.status || 'claimed'  // 'claimed' | 'verified' | 'rejected' | 'skipped'
       const claimData = {
         habitId,
@@ -422,13 +481,28 @@ async function handleRoute(request, { params }) {
         claimedAt: new Date(),
         claimedBy: session.userId,
       }
-      // Upsert (one claim per habit per day)
       await db.collection('habit_claims').updateOne(
         { habitId, dateStr },
         { $set: claimData },
         { upsert: true }
       )
       return json({ ok: true, claim: claimData })
+    }
+
+    // DELETE /habits/:id/claim  → undo today's claim (used by Kid Mode + parent toggle)
+    // Only allowed if claim exists and status is 'claimed' (not yet verified) OR it's your own verified claim from parent-log
+    if (route.match(/^\/habits\/[^/]+\/claim$/) && method === 'DELETE') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const habitId = route.split('/')[2]
+      const dateStr = new URL(request.url).searchParams.get('dateStr') || new Date().toISOString().slice(0, 10)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const claim = await db.collection('habit_claims').findOne({ habitId, dateStr, familyId: user.familyId })
+      if (!claim) return json({ ok: true, removed: false })
+      await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+      return json({ ok: true, removed: true })
     }
 
     // GET /verify-queue  → list pending claims across all children in family (count only)
@@ -553,6 +627,67 @@ async function handleRoute(request, { params }) {
       })
 
       return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
+    }
+
+    // ═══ Kid Mode PIN (scoped to family) ═══
+    // PIN is 4 digits. Any signed-in parent in a family can set/change the PIN and verify it.
+    // Stored on families doc as { pinHash: scryptHex, pinSalt: hex, pinSetAt: Date }.
+
+    // GET /family/pin  → status only (no hash leak)
+    if (route === '/family/pin' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, pinHash: 0, pinSalt: 0 } })
+      return json({ hasPin: !!fam?.pinSetAt, pinSetAt: fam?.pinSetAt || null })
+    }
+
+    // POST /family/pin  → set or change PIN. Body: { pin: '1234', currentPin?: '9876' }
+    // - If no PIN set yet: any parent may set it
+    // - If PIN already set: must supply matching currentPin
+    if (route === '/family/pin' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const pin = String(body.pin || '')
+      if (!/^\d{4}$/.test(pin)) return err('PIN must be 4 digits', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const fam = await db.collection('families').findOne({ id: user.familyId })
+      if (!fam) return err('Family not found', 404)
+      if (fam.pinHash && fam.pinSalt) {
+        const currentPin = String(body.currentPin || '')
+        if (!/^\d{4}$/.test(currentPin)) return err('Current PIN required', 400)
+        const currentHash = crypto.scryptSync(currentPin, fam.pinSalt, 32).toString('hex')
+        if (currentHash !== fam.pinHash) return err('Current PIN incorrect', 403)
+      }
+      const salt = crypto.randomBytes(16).toString('hex')
+      const hash = crypto.scryptSync(pin, salt, 32).toString('hex')
+      await db.collection('families').updateOne(
+        { id: user.familyId },
+        { $set: { pinHash: hash, pinSalt: salt, pinSetAt: new Date() } }
+      )
+      return json({ ok: true, hasPin: true, pinSetAt: new Date() })
+    }
+
+    // POST /family/pin/verify  → check a PIN. Body: { pin }. Returns { ok } or 403.
+    if (route === '/family/pin/verify' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const pin = String(body.pin || '')
+      if (!/^\d{4}$/.test(pin)) return err('Invalid PIN format', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const fam = await db.collection('families').findOne({ id: user.familyId })
+      if (!fam?.pinHash || !fam?.pinSalt) return err('PIN not set', 404)
+      const hash = crypto.scryptSync(pin, fam.pinSalt, 32).toString('hex')
+      if (hash !== fam.pinHash) return err('PIN incorrect', 403)
+      return json({ ok: true })
     }
 
     // ── unknown ──

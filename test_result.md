@@ -780,4 +780,64 @@ agent_communication:
 
 metadata:
   updated_by: "main_agent"
+
+  - task: "Dual-flow Claim System — Parent Log + Kid Mode + PIN gate"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js, app/kid/page.js, components/eqrel/PinModal.js, components/eqrel/HabitsSheet.js, components/eqrel/ChildSheet.js, app/page.js, lib/i18n/strings.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Implemented full dual-flow claim system to accommodate families where children DO or DO NOT have their own gadgets.
+          
+          Backend additions:
+            - Extended `children.claimMode` field: 'self' | 'parent' (default 'parent')
+            - Extended `families` schema: pinHash (scrypt hex), pinSalt (hex), pinSetAt (Date)
+            - Enhanced POST /api/habits/:id/claim to accept `{ rubric: 'ihsan'|'sah'|'belum', note? }` for inline parent-log verification (creates verified claim directly + verify_log entry). Legacy `{ status: 'claimed' }` still works for Kid Mode flow.
+            - Added DELETE /api/habits/:id/claim for undo (both kid and parent can revert non-verified claims)
+            - New endpoints: GET /api/family/pin (status only, no hash leak), POST /api/family/pin (set/change with currentPin validation for change), POST /api/family/pin/verify (returns 200/403)
+            - Habits GET now enriches with rubric + pointsAwarded + claimNote for Kid Home and parent-log display
+          
+          Frontend (Parent-Log Mode):
+            - ChildSheet: added claimMode toggle "👪 Parent log terus" (default) vs "📱 Anak claim sendiri"
+            - HabitsSheet enhanced: when child.claimMode='parent':
+                * Tap on circle → auto-Sah (creates verified claim with full points, no queue)
+                * Long-press (550ms) or right-click → opens rubric picker popup with 3 gradient buttons (Belum/Sah/Ihsan)
+                * Ihsan renders golden Sparkles icon + amber tint on habit card + "+X mata 🌟"
+                * Amber tip banner explains the tap/long-press interaction
+              When claimMode='self': legacy behavior preserved (marks as pending 'claimed' → parent verifies later in Verify Queue)
+          
+          Frontend (Kid Mode):
+            - New /kid?childId=xxx route: fullscreen playful UI with kid's fav color gradient background + decorative blur blobs
+            - Large avatar ring + Islamic greeting "Assalamualaikum, {nickname}! 🌙"
+            - Two progress cards: today habits (X/Y) and Mata Bina counter with pending (+N?) indicator
+            - Habit cards color-coded by status: pending / claimed(waiting) / verified(sah) / ihsan(amber+star)
+            - Tap habit → creates 'claimed' status → toast "MashaAllah! Menunggu semakan ibu/bapa ✨" → auto-refresh
+            - Tap again on 'claimed' → undo. Verified habits are LOCKED (parent's final say).
+            - Sticky bottom "Balik ke Parent" button → PIN gate → dashboard
+            - New PinModal component: reusable 4-digit keypad with 3 modes (enter/set/change). Uses scrypt hash on server side.
+          
+          Dashboard integration:
+            - PinModal + kidModeChild state added to ParentDashboard
+            - ChildSheet now shows big emerald "📱 Masuk Kid Mode" button (visible only when claimMode='self')
+            - Clicking triggers: GET /api/family/pin to check hasPin → if yes, mode='enter'; if no, mode='set' (first-time setup two-step). On PIN success → navigate to /kid?childId=xxx
+          
+          i18n additions (MS/EN/ID/AR ~40 keys):
+            claim_mode_label / self / self_hint / parent / parent_hint,
+            parent_log_tap_hint / choose / short_ihsan / short_sah / short_belum,
+            kid_enter / enter_hint / greeting(name) / progress_label / mata_label / all_done / empty / status_pending / claimed / verified(pts) / ihsan(pts) / tap_to_claim / claim_toast / undo_toast / exit / locked_msg,
+            pin_set_title / body / enter_title / body / change_title / current / new / confirm / mismatch / wrong / saved / set_cta / verify_cta / cancel / forgot.
+          
+          Verified end-to-end via screenshot tool (420×900 authenticated session):
+            1. HabitsSheet parent-log mode (MS): amber tip banner, prior taps recorded as verified with strikethrough, +80 Mata total (real). Solat Subuh/Zohor/Asar rendered as `claimed` (still testing), Maghrib/Isyak show fully verified strikethrough with matched points.
+            2. Kid Home (MS): full playful UI with avatar+greeting, 5/34 stat + +30 Mata + (+50?) pending, habit list colored correctly — 'Ibu/Bapa akan sahkan' for claimed items, 'Sah! +15 Mata' with strikethrough for verified, 'Belum tanda' for pending. Sticky "Balik ke Parent" button visible.
+            3. Kid Home (AR): full RTL layout preserved. Greeting "أهلاً بك، fathiehah! 🌙", statuses "بانتظار الأم/الأب" and "قبول! +15 نقطة", exit button "الرجوع إلى الوالد".
+            4. PIN modal (MS): elegant modal with ShieldCheck icon, "Masukkan PIN" title, 4 progress dots, 3×4 numeric keypad with backspace, "Lupa PIN? Log keluar dan set semula" hint.
+
+          Backend endpoints for PIN + inline rubric added but not exhaustively unit-tested. Manual verification via UI works (parent-log Sah/Ihsan flows, undo, Kid Mode claim). Recommend backend agent test the 4 new/modified endpoints (POST /api/habits/:id/claim with rubric, DELETE claim, POST /api/family/pin, POST /api/family/pin/verify, GET /api/family/pin).
+
   update_note: "Verify Queue Screen (Parent 3-level rubric) complete — backend 41/41 pass + UI verified across MS/EN/AR (2026-01-18)"

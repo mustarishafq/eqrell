@@ -8,6 +8,7 @@ import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
 import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
 import { VerifySheet } from '@/components/eqrel/VerifySheet'
+import { PinModal } from '@/components/eqrel/PinModal'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -136,6 +137,8 @@ const ParentDashboard = () => {
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
+  const [kidModeChild, setKidModeChild] = useState(null)   // child pending Kid Mode entry (PIN gate)
+  const [pinModalMode, setPinModalMode] = useState(null)   // 'enter' | 'set' | null
 
   // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
@@ -532,6 +535,19 @@ const ParentDashboard = () => {
         initial={editingChild}
         onSave={handleSaveChild}
         onDelete={handleDeleteChild}
+        onEnterKidMode={async (child) => {
+          // Close child sheet, check PIN status
+          setSheetOpen(false)
+          try {
+            const res = await fetch('/api/family/pin', { credentials: 'include' })
+            const data = await res.json().catch(() => ({}))
+            setKidModeChild(child)
+            setPinModalMode(data.hasPin ? 'enter' : 'set')
+          } catch {
+            setKidModeChild(child)
+            setPinModalMode('set')
+          }
+        }}
       />
 
       {/* Habits sheet — opens when a child ring is tapped */}
@@ -554,6 +570,19 @@ const ParentDashboard = () => {
           children.forEach(c => refreshChildHabits(c.id))
         }}
         onCountChange={setPendingVerifyCount}
+      />
+
+      {/* PIN gate for Kid Mode entry */}
+      <PinModal
+        open={!!pinModalMode && !!kidModeChild}
+        mode={pinModalMode || 'enter'}
+        onClose={() => { setPinModalMode(null); setKidModeChild(null) }}
+        onSuccess={() => {
+          const c = kidModeChild
+          setPinModalMode(null)
+          setKidModeChild(null)
+          if (c) window.location.href = `/kid?childId=${encodeURIComponent(c.id)}`
+        }}
       />
     </div>
   )

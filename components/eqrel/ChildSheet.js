@@ -41,7 +41,7 @@ export function ageBandFromAge(age) {
 // Locale-aware band label lookup
 const bandLabelKey = (band) => 'band_' + String(band).replace('-', '_')
 
-export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
+export function ChildSheet({ open, onClose, initial, onSave, onDelete, onEnterKidMode }) {
   const { t } = useLang()
   const isEdit = !!initial
   const [nickname, setNickname] = useState('')
@@ -50,6 +50,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
   const [avatarId, setAvatarId] = useState(DEFAULT_BOY_ID)
   const [favColor, setFavColor] = useState('green')
   const [preferredLang, setPreferredLang] = useState('ms')
+  const [claimMode, setClaimMode] = useState('parent')
 
   useEffect(() => {
     if (open && initial) {
@@ -61,6 +62,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
       setAvatarId(initial.avatarId || (g === 'female' ? DEFAULT_GIRL_ID : DEFAULT_BOY_ID))
       setFavColor(initial.favColor || 'green')
       setPreferredLang(initial.preferredLang || 'ms')
+      setClaimMode(initial.claimMode || 'parent')
     } else if (open && !initial) {
       setNickname('')
       setDob('')
@@ -68,6 +70,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
       setAvatarId(DEFAULT_BOY_ID)
       setFavColor('green')
       setPreferredLang('ms')
+      setClaimMode('parent')
     }
   }, [open, initial])
 
@@ -97,6 +100,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
       avatarId,
       favColor,
       preferredLang,
+      claimMode,
       todayCompleted: initial?.todayCompleted ?? 0,
       todayTotal: initial?.todayTotal ?? 0,
       lightLevel: initial?.lightLevel ?? 100,
@@ -316,8 +320,46 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete }) {
                 </div>
               </div>
 
+              {/* Claim mode */}
+              <div>
+                <label className="text-eq-ink font-bold text-sm block mb-1.5">{t.claim_mode_label}</label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'parent', label: t.claim_mode_parent, hint: t.claim_mode_parent_hint },
+                    { id: 'self',   label: t.claim_mode_self,   hint: t.claim_mode_self_hint },
+                  ].map(m => {
+                    const isActive = claimMode === m.id
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => setClaimMode(m.id)}
+                        className={`w-full text-left rounded-xl border-2 px-3 py-2.5 transition-all ${
+                          isActive
+                            ? 'border-eq-green bg-eq-green/8'
+                            : 'border-transparent bg-eq-cream/40 hover:bg-eq-cream/60'
+                        }`}
+                      >
+                        <div className={`font-extrabold text-sm ${isActive ? 'text-eq-green' : 'text-eq-ink'}`}>
+                          {m.label}
+                        </div>
+                        <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{m.hint}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Actions */}
               <div className="pt-2 space-y-2">
+                {isEdit && claimMode === 'self' && onEnterKidMode && (
+                  <button
+                    onClick={() => onEnterKidMode(initial)}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-extrabold py-3 rounded-2xl text-sm active:scale-[0.99] flex items-center justify-center gap-2 shadow-md"
+                  >
+                    <span className="text-lg">📱</span>
+                    {t.kid_enter}
+                  </button>
+                )}
                 <button
                   onClick={handleSave}
                   disabled={!canSave}
