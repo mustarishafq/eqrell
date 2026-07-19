@@ -431,7 +431,7 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, claim: claimData })
     }
 
-    // GET /verify-queue  → list pending claims across all children in family
+    // GET /verify-queue  → list pending claims across all children in family (count only)
     if (route === '/verify-queue' && method === 'GET') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
@@ -445,6 +445,114 @@ async function handleRoute(request, { params }) {
         .project({ _id: 0 })
         .toArray()
       return json({ claims })
+    }
+
+    // GET /verify-queue/items  → enriched pending items (with habit + child data joined)
+    if (route === '/verify-queue/items' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ items: [] })
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const claims = await db.collection('habit_claims')
+        .find({ familyId: user.familyId, status: 'claimed', dateStr: todayStr })
+        .sort({ claimedAt: -1 })
+        .project({ _id: 0 })
+        .toArray()
+
+      if (claims.length === 0) return json({ items: [] })
+
+      // Batch fetch related habits & children
+      const habitIds = [...new Set(claims.map(c => c.habitId))]
+      const childIds = [...new Set(claims.map(c => c.childId))]
+      const [habits, childrenList] = await Promise.all([
+        db.collection('habits').find({ id: { $in: habitIds } }).project({ _id: 0 }).toArray(),
+        db.collection('children').find({ id: { $in: childIds } }).project({ _id: 0 }).toArray(),
+      ])
+      const habitMap = Object.fromEntries(habits.map(h => [h.id, h]))
+      const childMap = Object.fromEntries(childrenList.map(c => [c.id, c]))
+
+      const items = claims.map(c => ({
+        claimId: `${c.habitId}__${c.dateStr}`,
+        habitId: c.habitId,
+        childId: c.childId,
+        dateStr: c.dateStr,
+        status: c.status,
+        claimedAt: c.claimedAt,
+        claimedBy: c.claimedBy,
+        habit: habitMap[c.habitId] || null,
+        child: childMap[c.childId] || null,
+      })).filter(i => i.habit && i.child)
+
+      return json({ items })
+    }
+
+    // POST /verify-queue/items/:claimId/verify  → apply rubric grade
+    // Body: { rubric: 'ihsan' | 'sah' | 'belum', note?: string }
+    // - ihsan: full points × 1.5 (rounded), status='verified', excellence=true
+    // - sah:   full points × 1.0, status='verified'
+    // - belum: 0 points, claim REMOVED (child can retry today)
+    if (route.match(/^\/verify-queue\/items\/[^/]+\/verify$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const parts = route.split('/')
+      const claimId = parts[3]
+      const [habitId, dateStr] = claimId.split('__')
+      if (!habitId || !dateStr) return err('Invalid claim id', 400)
+
+      const body = await request.json().catch(() => ({}))
+      const rubric = body.rubric
+      if (!['ihsan', 'sah', 'belum'].includes(rubric)) return err('Invalid rubric', 400)
+      const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
+
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      const claim = await db.collection('habit_claims').findOne({ habitId, dateStr, familyId: user.familyId })
+      if (!claim) return err('Claim not found', 404)
+      if (claim.status !== 'claimed') return err('Claim already processed', 409)
+
+      const habit = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId })
+      if (!habit) return err('Habit not found', 404)
+
+      // 'belum' → remove claim so child can retry today
+      if (rubric === 'belum') {
+        await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+        // audit trail
+        await db.collection('verify_log').insertOne({
+          habitId, dateStr, childId: claim.childId, familyId: user.familyId,
+          rubric, note, points: 0,
+          verifiedBy: session.userId, verifiedAt: new Date(),
+        })
+        return json({ ok: true, rubric, points: 0, removed: true })
+      }
+
+      // 'ihsan' / 'sah'
+      const basePts = Number(habit.points) || 0
+      const points = rubric === 'ihsan' ? Math.round(basePts * 1.5) : basePts
+
+      await db.collection('habit_claims').updateOne(
+        { habitId, dateStr },
+        { $set: {
+            status: 'verified',
+            rubric,
+            note,
+            pointsAwarded: points,
+            excellence: rubric === 'ihsan',
+            verifiedBy: session.userId,
+            verifiedAt: new Date(),
+          } }
+      )
+      await db.collection('verify_log').insertOne({
+        habitId, dateStr, childId: claim.childId, familyId: user.familyId,
+        rubric, note, points,
+        verifiedBy: session.userId, verifiedAt: new Date(),
+      })
+
+      return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
     }
 
     // ── unknown ──

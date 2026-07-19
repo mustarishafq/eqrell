@@ -594,3 +594,201 @@ agent_communication:
 agent_communication:
     -agent: "main"
     -message: "Full i18n audit completed. Every visible UI string (dashboard, habits sheet incl. all 30 template titles/descs, install prompt, child sheet color/gender/lang picker, band labels, category labels, brand tagline, family setup) now dynamically translates. Verified via screenshot tool with authenticated session — AR/ID/EN dashboards + habits list all render correct language. RTL layout in Arabic preserved. No backend changes needed."
+    -agent: "testing"
+    -message: |
+      🎉 VERIFY QUEUE NEW ENDPOINTS TESTING COMPLETE - ALL TESTS PASSED (41/41)
+      
+      Tested the 2 new Verify Queue endpoints as requested:
+      1. GET /api/verify-queue/items - Enriched pending claims with habit + child data
+      2. POST /api/verify-queue/items/:claimId/verify - 3-level rubric verification
+      
+      All test scenarios passed:
+      ✅ Auth guards (401 without session)
+      ✅ Empty items for users without family
+      ✅ Enriched items with correct structure and claimId format (habitId__dateStr)
+      ✅ Filtering (only today's claims, only status='claimed', excludes deleted habits/children)
+      ✅ Error handling (400, 404, 409)
+      ✅ 'sah' rubric: base points, status='verified', verify_log entry
+      ✅ 'ihsan' rubric: 1.5x points, excellence=true, verify_log entry
+      ✅ 'belum' rubric: claim deleted, points=0, verify_log entry
+      ✅ Note field trimmed and truncated to 200 chars
+      ✅ Data isolation between families
+      ✅ Points math correct (e.g., base=20 → sah=20, ihsan=30)
+      
+      Created comprehensive test suite: /app/test_verify_queue_new.py
+      All test data cleaned up successfully.
+      
+      NO ISSUES FOUND. Both endpoints are production-ready.
+
+
+  - task: "Verify Queue API — 3-level rubric verification endpoints"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js, lib/i18n/strings.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Added two new endpoints to support the Verify Queue Screen:
+
+          1) GET /api/verify-queue/items
+             - Returns enriched pending claims (today's dateStr, status='claimed') scoped to caller's familyId
+             - Sorted by claimedAt desc
+             - Each item joined with related habit + child records: { claimId, habitId, childId, dateStr, status, claimedAt, claimedBy, habit, child }
+             - claimId is deterministic composite: `${habitId}__${dateStr}` (matches the composite key of the habit_claims collection)
+             - Filters out any item whose habit or child was deleted mid-flight
+             - Auth-guarded; returns 401 if not signed in; empty items if no familyId
+
+          2) POST /api/verify-queue/items/:claimId/verify
+             - Body: { rubric: 'ihsan' | 'sah' | 'belum', note?: string(<=200 chars) }
+             - Splits claimId into habitId + dateStr; validates against familyId + status='claimed'
+             - Returns 409 if claim already processed (not 'claimed')
+             - Rubric behaviour:
+                 * 'ihsan' → status='verified', excellence=true, pointsAwarded = round(habit.points * 1.5), note stored, verifiedBy/verifiedAt stamped
+                 * 'sah'   → status='verified', pointsAwarded = habit.points, note stored, verifiedBy/verifiedAt stamped
+                 * 'belum' → habit_claims row DELETED (child can retry today), audit log inserted into verify_log with points:0
+             - Always inserts a row into new `verify_log` collection for audit trail (rubric, note, points, verifiedBy, verifiedAt)
+             - Response shape: { ok: true, rubric, points, excellence? , removed? }
+
+          Existing GET /api/verify-queue (count-only response) preserved for backward compatibility with dashboard badge.
+
+          Also added complete i18n key set (MS/EN/ID/AR) for the Verify UI:
+             verify_title, verify_subtitle(n), verify_empty_title/body, verify_intro,
+             verify_claim_by(name), verify_claim_time_now/min/hour,
+             verify_note_optional/placeholder, verify_confirm_* (unused in UI yet but reserved),
+             rubric_{ihsan|sah|belum}_{label,hint}, verify_awarded(pts), verify_reset,
+             verify_processing, verify_error.
+
+          Seeded 34 pending claims into local DB for manual verification (all 34 habits of test child faizalzainon@gmail.com set to status='claimed' for today's dateStr).
+
+          Needs backend testing to confirm:
+           - GET /api/verify-queue/items returns items array with proper join
+           - POST verify with each rubric behaves correctly (points math, delete vs update, verify_log insertion)
+           - Auth guards + 400/404/409 error paths
+           - Composite claimId parsing edge cases
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ALL VERIFY QUEUE TESTS PASSED (41/41)
+          
+          Comprehensive test suite executed for the two new Verify Queue endpoints. Created /app/test_verify_queue_new.py with automated tests covering:
+          
+          ✅ SECTION 1: GET /api/verify-queue/items - Unauthenticated (1 test)
+             - Returns 401 without valid session cookie
+          
+          ✅ SECTION 2: GET /api/verify-queue/items - User without family (1 test)
+             - Returns empty items array when user has no familyId
+          
+          ✅ SECTION 3: Setup test data
+             - Created test family with 2 parents (Ibu + Bapa)
+             - Created 2 children with 7 habits total
+             - Created 5 claims (3 pending today, 1 yesterday, 1 verified)
+          
+          ✅ SECTION 4: GET /api/verify-queue/items - With data (6 tests)
+             - Returns correct number of items (3 pending claims for today only)
+             - Items have all required fields (claimId, habitId, childId, dateStr, status, claimedAt, claimedBy, habit, child)
+             - claimId format is correct: ${habitId}__${dateStr}
+             - Items have habit and child joined (enriched data)
+             - All items have status='claimed'
+             - All items have today's dateStr (yesterday's claim filtered out)
+          
+          ✅ SECTION 5: POST verify - Error cases (5 tests)
+             - Returns 401 without auth
+             - Returns 400 for invalid rubric (e.g., 'invalid', 'foo')
+             - Returns 400 for missing rubric
+             - Returns 400 for malformed claimId (no __ separator)
+             - Returns 404 for non-existent claim
+          
+          ✅ SECTION 6: POST verify - 'sah' rubric (11 tests)
+             - Returns ok:true with rubric='sah'
+             - Awards base points (20 points for habit with points=20)
+             - excellence=false in response
+             - Claim status updated to 'verified' in DB
+             - pointsAwarded set correctly in DB
+             - Note stored correctly (trimmed)
+             - verifiedBy set to current user
+             - verifiedAt timestamp set
+             - verify_log entry created
+             - verify_log has correct rubric and points
+             - Returns 409 when trying to verify already processed claim
+          
+          ✅ SECTION 7: POST verify - 'ihsan' rubric (6 tests)
+             - Returns ok:true with rubric='ihsan'
+             - Awards 1.5x points (45 points for habit with points=30)
+             - excellence=true in response
+             - Claim has status='verified' and excellence=true in DB
+             - pointsAwarded set to 1.5x in DB
+             - verify_log has correct ihsan rubric and points
+          
+          ✅ SECTION 8: POST verify - 'belum' rubric (6 tests)
+             - Returns ok:true with rubric='belum'
+             - Awards 0 points
+             - removed=true in response
+             - Claim DELETED from DB (child can re-claim today)
+             - verify_log entry created with rubric='belum' and points=0
+             - verify_log stores note for belum
+          
+          ✅ SECTION 9: Note field handling (1 test)
+             - Note field trimmed (leading/trailing spaces removed)
+             - Note field truncated to max 200 chars
+          
+          ✅ SECTION 10: Data isolation (2 tests)
+             - User from different family sees no claims (empty items array)
+             - User from different family cannot verify other family's claims (404)
+          
+          ✅ SECTION 11: Verify items filtering (2 tests)
+             - Items with deleted habit are filtered out
+             - Items with deleted child are filtered out
+          
+          KEY FINDINGS:
+          - Both new endpoints working correctly
+          - Auth guards working (401 without session)
+          - Error handling appropriate (400, 404, 409 status codes)
+          - Points math correct: base=20 → sah=20, ihsan=30; base=30 → sah=30, ihsan=45
+          - 'belum' rubric correctly deletes claim (child can retry)
+          - verify_log entries created for all rubrics including belum
+          - Note field properly trimmed and truncated to 200 chars
+          - Data isolation between families working correctly
+          - Items with deleted habits/children properly filtered out
+          - claimId composite format (habitId__dateStr) working correctly
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. Verify Queue API endpoints are production-ready.
+
+  - task: "Verify Queue Screen — Parent 3-level rubric UI"
+    implemented: true
+    working: "NA"
+    file: "components/eqrel/VerifySheet.js, app/page.js, lib/i18n/strings.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Built VerifySheet — a full bottom-sheet UI (mirrors HabitsSheet UX) that opens from the dashboard "X tugasan sedia disemak" button.
+          
+          Features:
+            - One-item-at-a-time review flow (progress dots for multi-item queue)
+            - Child avatar + nickname + relative time ("baru saja / N min lalu / N jam lalu") localised to all 4 languages
+            - Habit card shows category icon+label, points, custom badge if applicable, localised title & desc via getHabitTitle/getHabitDesc
+            - Optional note textarea for parent → child
+            - Sticky 3-button rubric action bar:
+                Belum (↩️ slate gradient) · Sah (✅ emerald gradient) · Ihsan (🌟 amber gradient)
+                Each with label + hint (e.g. "Cemerlang · +50% Mata")
+            - Toast on success (green sparkles + points), reset (amber), error (red)
+            - Empty state ("Alhamdulillah, semua bersih!") with mascot emoji
+            - Intro tip visible on first item to educate parent
+            - Auto-advance to next item after action; refetches on close via parent
+          
+          Dashboard integration:
+            - New state `verifySheetOpen` in ParentDashboard
+            - Verify button (existing) now has onClick to open sheet
+            - On close, refreshes all children's habit counts (so completed rings update) and updates pending count via onCountChange
+          
+          All copy fully i18n (MS/EN/ID/AR). Rubric buttons render RTL-safe (no directional icons).
+          
+          Not tested via UI yet — will screenshot after backend validation.

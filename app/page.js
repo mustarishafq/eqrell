@@ -7,6 +7,7 @@ import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
 import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
+import { VerifySheet } from '@/components/eqrel/VerifySheet'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -134,6 +135,7 @@ const ParentDashboard = () => {
   const [habitsSheetChild, setHabitsSheetChild] = useState(null)  // when set, opens HabitsSheet
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
+  const [verifySheetOpen, setVerifySheetOpen] = useState(false)
 
   // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
@@ -470,6 +472,7 @@ const ParentDashboard = () => {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45, duration: 0.4 }}
+          onClick={() => setVerifySheetOpen(true)}
           className="w-full bg-eq-blue/10 border-2 border-eq-blue/20 rounded-2xl px-3 py-2.5 flex items-center gap-2.5 hover:bg-eq-blue/15 transition-all active:scale-[0.99] flex-shrink-0"
         >
           <img src={ASSETS.verifyClip} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
@@ -540,6 +543,17 @@ const ParentDashboard = () => {
         }}
         child={habitsSheetChild}
         onCountChange={handleHabitCountChange}
+      />
+
+      {/* Verify Queue sheet — parent 3-level rubric */}
+      <VerifySheet
+        open={verifySheetOpen}
+        onClose={() => {
+          setVerifySheetOpen(false)
+          // refresh habit counts (verified/removed claims affect done count) for all children
+          children.forEach(c => refreshChildHabits(c.id))
+        }}
+        onCountChange={setPendingVerifyCount}
       />
     </div>
   )
