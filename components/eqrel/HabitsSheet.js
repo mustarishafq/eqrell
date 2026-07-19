@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil } from 'lucide-react'
+import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
+import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
+import { getTutorial } from '@/lib/tutorials'
 
 const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
 
@@ -23,6 +25,19 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [activeCategory, setActiveCategory] = useState(null)
   const [busyTemplateId, setBusyTemplateId] = useState(null)
   const [catFilter, setCatFilter] = useState('all')  // filter for grouped list: 'all' | category id
+
+  // Tutorial: category chips + focus (auto-opens on first LIST view)
+  const tutCats = useTutorial('parent_habit_categories', { autoOpenFirstTime: false })
+  useEffect(() => {
+    if (open && view === 'list' && habits.length > 0) {
+      try {
+        if (!localStorage.getItem('eqrel-tut-v1-parent_habit_categories')) {
+          const timer = setTimeout(() => tutCats.forceOpen(), 600)
+          return () => clearTimeout(timer)
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }, [open, view, habits.length, tutCats])
 
   // Custom habit form
   const [customTitle, setCustomTitle] = useState('')
@@ -283,13 +298,23 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 <div className="font-extrabold text-eq-ink text-lg leading-tight truncate">{child.nickname}</div>
               </div>
               {view === 'list' && (
-                <button
-                  onClick={() => { setView('brief') }}
-                  className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
-                  title={t.habits_help_aria}
-                >
-                  <Info className="w-5 h-5 text-eq-ink/60" />
-                </button>
+                <>
+                  <button
+                    onClick={tutCats.forceOpen}
+                    className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
+                    title="Help"
+                    aria-label="Help"
+                  >
+                    <HelpCircle className="w-5 h-5 text-eq-ink/60" />
+                  </button>
+                  <button
+                    onClick={() => { setView('brief') }}
+                    className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
+                    title={t.habits_help_aria}
+                  >
+                    <Info className="w-5 h-5 text-eq-ink/60" />
+                  </button>
+                </>
               )}
               <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0">
                 <X className="w-5 h-5 text-eq-ink/60" />
@@ -821,6 +846,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           </motion.div>
         </motion.div>
       )}
+      {/* Tutorial: parent habit categories */}
+      <Tutorial open={tutCats.open} onClose={tutCats.close} config={getTutorial('parent_habit_categories', lang)} />
     </AnimatePresence>
   )
 }

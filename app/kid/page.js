@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Check, LogOut, Star, Plus, X } from 'lucide-react'
+import { Sparkles, Check, LogOut, Star, Plus, X, HelpCircle } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
 import { PinModal } from '@/components/eqrel/PinModal'
+import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
+import { getTutorial } from '@/lib/tutorials'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -31,6 +33,11 @@ function KidHomeInner() {
   const [showRewards, setShowRewards] = useState(false)
   const [proposeOpen, setProposeOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
+
+  // Tutorials
+  const tutWelcome = useTutorial('kid_welcome')
+  const tutCats    = useTutorial('kid_categories', { autoOpenFirstTime: false })
+  const tutRewards = useTutorial('kid_rewards',    { autoOpenFirstTime: false })
 
   const load = useCallback(async () => {
     if (!childId) return
@@ -178,6 +185,18 @@ function KidHomeInner() {
       <div className="pointer-events-none absolute bottom-40 right-0 w-72 h-72 rounded-full blur-3xl translate-x-1/3" style={{ background: '#FFB70322' }} />
 
       <div className="relative z-10 max-w-md mx-auto px-5">
+        {/* Help button — top-right */}
+        <div className="absolute top-2 right-4 z-20">
+          <button
+            onClick={tutWelcome.forceOpen}
+            className="w-9 h-9 rounded-full bg-white/80 backdrop-blur border-2 border-white/90 shadow-sm text-emerald-700 flex items-center justify-center active:scale-95"
+            aria-label="Help"
+            title="Help"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* Header — avatar + greeting */}
         <div className="pt-2 flex flex-col items-center">
           <motion.div
@@ -234,7 +253,18 @@ function KidHomeInner() {
         {/* Reward Shop toggle */}
         {!loading && (
           <button
-            onClick={() => setShowRewards(v => !v)}
+            onClick={() => {
+              const opening = !showRewards
+              setShowRewards(opening)
+              if (opening) {
+                // Show rewards tutorial only on first open
+                try {
+                  if (!localStorage.getItem('eqrel-tut-v1-kid_rewards')) {
+                    tutRewards.forceOpen()
+                  }
+                } catch (e) { /* ignore */ }
+              }
+            }}
             className={`mt-3 w-full rounded-2xl px-4 py-2.5 border-2 transition-all font-extrabold text-sm flex items-center justify-between ${
               showRewards
                 ? 'bg-purple-500 border-purple-500 text-white'
@@ -245,7 +275,18 @@ function KidHomeInner() {
               <span className="text-lg">🎁</span>
               {t.reward_shop_title}
             </span>
-            <span className="text-[11px] opacity-80">
+            <span className="flex items-center gap-2 text-[11px] opacity-80">
+              {showRewards && (
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); tutRewards.forceOpen() }}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/25 hover:bg-white/40 cursor-pointer"
+                  aria-label="Help"
+                  title="Help"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </span>
+              )}
               {showRewards ? '×' : '→'}
             </span>
           </button>
@@ -428,7 +469,16 @@ function KidHomeInner() {
             return (
               <>
                 {/* Category shortcut chips — 3×2 grid, all visible with icon + label */}
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="relative">
+                  <button
+                    onClick={tutCats.forceOpen}
+                    className="absolute -top-1 right-0 z-10 w-6 h-6 rounded-full bg-white/70 hover:bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center active:scale-95"
+                    aria-label="Help"
+                    title="Help"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="grid grid-cols-3 gap-1.5">
                   <CategoryChip
                     active={catFilter === 'all'}
                     label={t.kid_cat_all}
@@ -470,6 +520,7 @@ function KidHomeInner() {
                       />
                     )
                   })}
+                </div>
                 </div>
 
                 {doneCount === habits.length && catFilter === 'all' && (
@@ -552,6 +603,11 @@ function KidHomeInner() {
         onSubmit={submitProposal}
         t={t}
       />
+
+      {/* Tutorials */}
+      <Tutorial open={tutWelcome.open} onClose={tutWelcome.close} config={getTutorial('kid_welcome', lang)} />
+      <Tutorial open={tutCats.open}    onClose={tutCats.close}    config={getTutorial('kid_categories', lang)} />
+      <Tutorial open={tutRewards.open} onClose={tutRewards.close} config={getTutorial('kid_rewards', lang)} />
     </div>
   )
 }

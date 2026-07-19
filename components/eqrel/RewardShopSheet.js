@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Check, XCircle, PackageCheck, Trash2, Plus, ArrowLeft } from 'lucide-react'
+import { X, Sparkles, Check, XCircle, PackageCheck, Trash2, Plus, ArrowLeft, HelpCircle } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import {
   REWARD_TEMPLATES, REWARD_CATEGORIES,
   getRewardTitle, getRewardDesc, getRewardCategoryLabel,
 } from '@/lib/rewardTemplates'
+import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
+import { getTutorial } from '@/lib/tutorials'
 
 const REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','👥','🧸','🎬','📕','🕌','🎨','🍽️','🛏️','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊']
 
@@ -29,6 +31,19 @@ export function RewardShopSheet({ open, onClose, children }) {
   const [busyId, setBusyId] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
   const [reviewProp, setReviewProp] = useState(null) // proposal being reviewed with editable cost
+
+  // Tutorial: auto-open on first open
+  const tut = useTutorial('parent_reward_shop', { autoOpenFirstTime: false })
+  useEffect(() => {
+    if (open) {
+      try {
+        if (!localStorage.getItem('eqrel-tut-v1-parent_reward_shop')) {
+          const timer = setTimeout(() => tut.forceOpen(), 500)
+          return () => clearTimeout(timer)
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }, [open, tut])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -128,13 +143,23 @@ export function RewardShopSheet({ open, onClose, children }) {
                   {t.reward_pending_count(pending.length)}
                 </p>
               </div>
-              <button
-                onClick={onClose}
-                className="w-9 h-9 rounded-full bg-eq-cream/60 hover:bg-eq-cream flex items-center justify-center"
-                aria-label={t.cancel}
-              >
-                <X className="w-5 h-5 text-eq-ink/60" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={tut.forceOpen}
+                  className="w-9 h-9 rounded-full bg-eq-cream/60 hover:bg-eq-cream flex items-center justify-center"
+                  aria-label="Help"
+                  title="Help"
+                >
+                  <HelpCircle className="w-4 h-4 text-eq-ink/60" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-full bg-eq-cream/60 hover:bg-eq-cream flex items-center justify-center"
+                  aria-label={t.cancel}
+                >
+                  <X className="w-5 h-5 text-eq-ink/60" />
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}
@@ -221,6 +246,9 @@ export function RewardShopSheet({ open, onClose, children }) {
             busy={busyId === reviewProp?.id}
             t={t}
           />
+
+          {/* Tutorial */}
+          <Tutorial open={tut.open} onClose={tut.close} config={getTutorial('parent_reward_shop', lang)} />
         </motion.div>
       )}
     </AnimatePresence>
