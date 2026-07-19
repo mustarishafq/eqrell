@@ -290,17 +290,17 @@ async def test_post_missing_fields_defaults():
                 # Debug: print the actual config
                 print(f"DEBUG: Received config: {config}")
                 
-                # Verify defaults (NOTE: Testing actual behavior, not requirements)
-                # BUG 1: azanVolume should default to 80 but returns None due to Number(undefined) ?? 80 = NaN
-                # BUG 2: preAzanEnabled should default to true per requirements but implementation uses !!body.preAzanEnabled = false
+                # Verify defaults (FIXED: Both bugs are now resolved)
+                # FIX 1: azanVolume now correctly defaults to 80 (was NaN before)
+                # FIX 2: preAzanEnabled now correctly defaults to true (was false before)
                 checks = [
                     (config.get('azanEnabled') == False, f"azanEnabled default should be False, got {config.get('azanEnabled')}"),
                     (config.get('azanId') == 'makkah', f"azanId default should be 'makkah', got {config.get('azanId')}"),
                     (config.get('azanFajrId') == 'fajr-makkah', f"azanFajrId default should be 'fajr-makkah', got {config.get('azanFajrId')}"),
-                    # BUG: azanVolume returns None instead of 80
-                    (config.get('azanVolume') is None, f"azanVolume currently returns None (BUG: should be 80), got {config.get('azanVolume')}"),
-                    # BUG: preAzanEnabled returns False instead of True per requirements
-                    (config.get('preAzanEnabled') == False, f"preAzanEnabled currently returns False (BUG: requirements say default true), got {config.get('preAzanEnabled')}"),
+                    # FIXED: azanVolume now correctly defaults to 80
+                    (config.get('azanVolume') == 80, f"azanVolume should default to 80, got {config.get('azanVolume')}"),
+                    # FIXED: preAzanEnabled now correctly defaults to true
+                    (config.get('preAzanEnabled') == True, f"preAzanEnabled should default to True, got {config.get('preAzanEnabled')}"),
                     (config.get('preAzanMin') == 10, f"preAzanMin default should be 10, got {config.get('preAzanMin')}"),
                 ]
                 
@@ -311,7 +311,7 @@ async def test_post_missing_fields_defaults():
                         all_passed = False
                 
                 if all_passed:
-                    print("✅ Default values match current implementation (NOTE: 2 bugs found - see summary)")
+                    print("✅ All default values correct (both bugs fixed)")
                     return True
                 else:
                     return False

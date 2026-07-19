@@ -693,8 +693,8 @@ async function handleRoute(request, { params }) {
       const azanEnabled = !!body.azanEnabled
       const azanId = String(body.azanId || 'makkah').trim().slice(0, 40)
       const azanFajrId = String(body.azanFajrId || 'fajr-makkah').trim().slice(0, 40)
-      const azanVolume = Math.min(100, Math.max(0, Number(body.azanVolume) ?? 80))
-      const preAzanEnabled = !!body.preAzanEnabled
+      const azanVolume = Math.min(100, Math.max(0, Number(body.azanVolume ?? 80)))
+      const preAzanEnabled = body.preAzanEnabled !== false
       const preAzanMin = [0, 5, 10, 15, 20, 30].includes(Number(body.preAzanMin)) ? Number(body.preAzanMin) : 10
       const config = {
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,

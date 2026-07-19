@@ -1929,3 +1929,80 @@ frontend:
       - Frontend can handle null/false with fallbacks
       
       RECOMMENDATION: Fix the two minor bugs above for consistency with requirements and to avoid potential frontend issues with null values.
+
+
+  - agent: "testing"
+    message: |
+      🎉 AZAN FIXES VERIFICATION COMPLETE - BOTH BUGS FIXED (14/14 tests passed)
+      
+      Re-ran the display-config Azan test suite to verify the 2 fixes requested:
+      
+      **FIX 1 (Line 696): azanVolume default handling**
+      - BEFORE: `Number(body.azanVolume) ?? 80` → Number(undefined) = NaN, NaN ?? 80 = NaN (stored as null)
+      - AFTER:  `Number(body.azanVolume ?? 80)` → Number(80) = 80 ✓
+      - VERIFIED: POST with NO azanVolume field → config.azanVolume === 80 ✓
+      - VERIFIED: POST with azanVolume=null → config.azanVolume === 80 ✓
+      
+      **FIX 2 (Line 697): preAzanEnabled default handling**
+      - BEFORE: `!!body.preAzanEnabled` → !!undefined = false ✗
+      - AFTER:  `body.preAzanEnabled !== false` → undefined !== false = true ✓
+      - VERIFIED: POST with NO preAzanEnabled field → config.preAzanEnabled === true ✓
+      - VERIFIED: POST with preAzanEnabled=false explicitly → config.preAzanEnabled === false ✓
+      - VERIFIED: POST with preAzanEnabled=true explicitly → config.preAzanEnabled === true ✓
+      
+      **Test Results:**
+      
+      ✅ Original test suite: /app/test_display_config_azan.py (9/9 tests passed)
+         - Updated Test 4 to check for CORRECT behavior (was checking for buggy behavior)
+         - All auth guards, field validation, clamping, string handling, isolation, and regression tests pass
+      
+      ✅ Focused verification suite: /app/test_azan_fixes_verification.py (5/5 tests passed)
+         - FIX 1: azanVolume undefined → 80 ✓
+         - FIX 1: azanVolume null → 80 ✓
+         - FIX 2: preAzanEnabled undefined → true ✓
+         - FIX 2: preAzanEnabled=false → false ✓
+         - FIX 2: preAzanEnabled=true → true ✓
+      
+      **Summary:**
+      - Both bugs are now FIXED and verified
+      - All prior tests still pass (no regressions)
+      - Default behavior now matches requirements:
+        * azanVolume defaults to 80 when undefined/null
+        * preAzanEnabled defaults to true when undefined
+        * Explicit values are respected correctly
+      
+      NO ISSUES FOUND. Both fixes are production-ready.
+
+backend:
+  - task: "Display Config Azan/Audio fields - Bug fixes"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ VERIFIED - Both Azan field bugs fixed and tested (14/14 tests passed)
+          
+          Fixed 2 bugs in POST /api/family/display-config (lines 696-697):
+          
+          1. Line 696: azanVolume default handling
+             - Changed from: `Number(body.azanVolume) ?? 80` (buggy - NaN passes through)
+             - Changed to:   `Number(body.azanVolume ?? 80)` (correct - defaults to 80 before Number call)
+             - Verified: POST with undefined/null azanVolume → correctly defaults to 80
+          
+          2. Line 697: preAzanEnabled default handling
+             - Changed from: `!!body.preAzanEnabled` (always false if undefined)
+             - Changed to:   `body.preAzanEnabled !== false` (defaults to true unless explicitly false)
+             - Verified: POST with undefined preAzanEnabled → correctly defaults to true
+             - Verified: Explicit false/true values persist correctly
+          
+          All tests pass:
+          - Original test suite (9/9): auth, validation, clamping, string handling, isolation, regression
+          - Focused verification (5/5): both fixes verified with multiple scenarios
+          - No regressions: all prior functionality still works
+          
+          Both fixes are production-ready.
