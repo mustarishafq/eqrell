@@ -40,16 +40,6 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       } catch (e) { /* ignore */ }
     }
   }, [open, view, habits.length, tutCats])
-  useEffect(() => {
-    if (rubricPickerHabit) {
-      try {
-        if (!localStorage.getItem('eqrel-tut-v1-ihsan_meaning')) {
-          const timer = setTimeout(() => tutIhsan.forceOpen(), 300)
-          return () => clearTimeout(timer)
-        }
-      } catch (e) { /* ignore */ }
-    }
-  }, [rubricPickerHabit, tutIhsan])
 
   // Custom habit form
   const [customTitle, setCustomTitle] = useState('')
@@ -171,6 +161,18 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
   const isParentLogMode = child?.claimMode === 'parent' || !child?.claimMode
   const [rubricPickerHabit, setRubricPickerHabit] = useState(null)
+
+  // Auto-open Ihsan tutorial the first time the rubric picker appears
+  useEffect(() => {
+    if (rubricPickerHabit) {
+      try {
+        if (!localStorage.getItem('eqrel-tut-v1-ihsan_meaning')) {
+          const timer = setTimeout(() => tutIhsan.forceOpen(), 300)
+          return () => clearTimeout(timer)
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }, [rubricPickerHabit, tutIhsan])
 
   // Quick tap in parent-log mode = auto-Sah (or undo if already done)
   // Quick tap in self mode = classic toggle (claimed/pending)
