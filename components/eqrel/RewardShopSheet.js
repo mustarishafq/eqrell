@@ -527,7 +527,7 @@ const ProposalCard = ({ prop, child, onReview, onReject, busy, t }) => {
 const AddCustomModal = ({ open, onClose, onSaved, t }) => {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
-  const [cost, setCost] = useState(20)
+  const [cost, setCost] = useState(50)
   const [icon, setIcon] = useState('🎁')
   const [category, setCategory] = useState('activity')
   const [busy, setBusy] = useState(false)
@@ -620,7 +620,7 @@ const ReviewProposalModal = ({ open, proposal, childMap, onClose, onApprove, onR
     if (proposal) {
       setTitle(proposal.title || '')
       setDesc(proposal.desc || '')
-      setCost(Number(proposal.cost) || 20)
+      setCost(Number(proposal.cost) || 50)
       setIcon(proposal.icon || '🎁')
       setCategory(proposal.category || 'activity')
     }

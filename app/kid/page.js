@@ -616,7 +616,7 @@ function KidHomeInner() {
 const ProposeRewardModal = ({ open, onClose, onSubmit, t }) => {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
-  const [cost, setCost] = useState(20)
+  const [cost, setCost] = useState(50)
   const [icon, setIcon] = useState('🎁')
   const [category, setCategory] = useState('activity')
   const [busy, setBusy] = useState(false)
