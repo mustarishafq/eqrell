@@ -10,6 +10,7 @@ import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
 import { VerifySheet } from '@/components/eqrel/VerifySheet'
 import { PinModal } from '@/components/eqrel/PinModal'
 import { RewardShopSheet } from '@/components/eqrel/RewardShopSheet'
+import { DeviceSettingsSheet } from '@/components/eqrel/DeviceSettingsSheet'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -142,6 +143,32 @@ const ParentDashboard = () => {
   const [pinModalMode, setPinModalMode] = useState(null)   // 'enter' | 'set' | null
   const [rewardShopOpen, setRewardShopOpen] = useState(false)
   const [pendingRewardCount, setPendingRewardCount] = useState(0)
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false)
+
+  // ── Device Role auto-redirect ──
+  // On first load, if this device is configured as a "kid device", auto-navigate.
+  // Skipped when URL has ?parent=1 (returning from Kid Mode via PIN exit).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const isReturningFromKid = params.has('parent')
+    if (isReturningFromKid) {
+      // Clean the URL so refresh works normally
+      window.history.replaceState({}, '', window.location.pathname)
+      return
+    }
+    let role = null
+    try { role = localStorage.getItem('eqrel-device-role') } catch (e) { /* ignore */ }
+    if (!role || role === 'parent') return
+    if (role === 'kid:any') {
+      window.location.replace('/kid')
+      return
+    }
+    if (role.startsWith('kid:')) {
+      const cid = role.slice(4)
+      window.location.replace(`/kid?childId=${encodeURIComponent(cid)}`)
+    }
+  }, [])
 
   // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
@@ -435,16 +462,37 @@ const ParentDashboard = () => {
               const handleCancel = () => {
                 if (pressTimer) { clearTimeout(pressTimer); pressTimer = null }
               }
+              const enterKidMode = async (e) => {
+                e.stopPropagation()
+                try {
+                  const res = await fetch('/api/family/pin', { credentials: 'include' })
+                  const data = await res.json().catch(() => ({}))
+                  setKidModeChild(child)
+                  setPinModalMode(data.hasPin ? 'enter' : 'set')
+                } catch {
+                  setKidModeChild(child)
+                  setPinModalMode('set')
+                }
+              }
               return (
-                <button
-                  key={child.id}
-                  onMouseDown={handleDown} onMouseUp={handleUp} onMouseLeave={handleCancel}
-                  onTouchStart={handleDown} onTouchEnd={handleUp} onTouchCancel={handleCancel}
-                  className="active:scale-95 transition-transform"
-                  aria-label={`Habits ${child.nickname}`}
-                >
-                  <ChildProgressRing child={child} habitCount={habitCounts[child.id]} />
-                </button>
+                <div key={child.id} className="flex flex-col items-center gap-1">
+                  <button
+                    onMouseDown={handleDown} onMouseUp={handleUp} onMouseLeave={handleCancel}
+                    onTouchStart={handleDown} onTouchEnd={handleUp} onTouchCancel={handleCancel}
+                    className="active:scale-95 transition-transform"
+                    aria-label={`Habits ${child.nickname}`}
+                  >
+                    <ChildProgressRing child={child} habitCount={habitCounts[child.id]} />
+                  </button>
+                  <button
+                    onClick={enterKidMode}
+                    className="mt-1 px-2 py-0.5 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 text-[10px] font-extrabold uppercase tracking-wider border border-purple-300 active:scale-95 flex items-center gap-1"
+                    style={{ borderColor: `${child.favColor || '#7C3AED'}44` }}
+                    aria-label={`Kid Mode ${child.nickname}`}
+                  >
+                    🧒 {t.kid_mode_btn}
+                  </button>
+                </div>
               )
             })}
             {children.length < 20 && (
@@ -512,6 +560,23 @@ const ParentDashboard = () => {
             <div className="text-[11px] text-amber-800/70 leading-tight">{t.reward_pending_count(pendingRewardCount)}</div>
           </div>
           <ChevronRight className="w-5 h-5 text-amber-700 flex-shrink-0" strokeWidth={2.5} />
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.4 }}
+          onClick={() => setDeviceSettingsOpen(true)}
+          className="w-full bg-white/70 backdrop-blur border-2 border-eq-cream rounded-2xl px-3 py-2 flex items-center gap-2.5 hover:bg-white active:scale-[0.99] flex-shrink-0"
+        >
+          <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-lg flex-shrink-0">📱</div>
+          <div className="flex-1 text-left min-w-0">
+            <div className="font-bold text-eq-ink text-sm">{t.device_settings_title}</div>
+            <div className="text-[11px] text-emerald-800/70 leading-tight truncate">
+              {t.device_settings_sub}
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-emerald-700 flex-shrink-0" strokeWidth={2.5} />
         </motion.button>
 
         <motion.div
@@ -632,6 +697,13 @@ const ParentDashboard = () => {
             }
           } catch (e) {}
         }}
+        children={children}
+      />
+
+      {/* Device Settings — pick how this device behaves at startup */}
+      <DeviceSettingsSheet
+        open={deviceSettingsOpen}
+        onClose={() => setDeviceSettingsOpen(false)}
         children={children}
       />
     </div>

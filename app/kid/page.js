@@ -20,6 +20,106 @@ function KidHomeInner() {
   const childId = params.get('childId')
   const { t, lang } = useLang()
 
+  // If no childId → show Kid Chooser (list of children in family)
+  if (!childId) {
+    return <KidChooser router={router} t={t} lang={lang} />
+  }
+
+  return <KidHomeActive router={router} childId={childId} t={t} lang={lang} />
+}
+
+// ─────────────────────────────────────────────────────────────────
+// KidChooser — screen shown when no childId provided (shared kid device)
+const KidChooser = ({ router, t, lang }) => {
+  const [children, setChildren] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [exitPinOpen, setExitPinOpen] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/children', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setChildren(d.children || []) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  return (
+    <div className="h-[100dvh] w-full relative overflow-y-auto overscroll-contain bg-gradient-to-br from-emerald-50 via-sky-50 to-amber-50">
+      <div className="relative z-10 max-w-md mx-auto px-5 pt-6 pb-24">
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-2">👋</div>
+          <h1 className="text-2xl font-extrabold text-emerald-900">{t.kid_chooser_title}</h1>
+          <p className="text-sm text-emerald-800/70 mt-1">{t.kid_chooser_subtitle}</p>
+        </div>
+
+        {loading ? (
+          <div className="text-center text-emerald-900/50 py-10">{t.loading}</div>
+        ) : children.length === 0 ? (
+          <div className="text-center py-10 text-emerald-900/60">
+            <div className="text-4xl mb-2">🌱</div>
+            <p className="text-sm">{t.kid_chooser_empty}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {children.map(child => {
+              const avatar = child.avatarId ? AVATAR_BY_ID[child.avatarId] : null
+              const color = child.favColor || '#00B894'
+              return (
+                <button
+                  key={child.id}
+                  onClick={() => router.push(`/kid?childId=${encodeURIComponent(child.id)}`)}
+                  className="rounded-3xl bg-white/85 backdrop-blur border-2 shadow-md p-3 flex flex-col items-center gap-2 active:scale-[0.97] transition-transform"
+                  style={{ borderColor: `${color}55` }}
+                >
+                  <div
+                    className="w-24 h-24 rounded-full ring-4 overflow-hidden bg-eq-cream flex-shrink-0"
+                    style={{ '--tw-ring-color': color, borderColor: color, boxShadow: `0 0 0 4px ${color}` }}
+                  >
+                    {avatar ? (
+                      <img src={avatar.src} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">🧒</div>
+                    )}
+                  </div>
+                  <div className="text-lg font-extrabold text-eq-ink leading-tight text-center">
+                    {child.nickname}
+                  </div>
+                  <div className="text-[11px] font-bold text-amber-700 flex items-center gap-0.5">
+                    {Number(child.mataReward || 0)} <Sparkles className="w-3 h-3" fill="#FFB703" />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Exit button — bottom fixed */}
+      <div
+        className="fixed bottom-0 inset-x-0 z-20 border-t border-eq-cream/80 bg-white/85 backdrop-blur px-4 py-2"
+        style={{ paddingBottom: 'calc(max(env(safe-area-inset-bottom), 8px))' }}
+      >
+        <button
+          onClick={() => setExitPinOpen(true)}
+          className="w-full max-w-md mx-auto flex items-center justify-center gap-2 text-emerald-900/70 text-sm font-bold py-2"
+        >
+          <LogOut className="w-4 h-4" /> {t.kid_exit}
+        </button>
+      </div>
+
+      <PinModal
+        open={exitPinOpen}
+        mode="enter"
+        onClose={() => setExitPinOpen(false)}
+        onSuccess={() => { setExitPinOpen(false); router.push('/?parent=1') }}
+      />
+    </div>
+  )
+}
+
+function KidHomeActive({ router, childId, t, lang }) {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
   const [rewardRequests, setRewardRequests] = useState([])
@@ -592,7 +692,7 @@ function KidHomeInner() {
         onClose={() => setExitPinOpen(false)}
         onSuccess={() => {
           setExitPinOpen(false)
-          router.push('/')
+          router.push('/?parent=1')
         }}
       />
 
