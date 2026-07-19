@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
+import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
 import crypto from 'node:crypto'
 
 // ────────────────────── HELPERS ──────────────────────
@@ -662,6 +663,160 @@ async function handleRoute(request, { params }) {
       })
 
       return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
+    }
+
+    // ═══ Quiz ══════════════════════════════════════════════════════
+    // POST /quiz/start  { childId }
+    // → Starts a new quiz session for a child (1 per day max).
+    // → Returns { sessionId, questions: [{ id, prompt, choices, emoji, category }], total }
+    //   NOTE: correctIdx is NEVER sent to client.
+    if (route === '/quiz/start' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const childId = String(body.childId || '')
+      if (!childId) return err('childId required', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Child not found', 404)
+
+      // Age band computation from dob
+      let ageBand = '7-9'
+      if (child.dob) {
+        const age = Math.floor((Date.now() - new Date(child.dob).getTime()) / (365.25 * 24 * 3600 * 1000))
+        ageBand = age <= 6 ? '3-6' : age <= 9 ? '7-9' : '10-12'
+      }
+
+      // One quiz session per day per child
+      const today = new Date()
+      const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`
+      const existingToday = await db.collection('quiz_sessions').findOne({ childId, dateStr })
+      if (existingToday && existingToday.status === 'completed') {
+        return err('Kuiz hari ini sudah selesai. Cuba lagi esok!', 429)
+      }
+      if (existingToday && existingToday.status === 'in_progress') {
+        // Resume session
+        const questions = existingToday.questionIds.map(id => QUIZ_QUESTIONS.find(q => q.id === id)).filter(Boolean)
+        const clientQuestions = questions.map(q => ({
+          id: q.id, prompt: q.prompt, choices: q.choices, emoji: q.emoji, category: q.category,
+        }))
+        return json({ sessionId: existingToday.id, questions: clientQuestions, total: questions.length, resumeAt: existingToday.answers?.length || 0 })
+      }
+
+      const pool = questionsForAge(ageBand)
+      const picked = pickRandomQuestions(pool, QUESTIONS_PER_SESSION)
+      if (picked.length === 0) return err('No questions available', 500)
+
+      const rec = {
+        id: `qz-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        childId, familyId: user.familyId, dateStr, ageBand,
+        questionIds: picked.map(q => q.id),
+        answers: [], correctCount: 0, pointsAwarded: 0,
+        status: 'in_progress',
+        startedAt: new Date(),
+      }
+      await db.collection('quiz_sessions').insertOne(rec)
+
+      const clientQuestions = picked.map(q => ({
+        id: q.id, prompt: q.prompt, choices: q.choices, emoji: q.emoji, category: q.category,
+      }))
+      return json({ sessionId: rec.id, questions: clientQuestions, total: picked.length, resumeAt: 0 })
+    }
+
+    // POST /quiz/answer  { sessionId, questionId, choiceIdx }
+    // → Records the answer & returns { correct, correctIdx, remaining }
+    if (route === '/quiz/answer' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const sessionId = String(body.sessionId || '')
+      const questionId = String(body.questionId || '')
+      const choiceIdx = Number(body.choiceIdx)
+      if (!sessionId || !questionId || !Number.isInteger(choiceIdx)) return err('Invalid payload', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const qs = await db.collection('quiz_sessions').findOne({ id: sessionId, familyId: user.familyId })
+      if (!qs) return err('Session not found', 404)
+      if (qs.status === 'completed') return err('Already completed', 409)
+      // Ensure question belongs to this session and not double-answered
+      if (!qs.questionIds.includes(questionId)) return err('Bad question for session', 400)
+      const already = (qs.answers || []).some(a => a.questionId === questionId)
+      if (already) return err('Already answered', 409)
+
+      const q = QUIZ_QUESTIONS.find(x => x.id === questionId)
+      if (!q) return err('Question not found', 404)
+      const correct = choiceIdx === q.correctIdx
+      const answer = { questionId, choiceIdx, correct, at: new Date() }
+      const newAnswers = [...(qs.answers || []), answer]
+      const newCorrectCount = qs.correctCount + (correct ? 1 : 0)
+
+      await db.collection('quiz_sessions').updateOne(
+        { id: sessionId },
+        { $push: { answers: answer }, $set: { correctCount: newCorrectCount } }
+      )
+
+      const remaining = qs.questionIds.length - newAnswers.length
+      return json({ correct, correctIdx: q.correctIdx, remaining, correctCount: newCorrectCount })
+    }
+
+    // POST /quiz/finish  { sessionId }
+    // → Marks session completed, awards Mata Bina (not Mata Reward).
+    if (route === '/quiz/finish' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const sessionId = String(body.sessionId || '')
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const qs = await db.collection('quiz_sessions').findOne({ id: sessionId, familyId: user.familyId })
+      if (!qs) return err('Session not found', 404)
+      if (qs.status === 'completed') {
+        // Idempotent — return existing tally
+        return json({ ok: true, correctCount: qs.correctCount, pointsAwarded: qs.pointsAwarded, total: qs.questionIds.length })
+      }
+      const pointsAwarded = qs.correctCount * POINTS_PER_CORRECT
+      await db.collection('quiz_sessions').updateOne(
+        { id: sessionId },
+        { $set: { status: 'completed', completedAt: new Date(), pointsAwarded } }
+      )
+      // Grant Mata Bina to child (NOT Mata Reward — quiz only builds character)
+      if (pointsAwarded > 0) {
+        await db.collection('children').updateOne(
+          { id: qs.childId, familyId: user.familyId },
+          { $inc: { mataBina: pointsAwarded } }
+        )
+      }
+      return json({ ok: true, correctCount: qs.correctCount, pointsAwarded, total: qs.questionIds.length })
+    }
+
+    // GET /quiz/status?childId=  → { doneToday: boolean, correctCount?, pointsAwarded? }
+    if (route === '/quiz/status' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ doneToday: false })
+      const url = new URL(request.url)
+      const childId = url.searchParams.get('childId')
+      if (!childId) return err('childId required', 400)
+      const today = new Date()
+      const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`
+      const qs = await db.collection('quiz_sessions').findOne(
+        { childId, dateStr, familyId: user.familyId },
+        { projection: { _id: 0, status: 1, correctCount: 1, pointsAwarded: 1, questionIds: 1 } }
+      )
+      if (!qs) return json({ doneToday: false })
+      return json({
+        doneToday: qs.status === 'completed',
+        inProgress: qs.status === 'in_progress',
+        correctCount: qs.correctCount || 0,
+        pointsAwarded: qs.pointsAwarded || 0,
+        total: qs.questionIds?.length || 0,
+      })
     }
 
     // ═══ Family Streak ═════════════════════════════════════════

@@ -11,6 +11,7 @@ import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, get
 import { PinModal } from '@/components/eqrel/PinModal'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
+import { QuizSheet } from '@/components/eqrel/QuizSheet'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -133,6 +134,8 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [showRewards, setShowRewards] = useState(false)
   const [proposeOpen, setProposeOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
+  const [quizOpen, setQuizOpen] = useState(false)
+  const [quizStatus, setQuizStatus] = useState({ doneToday: false, correctCount: 0, total: 0 })
 
   // Tutorials
   const tutWelcome = useTutorial('kid_welcome')
@@ -143,24 +146,27 @@ function KidHomeActive({ router, childId, t, lang }) {
     if (!childId) return
     setLoading(true)
     try {
-      const [cRes, hRes, rRes, catRes, pRes] = await Promise.all([
+      const [cRes, hRes, rRes, catRes, pRes, qRes] = await Promise.all([
         fetch('/api/children', { credentials: 'include' }),
         fetch(`/api/children/${childId}/habits`, { credentials: 'include' }),
         fetch(`/api/rewards/requests?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
         fetch('/api/rewards/catalog', { credentials: 'include' }),
         fetch(`/api/rewards/proposals?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
+        fetch(`/api/quiz/status?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
       ])
       const cData   = await cRes.json()
       const hData   = await hRes.json()
       const rData   = await rRes.json()
       const catData = await catRes.json()
       const pData   = await pRes.json()
+      const qData   = await qRes.json()
       const found = (cData.children || []).find(c => c.id === childId)
       setChild(found || null)
       setHabits(hData.habits || [])
       setRewardRequests(rData.requests || [])
       setCustomRewards(catData.custom || [])
       setMyProposals(pData.proposals || [])
+      setQuizStatus(qData || { doneToday: false, correctCount: 0, total: 0 })
     } finally {
       setLoading(false)
     }
@@ -350,46 +356,69 @@ function KidHomeActive({ router, childId, t, lang }) {
           </motion.div>
         )}
 
-        {/* Reward Shop toggle */}
+        {/* Quiz + Reward Shop tiles row */}
         {!loading && (
-          <button
-            onClick={() => {
-              const opening = !showRewards
-              setShowRewards(opening)
-              if (opening) {
-                // Show rewards tutorial only on first open
-                try {
-                  if (!localStorage.getItem('eqrel-tut-v1-kid_rewards')) {
-                    tutRewards.forceOpen()
-                  }
-                } catch (e) { /* ignore */ }
-              }
-            }}
-            className={`mt-3 w-full rounded-2xl px-4 py-2.5 border-2 transition-all font-extrabold text-sm flex items-center justify-between ${
-              showRewards
-                ? 'bg-purple-500 border-purple-500 text-white'
-                : 'bg-white/80 backdrop-blur border-white/90 text-purple-800'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-lg">🎁</span>
-              {t.reward_shop_title}
-            </span>
-            <span className="flex items-center gap-2 text-[11px] opacity-80">
-              {showRewards && (
-                <span
-                  role="button"
-                  onClick={(e) => { e.stopPropagation(); tutRewards.forceOpen() }}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/25 hover:bg-white/40 cursor-pointer"
-                  aria-label="Help"
-                  title="Help"
-                >
-                  <HelpCircle className="w-3.5 h-3.5" />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {/* Quiz tile */}
+            <button
+              onClick={() => setQuizOpen(true)}
+              disabled={quizStatus.doneToday}
+              className={`rounded-2xl px-3 py-2.5 border-2 font-extrabold text-xs flex items-center justify-between transition-all ${
+                quizStatus.doneToday
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-not-allowed'
+                  : 'bg-white/80 backdrop-blur border-white/90 text-blue-800 hover:border-blue-300 active:scale-[0.98]'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-lg flex-shrink-0">{quizStatus.doneToday ? '✅' : '🎓'}</span>
+                <span className="truncate">{t.quiz_tile_title}</span>
+              </span>
+              {quizStatus.doneToday && (
+                <span className="text-[10px] font-bold text-emerald-700 flex-shrink-0">
+                  {quizStatus.correctCount}/{quizStatus.total}
                 </span>
               )}
-              {showRewards ? '×' : '→'}
-            </span>
-          </button>
+            </button>
+
+            {/* Reward Shop tile */}
+            <button
+              onClick={() => {
+                const opening = !showRewards
+                setShowRewards(opening)
+                if (opening) {
+                  try {
+                    if (!localStorage.getItem('eqrel-tut-v1-kid_rewards')) {
+                      tutRewards.forceOpen()
+                    }
+                  } catch (e) { /* ignore */ }
+                }
+              }}
+              className={`rounded-2xl px-3 py-2.5 border-2 transition-all font-extrabold text-xs flex items-center justify-between ${
+                showRewards
+                  ? 'bg-purple-500 border-purple-500 text-white'
+                  : 'bg-white/80 backdrop-blur border-white/90 text-purple-800'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-lg flex-shrink-0">🎁</span>
+                <span className="truncate">{t.reward_shop_title}</span>
+              </span>
+              <span className="flex items-center gap-1 text-[11px] opacity-80 flex-shrink-0">
+                {showRewards && (
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); tutRewards.forceOpen() }}
+                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/25 hover:bg-white/40 cursor-pointer"
+                    aria-label="Help"
+                    title="Help"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                {showRewards ? '×' : '→'}
+              </span>
+            </button>
+          </div>
         )}
 
         {/* Rewards grid — shown when toggled on */}
@@ -708,6 +737,14 @@ function KidHomeActive({ router, childId, t, lang }) {
       <Tutorial open={tutWelcome.open} onClose={tutWelcome.close} config={getTutorial('kid_welcome', lang)} />
       <Tutorial open={tutCats.open}    onClose={tutCats.close}    config={getTutorial('kid_categories', lang)} />
       <Tutorial open={tutRewards.open} onClose={tutRewards.close} config={getTutorial('kid_rewards', lang)} />
+
+      {/* Quiz overlay */}
+      <QuizSheet
+        open={quizOpen}
+        onClose={() => { setQuizOpen(false); load() }}
+        childId={childId}
+        onComplete={load}
+      />
     </div>
   )
 }
