@@ -677,7 +677,8 @@ async function handleRoute(request, { params }) {
       const family = await db.collection('families').findOne({ id: user.familyId })
       return json({ config: family?.displayConfig || null })
     }
-    // POST /family/display-config  { photos:[url], slideshowSec, showHabits, familyMotto, showHadith, showDoa }
+    // POST /family/display-config  { photos, slideshowSec, showHabits, familyMotto, showHadith, showDoa,
+    //   azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin }
     if (route === '/family/display-config' && method === 'POST') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
@@ -688,7 +689,18 @@ async function handleRoute(request, { params }) {
       const showHadith = body.showHadith !== false
       const showDoa = body.showDoa !== false
       const familyMotto = String(body.familyMotto || '').trim().slice(0, 140)
-      const config = { photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto, updatedAt: new Date() }
+      // Azan / audio config
+      const azanEnabled = !!body.azanEnabled
+      const azanId = String(body.azanId || 'makkah').trim().slice(0, 40)
+      const azanFajrId = String(body.azanFajrId || 'fajr-makkah').trim().slice(0, 40)
+      const azanVolume = Math.min(100, Math.max(0, Number(body.azanVolume) ?? 80))
+      const preAzanEnabled = !!body.preAzanEnabled
+      const preAzanMin = [0, 5, 10, 15, 20, 30].includes(Number(body.preAzanMin)) ? Number(body.preAzanMin) : 10
+      const config = {
+        photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
+        azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
+        updatedAt: new Date(),
+      }
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)

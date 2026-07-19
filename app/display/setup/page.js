@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Save, MapPin, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, MapPin, Image as ImageIcon, Volume2 } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
+import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const [photos, setPhotos] = useState([])
   const [photoInput, setPhotoInput] = useState('')
   const [slideshowSec, setSlideshowSec] = useState(10)
@@ -18,6 +19,15 @@ export default function DisplaySetupPage() {
   const [prayerLocationSet, setPrayerLocationSet] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Azan
+  const [azanEnabled, setAzanEnabled] = useState(false)
+  const [azanId, setAzanId] = useState('makkah')
+  const [azanFajrId, setAzanFajrId] = useState('fajr-makkah')
+  const [azanVolume, setAzanVolume] = useState(80)
+  const [preAzanEnabled, setPreAzanEnabled] = useState(true)
+  const [preAzanMin, setPreAzanMin] = useState(10)
+  const [previewingId, setPreviewingId] = useState(null)
+  const audioRef = useRef(null)
 
   useEffect(() => {
     (async () => {
@@ -36,6 +46,12 @@ export default function DisplaySetupPage() {
           setShowHadith(c.showHadith !== false)
           setShowDoa(c.showDoa !== false)
           setFamilyMotto(c.familyMotto || '')
+          setAzanEnabled(!!c.azanEnabled)
+          setAzanId(c.azanId || 'makkah')
+          setAzanFajrId(c.azanFajrId || 'fajr-makkah')
+          setAzanVolume(typeof c.azanVolume === 'number' ? c.azanVolume : 80)
+          setPreAzanEnabled(c.preAzanEnabled !== false)
+          setPreAzanMin(typeof c.preAzanMin === 'number' ? c.preAzanMin : 10)
         }
         setPrayerLocationSet(!!lData.location)
       } finally { setLoading(false) }
@@ -55,10 +71,32 @@ export default function DisplaySetupPage() {
     const r = await fetch('/api/family/display-config', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto }),
+      body: JSON.stringify({
+        photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
+        azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
+      }),
     })
     if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
   }
+
+  const previewAzan = (id, isFajr = false) => {
+    const azan = getAzan(id, isFajr)
+    if (!azan) return
+    if (previewingId === id) {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0 }
+      setPreviewingId(null)
+      return
+    }
+    if (!audioRef.current) audioRef.current = new Audio()
+    audioRef.current.src = azan.url
+    audioRef.current.volume = azanVolume / 100
+    audioRef.current.play().then(() => setPreviewingId(id)).catch(() => setPreviewingId(null))
+    audioRef.current.onended = () => setPreviewingId(null)
+  }
+
+  useEffect(() => () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+  }, [])
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-emerald-800">{t.loading}</div>
 
@@ -138,6 +176,93 @@ export default function DisplaySetupPage() {
           <ToggleRow label={t.setup_show_habits} desc={t.setup_show_habits_desc} value={showHabits} onChange={setShowHabits} />
           <ToggleRow label={t.setup_show_hadith} desc={t.setup_show_hadith_desc} value={showHadith} onChange={setShowHadith} />
           <ToggleRow label={t.setup_show_doa} desc={t.setup_show_doa_desc} value={showDoa} onChange={setShowDoa} />
+        </section>
+
+        {/* Azan & Audio */}
+        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
+          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
+            <Volume2 className="w-4 h-4" /> {t.setup_azan_title}
+          </h2>
+          <p className="text-[11px] text-emerald-800/60 mb-3">{t.setup_azan_sub}</p>
+
+          <ToggleRow label={t.setup_azan_enable} desc={t.setup_azan_enable_desc} value={azanEnabled} onChange={setAzanEnabled} />
+
+          {azanEnabled && (
+            <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
+              {/* Volume */}
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+                  {t.setup_azan_volume}: <span className="text-emerald-700">{azanVolume}%</span>
+                </label>
+                <input type="range" min={0} max={100} value={azanVolume}
+                  onChange={e => setAzanVolume(Number(e.target.value))}
+                  className="w-full accent-emerald-500 mt-1" />
+              </div>
+
+              {/* Azan choice — 4 prayers */}
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
+                  {t.setup_azan_choice}
+                </label>
+                <div className="space-y-1.5">
+                  {AZAN_BANK.map(az => (
+                    <div key={az.id}
+                      className={`flex items-center gap-2 rounded-xl border-2 p-2 transition-all ${azanId === az.id ? 'border-emerald-400 bg-emerald-50' : 'border-eq-cream bg-white'}`}>
+                      <button onClick={() => setAzanId(az.id)} className="flex-1 text-left">
+                        <div className="text-sm font-bold text-emerald-900">{az.label[lang] || az.label.ms}</div>
+                      </button>
+                      <button onClick={() => previewAzan(az.id, false)}
+                        className={`text-[11px] font-extrabold px-2.5 py-1 rounded-lg ${previewingId === az.id ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                        {previewingId === az.id ? t.setup_azan_stop : t.setup_azan_preview}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fajr azan choice */}
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
+                  {t.setup_azan_fajr_choice}
+                </label>
+                <p className="text-[10px] text-emerald-800/60 mb-1.5 italic">{t.setup_azan_fajr_note}</p>
+                <div className="space-y-1.5">
+                  {AZAN_FAJR_BANK.map(az => (
+                    <div key={az.id}
+                      className={`flex items-center gap-2 rounded-xl border-2 p-2 transition-all ${azanFajrId === az.id ? 'border-emerald-400 bg-emerald-50' : 'border-eq-cream bg-white'}`}>
+                      <button onClick={() => setAzanFajrId(az.id)} className="flex-1 text-left">
+                        <div className="text-sm font-bold text-emerald-900">{az.label[lang] || az.label.ms}</div>
+                      </button>
+                      <button onClick={() => previewAzan(az.id, true)}
+                        className={`text-[11px] font-extrabold px-2.5 py-1 rounded-lg ${previewingId === az.id ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                        {previewingId === az.id ? t.setup_azan_stop : t.setup_azan_preview}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pre-azan reminder */}
+              <div className="border-t border-eq-cream pt-3">
+                <ToggleRow label={t.setup_pre_azan_enable} desc={t.setup_pre_azan_enable_desc} value={preAzanEnabled} onChange={setPreAzanEnabled} />
+                {preAzanEnabled && (
+                  <div className="mt-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
+                      {t.setup_pre_azan_minutes}
+                    </label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[5, 10, 15, 20, 30].map(m => (
+                        <button key={m} onClick={() => setPreAzanMin(m)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${preAzanMin === m ? 'bg-emerald-500 text-white' : 'bg-eq-cream text-emerald-900'}`}>
+                          {m} min
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Family motto */}

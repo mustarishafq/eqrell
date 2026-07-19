@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, MapPin, Loader2, Settings } from 'lucide-react'
+import { ArrowLeft, MapPin, Loader2, Settings, Volume2, VolumeX } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
+import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 const PRAYER_EMOJI = { Fajr: '🌄', Sunrise: '☀️', Dhuhr: '🌞', Asr: '🌤️', Maghrib: '🌇', Isha: '🌙' }
@@ -27,6 +28,13 @@ export default function DisplayPage() {
   const [display, setDisplay] = useState(null)
   const [photoIdx, setPhotoIdx] = useState(0)
   const [hadithIdx, setHadithIdx] = useState(0)
+  // Audio (azan)
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const [azanPlaying, setAzanPlaying] = useState(null) // { key, label }
+  const [preAzanNotice, setPreAzanNotice] = useState(null) // { key, minutes }
+  const audioRef = useRef(null)
+  const playedTodayRef = useRef(new Set()) // "YYYY-MM-DD_Fajr" etc
+  const preChimedTodayRef = useRef(new Set())
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
 
@@ -96,6 +104,81 @@ export default function DisplayPage() {
   const doa = DOA_BANK[hadithIdx % DOA_BANK.length]
   const hasPhotos = photos.length > 0
 
+  // ═══ Azan auto-play logic ═══
+  const AZAN_TRIGGER_KEYS = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] // 5 waqt, exclude Sunrise
+  const playAzan = useCallback((prayerKey) => {
+    if (!config?.azanEnabled || !audioUnlocked) return
+    const isFajr = prayerKey === 'Fajr'
+    const azan = getAzan(isFajr ? config.azanFajrId : config.azanId, isFajr)
+    if (!azan) return
+    if (!audioRef.current) audioRef.current = new Audio()
+    audioRef.current.src = azan.url
+    audioRef.current.volume = (config.azanVolume ?? 80) / 100
+    audioRef.current.play().then(() => {
+      setAzanPlaying({ key: prayerKey, label: labelFor(prayerKey) })
+    }).catch(() => { /* browser blocked */ })
+    audioRef.current.onended = () => setAzanPlaying(null)
+    audioRef.current.onerror = () => setAzanPlaying(null)
+  }, [config, audioUnlocked, lang])
+
+  const playChime = useCallback(() => {
+    if (!audioUnlocked) return
+    try {
+      const chime = new Audio(PRE_AZAN_CHIME_URL)
+      chime.volume = ((config?.azanVolume ?? 80) / 100) * 0.6
+      chime.play().catch(() => {})
+    } catch (e) { /* ignore */ }
+  }, [audioUnlocked, config])
+
+  // Check every tick if a prayer time is reached
+  useEffect(() => {
+    if (!prayers?.timings || !config?.azanEnabled) return
+    const dateKey = now.toISOString().slice(0, 10)
+    const nowMs = now.getTime()
+    for (const k of AZAN_TRIGGER_KEYS) {
+      const time = prayers.timings[k]
+      if (!time) continue
+      const [h, m] = time.split(':').map(Number)
+      const target = new Date(now)
+      target.setHours(h, m, 0, 0)
+      const diff = nowMs - target.getTime()
+      const marker = `${dateKey}_${k}`
+      // Trigger azan when within 0-2s after target and not yet played today
+      if (diff >= 0 && diff < 2000 && !playedTodayRef.current.has(marker)) {
+        playedTodayRef.current.add(marker)
+        playAzan(k)
+      }
+      // Trigger pre-azan chime
+      if (config.preAzanEnabled && config.preAzanMin > 0) {
+        const preTarget = target.getTime() - config.preAzanMin * 60 * 1000
+        const preDiff = nowMs - preTarget
+        const preMarker = `${dateKey}_${k}_pre`
+        if (preDiff >= 0 && preDiff < 2000 && !preChimedTodayRef.current.has(preMarker)) {
+          preChimedTodayRef.current.add(preMarker)
+          playChime()
+          setPreAzanNotice({ key: k, minutes: config.preAzanMin })
+          setTimeout(() => setPreAzanNotice(null), 15000)
+        }
+      }
+    }
+  }, [now, prayers, config, playAzan, playChime])
+
+  const unlockAudio = () => {
+    // Play a silent blip to unlock browser autoplay policy
+    try {
+      const a = new Audio()
+      a.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAA'
+      a.volume = 0
+      a.play().catch(() => {})
+    } catch (e) { /* ignore */ }
+    setAudioUnlocked(true)
+  }
+
+  const stopAzan = () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0 }
+    setAzanPlaying(null)
+  }
+
   return (
     <div className="min-h-screen w-full relative overflow-hidden bg-slate-950 text-white">
       {/* Photo slideshow background */}
@@ -150,7 +233,46 @@ export default function DisplayPage() {
             <MapPin className="w-3.5 h-3.5" /> {t.display_setup_cta}
           </button>
         )}
+        {config?.azanEnabled && !audioUnlocked && (
+          <button onClick={unlockAudio}
+            className="px-3 h-9 rounded-full bg-emerald-500 text-white flex items-center gap-1.5 text-xs font-extrabold animate-pulse">
+            <Volume2 className="w-3.5 h-3.5" /> {t.display_enable_audio}
+          </button>
+        )}
+        {config?.azanEnabled && audioUnlocked && (
+          <div className="px-3 h-9 rounded-full bg-white/10 backdrop-blur border border-white/20 flex items-center gap-1.5 text-[11px] text-white/80">
+            <Volume2 className="w-3.5 h-3.5 text-emerald-300" /> ✓
+          </div>
+        )}
       </div>
+
+      {/* Azan playing banner */}
+      {azanPlaying && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30">
+          <div className="rounded-2xl bg-emerald-500/95 backdrop-blur border-2 border-emerald-300 shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="text-3xl animate-pulse">🕌</div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-bold">{t.display_azan_playing}</div>
+              <div className="text-lg font-black text-white leading-tight">{azanPlaying.label}</div>
+            </div>
+            <button onClick={stopAzan} className="ml-2 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+              <VolumeX className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-azan notice */}
+      {preAzanNotice && !azanPlaying && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30">
+          <div className="rounded-2xl bg-amber-500/95 backdrop-blur border-2 border-amber-300 shadow-2xl px-4 py-2.5 flex items-center gap-2">
+            <div className="text-2xl">⏰</div>
+            <div className="text-sm font-extrabold text-white">
+              {t.display_pre_azan_soon(preAzanNotice.minutes, labelFor(preAzanNotice.key))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Center content — clock + date + next prayer + family motto */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center pt-20 pb-6 px-6 text-center">
