@@ -1033,6 +1033,100 @@ backend:
           
           NO ISSUES FOUND. Reward Proposals API is production-ready.
 
+
+  - task: "GET /api/family/streak — Family streak calculation endpoint"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoint GET /api/family/streak returns real-time family streak data:
+            - Returns { streak, longestStreak, todayDone, days }
+            - Streak = consecutive days ending today (or yesterday if today not yet logged - grace period)
+            - Only counts verified claims with rubric 'sah' or 'ihsan'
+            - Only considers claims for children in the SAME family (childId IN family.children)
+            - Longest streak looks back 400 days, computes longest continuous run
+            - Days field returns last 14 days with { date: 'YYYY-MM-DD', done: boolean } oldest first
+            - Auth required (401 if no session)
+            - Returns zero response if no family or no children
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL STREAK ENDPOINT TESTS PASSED (12/12)
+          
+          Comprehensive test suite executed successfully. Created /app/test_streak_endpoint.py with automated tests covering:
+          
+          ✅ TEST 1: Auth required — 401 if no session
+             - Returns 401 without valid session cookie
+          
+          ✅ TEST 2: No family → returns zero response
+             - Returns { streak: 0, longestStreak: 0, todayDone: false, days: [] } for user without family
+          
+          ✅ TEST 3: No children in family → zero response
+             - Returns zero response for family without children
+          
+          ✅ TEST 4: Basic streak — done today only
+             - Insert 1 claim with today's dateStr
+             - Returns: streak=1, todayDone=true, longestStreak=1
+          
+          ✅ TEST 5: Yesterday only (grace period)
+             - Insert 1 claim yesterday
+             - Returns: streak=1, todayDone=false, longestStreak=1
+             - Grace period correctly counts yesterday if today not done
+          
+          ✅ TEST 6: 3-day streak ending today
+             - Insert claims for today, yesterday, day-before-yesterday
+             - Returns: streak=3, todayDone=true, longestStreak=3
+          
+          ✅ TEST 7: Broken streak with grace
+             - Insert claims for today and 3 days ago (gap of 2 days)
+             - Returns: streak=1 (only today counts because there's a gap)
+          
+          ✅ TEST 8: Longest ≠ current
+             - Insert 5-day run 20 days ago + 2-day current streak
+             - Returns: streak=2, longestStreak=5, todayDone=true
+          
+          ✅ TEST 9: Multi-child ANY
+             - Only 1 child has claim today, other child none
+             - Returns: streak=1 (at least 1 child counts)
+          
+          ✅ TEST 10: Rubric filter
+             - Insert claim with rubric='belum' today
+             - Returns: streak=0 (belum doesn't count)
+             - Only 'sah' and 'ihsan' rubrics are counted
+          
+          ✅ TEST 11: Cross-family isolation
+             - Insert claims for a child in another family
+             - Returns: streak=0 (other family's claims not counted)
+             - Data isolation between families working correctly
+          
+          ✅ TEST 12: Days array
+             - Length is 14 days
+             - Oldest first (ascending order by date)
+             - Date format is YYYY-MM-DD
+             - Each day has { date, done } structure
+             - Last day is today
+             - Correct done status for each day
+          
+          KEY FINDINGS:
+          - Auth guard working correctly (401 without session)
+          - Zero response for edge cases (no family, no children)
+          - Streak calculation logic correct (consecutive days with grace period)
+          - Grace period working: if today not done, counts from yesterday backwards
+          - Longest streak calculation correct (looks back 400 days)
+          - Multi-child ANY logic working (at least 1 child with verified claim counts)
+          - Rubric filter working correctly (only 'sah' and 'ihsan' count)
+          - Cross-family isolation working correctly
+          - Days array format and content correct (14 days, YYYY-MM-DD, oldest first)
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. Family streak endpoint is production-ready.
+
 frontend:
   - task: "Parent RewardShopSheet — 3 tabs (Requests / Proposals / Catalog with custom)"
     implemented: true
@@ -1246,3 +1340,33 @@ agent_communication:
         2. NEW: Category grouping (kid + parent modes) with animated progress bars
         3. NEW: Visual celebration state when a category is fully completed
       No backend changes — pure UI iteration. No retest required (main agent verified lint + compile).
+
+  - agent: "testing"
+    message: |
+      🎉 STREAK ENDPOINT TESTING COMPLETE - ALL TESTS PASSED (12/12)
+      
+      Tested the new GET /api/family/streak endpoint as requested. Created comprehensive test suite /app/test_streak_endpoint.py covering all 9 scenarios specified in the review request:
+      
+      ✅ Auth required (401 without session)
+      ✅ No family → zero response
+      ✅ No children → zero response
+      ✅ Basic streak (done today only) → streak=1
+      ✅ Yesterday only (grace period) → streak=1, todayDone=false
+      ✅ 3-day streak ending today → streak=3
+      ✅ Broken streak with gap → streak=1 (only today counts)
+      ✅ Longest ≠ current (5-day old + 2-day current) → streak=2, longestStreak=5
+      ✅ Multi-child ANY (1 child has claim) → streak=1
+      ✅ Rubric filter (belum doesn't count) → streak=0
+      ✅ Cross-family isolation → streak=0 (other family's claims not counted)
+      ✅ Days array (14 days, YYYY-MM-DD format, oldest first)
+      
+      KEY FINDINGS:
+      - Streak calculation logic working correctly (consecutive days with grace period)
+      - Grace period: if today not done, counts from yesterday backwards
+      - Only verified claims with rubric 'sah' or 'ihsan' are counted
+      - Multi-child ANY logic: at least 1 child with verified claim counts for the day
+      - Cross-family isolation working correctly
+      - Days array format correct (14 days, YYYY-MM-DD, oldest first, correct done status)
+      - All edge cases handled properly (no family, no children, auth required)
+      
+      NO ISSUES FOUND. Streak endpoint is production-ready.

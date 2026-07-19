@@ -144,6 +144,19 @@ const ParentDashboard = () => {
   const [rewardShopOpen, setRewardShopOpen] = useState(false)
   const [pendingRewardCount, setPendingRewardCount] = useState(0)
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false)
+  const [streak, setStreak] = useState({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
+
+  // Fetch family streak
+  const fetchStreak = useCallback(async () => {
+    try {
+      const r = await fetch('/api/family/streak', { credentials: 'include' })
+      if (r.ok) {
+        const d = await r.json()
+        setStreak(d)
+      }
+    } catch (e) { /* ignore */ }
+  }, [])
+  useEffect(() => { fetchStreak() }, [fetchStreak])
 
   // ── Device Role auto-redirect ──
   // On first load, if this device is configured as a "kid device", auto-navigate.
@@ -520,12 +533,32 @@ const ParentDashboard = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
-            className="mt-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl px-3 py-2 flex items-center gap-2 cursor-pointer active:scale-[0.99] transition-transform"
+            className="mt-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl px-3 py-2.5 flex items-center gap-2 cursor-pointer active:scale-[0.99] transition-transform"
           >
             <img src={ASSETS.fireStreak} alt="" className="w-7 h-7 object-contain flex-shrink-0" />
-            <div className="flex-1 text-eq-ink text-xs leading-tight">
-              <span className="font-extrabold">{t.family_streak_days(mockFamily.streakDays)}</span>
-              <span className="text-eq-ink/70">{t.family_streak_suffix}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-eq-ink text-xs leading-tight">
+                <span className="font-extrabold">{t.family_streak_days(streak.streak || 0)}</span>
+                <span className="text-eq-ink/70">{t.family_streak_suffix}</span>
+              </div>
+              {/* Last 14 days visual bar */}
+              {streak.days && streak.days.length > 0 && (
+                <div className="mt-1.5 flex gap-0.5">
+                  {streak.days.map((d, i) => (
+                    <div
+                      key={d.date}
+                      className={`h-2 flex-1 rounded-sm ${d.done ? 'bg-orange-400' : 'bg-orange-100'}`}
+                      style={{ opacity: d.done ? (0.55 + (i / streak.days.length) * 0.45) : 0.4 }}
+                      title={`${d.date}: ${d.done ? '✓' : '—'}`}
+                    />
+                  ))}
+                </div>
+              )}
+              {streak.longestStreak > streak.streak && streak.longestStreak > 0 && (
+                <div className="text-[10px] text-orange-800/70 mt-1 font-bold">
+                  {t.streak_best_prefix} {streak.longestStreak}
+                </div>
+              )}
             </div>
             <ChevronRight className="w-4 h-4 text-eq-ink/40 flex-shrink-0" />
           </motion.div>

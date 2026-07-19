@@ -664,6 +664,82 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
     }
 
+    // ═══ Family Streak ═════════════════════════════════════════
+    // GET /family/streak  → real-time family streak
+    // Returns { streak, longestStreak, todayDone, days } where days is last 14 days.
+    // Streak = consecutive days (ending today or yesterday if today not yet logged) with
+    // at least ONE family child having a verified 'sah'|'ihsan' claim.
+    if (route === '/family/streak' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
+
+      const children = await db.collection('children').find({ familyId: user.familyId }).project({ id: 1 }).toArray()
+      const childIds = children.map(c => c.id)
+      if (childIds.length === 0) return json({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
+
+      const LOOKBACK = 400
+      const now = new Date()
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+      const earliest = new Date(today); earliest.setUTCDate(earliest.getUTCDate() - LOOKBACK)
+
+      const claims = await db.collection('habit_claims')
+        .find({
+          childId: { $in: childIds },
+          status: 'verified',
+          rubric: { $in: ['sah', 'ihsan'] },
+          dateStr: { $exists: true },
+        })
+        .project({ dateStr: 1, _id: 0 })
+        .toArray()
+
+      const doneSet = new Set(claims.map(c => String(c.dateStr)))
+      const fmt = (d) => {
+        const y = d.getUTCFullYear()
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(d.getUTCDate()).padStart(2, '0')
+        return `${y}-${m}-${day}`
+      }
+
+      const todayStr = fmt(today)
+      const todayDone = doneSet.has(todayStr)
+
+      // Current streak (grace: if today not yet logged, count from yesterday backwards)
+      let streak = 0
+      const cursor = new Date(today)
+      if (!todayDone) cursor.setUTCDate(cursor.getUTCDate() - 1)
+      while (streak <= LOOKBACK) {
+        if (doneSet.has(fmt(cursor))) {
+          streak++
+          cursor.setUTCDate(cursor.getUTCDate() - 1)
+        } else break
+      }
+
+      // Longest streak in the lookback window
+      let longestStreak = 0, run = 0
+      const walk = new Date(earliest)
+      while (walk <= today) {
+        if (doneSet.has(fmt(walk))) {
+          run++
+          if (run > longestStreak) longestStreak = run
+        } else run = 0
+        walk.setUTCDate(walk.getUTCDate() + 1)
+      }
+
+      // Last 14 days
+      const days = []
+      const past = new Date(today); past.setUTCDate(past.getUTCDate() - 13)
+      const w = new Date(past)
+      while (w <= today) {
+        days.push({ date: fmt(w), done: doneSet.has(fmt(w)) })
+        w.setUTCDate(w.getUTCDate() + 1)
+      }
+
+      return json({ streak, longestStreak, todayDone, days })
+    }
+
     // ═══ Kid Mode PIN (scoped to family) ═══
     // PIN is 4 digits. Any signed-in parent in a family can set/change the PIN and verify it.
     // Stored on families doc as { pinHash: scryptHex, pinSalt: hex, pinSetAt: Date }.
