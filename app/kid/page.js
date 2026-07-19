@@ -427,8 +427,8 @@ function KidHomeInner() {
 
             return (
               <>
-                {/* Category shortcut chips — all visible in a compact grid, no scroll */}
-                <div className="grid grid-cols-6 gap-1.5">
+                {/* Category shortcut chips — 3×2 grid, all visible with icon + label */}
+                <div className="grid grid-cols-3 gap-1.5">
                   <CategoryChip
                     active={catFilter === 'all'}
                     label={t.kid_cat_all}
@@ -442,7 +442,6 @@ function KidHomeInner() {
                     const cat = HABIT_CATEGORIES[id]
                     const g = groupList.find(x => x.id === id)
                     if (!g) {
-                      // Category with no habits assigned — show as ghost/disabled
                       return (
                         <CategoryChip
                           key={id}
@@ -749,18 +748,17 @@ export default function KidHomePage() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// CategoryChip — compact vertical chip (fits 6 in a row on mobile)
+// CategoryChip — chip with icon + label + score (fits 3 in a row on mobile)
 
 const CategoryChip = ({ active, label, icon, color, done, total, allDone, disabled, onClick }) => {
   const pct = total > 0 ? (done / total) : 0
-  // Priority-glow: not active, has habits, none done yet → urgent tint
   const isUrgent = !active && !allDone && total > 0 && done === 0
 
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-2xl border-2 px-1 py-1.5 flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] ${
+      className={`rounded-2xl border-2 px-1.5 py-1.5 flex items-center gap-1.5 transition-all active:scale-[0.97] ${
         active
           ? 'text-white shadow-md'
           : disabled
@@ -769,7 +767,7 @@ const CategoryChip = ({ active, label, icon, color, done, total, allDone, disabl
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : isUrgent
                 ? 'bg-amber-50 border-amber-200 text-amber-900'
-                : 'bg-white/80 backdrop-blur border-white/90 text-eq-ink'
+                : 'bg-white/85 backdrop-blur border-white/90 text-eq-ink'
       }`}
       style={active ? { background: color, borderColor: color } : !disabled && !allDone ? { boxShadow: `0 0 0 1px ${color}22` } : undefined}
       title={total > 0 ? `${label} · ${done}/${total}` : label}
@@ -792,8 +790,16 @@ const CategoryChip = ({ active, label, icon, color, done, total, allDone, disabl
           {icon}
         </div>
       </div>
-      <div className={`text-[9px] font-extrabold leading-none ${active ? 'text-white/95' : disabled ? 'text-eq-ink/30' : 'text-eq-ink/70'}`}>
-        {total > 0 ? `${done}/${total}` : '—'}
+      {/* Label + score stacked */}
+      <div className="flex-1 min-w-0 text-left leading-tight">
+        <div className={`text-[10px] font-extrabold uppercase tracking-tight truncate ${
+          active ? 'text-white' : ''
+        }`}>
+          {label}
+        </div>
+        <div className={`text-[10px] font-bold leading-none mt-0.5 ${active ? 'text-white/95' : disabled ? 'text-eq-ink/30' : 'text-eq-ink/60'}`}>
+          {total > 0 ? `${done}/${total}` : '—'}
+        </div>
       </div>
     </button>
   )
