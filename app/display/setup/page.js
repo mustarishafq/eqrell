@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, MapPin, Image as ImageIcon, Volume2 } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
+import { BRAND } from '@/lib/brand'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -107,9 +108,19 @@ export default function DisplaySetupPage() {
           <button onClick={() => router.push('/?parent=1')} className="w-9 h-9 rounded-full bg-white/70 border border-emerald-200 flex items-center justify-center">
             <ArrowLeft className="w-5 h-5 text-emerald-800" />
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-extrabold text-emerald-900">{t.setup_title}</h1>
             <p className="text-xs text-emerald-800/60">{t.setup_sub}</p>
+          </div>
+          <img src={BRAND.mascot.default} alt="EQ" className="w-14 h-14 object-contain drop-shadow-md" />
+        </div>
+
+        {/* Brand welcome strip */}
+        <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-3 mb-4 flex items-center gap-3 shadow-lg">
+          <div className="text-xl">👋</div>
+          <div className="flex-1">
+            <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-extrabold">{BRAND.mascotVoice.greet[lang] || BRAND.mascotVoice.greet.ms}</div>
+            <div className="text-sm font-black leading-tight">{BRAND.name} — {BRAND.tagline[lang] || BRAND.tagline.ms}</div>
           </div>
         </div>
 

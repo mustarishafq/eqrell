@@ -8,6 +8,8 @@ import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
 import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
+import { BRAND } from '@/lib/brand'
+import MascotSpeech from '@/components/eqrel/MascotSpeech'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 const PRAYER_EMOJI = { Fajr: '🌄', Sunrise: '☀️', Dhuhr: '🌞', Asr: '🌤️', Maghrib: '🌇', Isha: '🌙' }
@@ -246,6 +248,15 @@ export default function DisplayPage() {
         )}
       </div>
 
+      {/* Top-right EQrel wordmark */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-full bg-white/10 backdrop-blur border border-white/20 pl-1.5 pr-3 h-9">
+        <img src={BRAND.mascot.default} alt="EQ" className="w-7 h-7 object-contain drop-shadow" />
+        <div className="flex flex-col leading-none">
+          <span className="text-[13px] font-black text-white tracking-tight">{BRAND.name}</span>
+          <span className="text-[8px] uppercase tracking-widest text-white/60 font-bold">{BRAND.tagline[lang] || BRAND.tagline.ms}</span>
+        </div>
+      </div>
+
       {/* Azan playing banner */}
       {azanPlaying && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30">
@@ -347,27 +358,45 @@ export default function DisplayPage() {
         )}
       </div>
 
-      {/* Bottom hadith / doa footer */}
+      {/* Bottom mascot speech (Hadith / Doa) */}
       {(config?.showHadith || config?.showDoa) && (
-        <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/50 backdrop-blur border-t border-white/10 px-6 py-3">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={hadithIdx}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.6 }}
-              className="text-center text-sm text-white/90 max-w-2xl mx-auto"
-            >
-              {config.showHadith && hadithIdx % 2 === 0 ? (
-                <><span className="text-amber-300">📖</span> {(hadith[lang] || hadith.ms)}</>
-              ) : config.showDoa ? (
-                <><span className="text-amber-300">🤲</span> {(doa[lang] || doa.ms)}</>
-              ) : (
-                <><span className="text-amber-300">📖</span> {(hadith[lang] || hadith.ms)}</>
-              )}
-            </motion.div>
-          </AnimatePresence>
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-4 pb-4 pt-16 bg-gradient-to-t from-black/70 via-black/40 to-transparent pointer-events-none">
+          <div className="max-w-3xl mx-auto">
+            {(() => {
+              const isDoa = config.showDoa && (!config.showHadith || hadithIdx % 2 === 1)
+              const useDoa = config.showDoa && (config.showHadith ? hadithIdx % 2 === 1 : true)
+              const showHadithNow = config.showHadith && !useDoa
+              if (showHadithNow) {
+                return (
+                  <MascotSpeech
+                    keyId={`hadith-${hadithIdx}`}
+                    variant="hadith"
+                    lang={lang}
+                    intro={BRAND.mascotVoice.hadith[lang] || BRAND.mascotVoice.hadith.ms}
+                    message={hadith[lang] || hadith.ms}
+                    pose="reading"
+                    side="right"
+                    size="md"
+                  />
+                )
+              }
+              if (useDoa) {
+                return (
+                  <MascotSpeech
+                    keyId={`doa-${hadithIdx}`}
+                    variant="doa"
+                    lang={lang}
+                    intro={BRAND.mascotVoice.doa[lang] || BRAND.mascotVoice.doa.ms}
+                    message={doa[lang] || doa.ms}
+                    pose="praying"
+                    side="right"
+                    size="md"
+                  />
+                )
+              }
+              return null
+            })()}
+          </div>
         </div>
       )}
     </div>

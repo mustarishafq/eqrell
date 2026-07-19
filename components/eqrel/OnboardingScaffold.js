@@ -8,8 +8,9 @@ import { motion } from 'framer-motion'
 import { BrandLogo } from './BrandLogo'
 import { LangPicker } from './LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
+import { BRAND } from '@/lib/brand'
 
-const MASCOT_URL = 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/33belexr_eq-greeting-companion.png'
+const MASCOT_URL = BRAND.mascot.default
 
 const PARENT_QUOTES = {
   ms: [
