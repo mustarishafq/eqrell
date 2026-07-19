@@ -30,6 +30,7 @@ function KidHomeInner() {
   const [exitPinOpen, setExitPinOpen] = useState(false)
   const [showRewards, setShowRewards] = useState(false)
   const [proposeOpen, setProposeOpen] = useState(false)
+  const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
 
   const load = useCallback(async () => {
     if (!childId) return
@@ -398,43 +399,77 @@ function KidHomeInner() {
               <div className="text-5xl mb-2">🌱</div>
               <p className="text-emerald-900/70 text-sm">{t.kid_empty}</p>
             </div>
-          ) : (
-            <>
-              {doneCount === habits.length && (
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                  className="text-center rounded-3xl p-4 bg-gradient-to-br from-amber-100 to-emerald-100 border-2 border-amber-300"
-                >
-                  <div className="text-5xl mb-1">🌟</div>
-                  <p className="text-emerald-900 font-extrabold">{t.kid_all_done}</p>
-                </motion.div>
-              )}
-              {(() => {
-                // Group habits by category
-                const groups = {}
-                habits.forEach(h => {
-                  const c = h.category || 'ibadah'
-                  if (!groups[c]) groups[c] = []
-                  groups[c].push(h)
-                })
-                // Sort within group: incomplete first
-                Object.values(groups).forEach(list => {
-                  list.sort((a, b) => {
-                    const aDone = a.todayStatus === 'claimed' || a.todayStatus === 'verified'
-                    const bDone = b.todayStatus === 'claimed' || b.todayStatus === 'verified'
-                    return aDone === bDone ? 0 : (aDone ? 1 : -1)
-                  })
-                })
-                // Sort groups: incomplete groups first, then complete
-                const groupList = Object.entries(groups).map(([id, list]) => {
-                  const done = list.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
-                  return { id, list, done, total: list.length, allDone: done === list.length }
-                })
-                groupList.sort((a, b) => {
-                  if (a.allDone !== b.allDone) return a.allDone ? 1 : -1
-                  return 0
-                })
-                return groupList.map(g => (
+          ) : (() => {
+            // ── Build category groups once (used by chips + list) ──
+            const groups = {}
+            habits.forEach(h => {
+              const c = h.category || 'ibadah'
+              if (!groups[c]) groups[c] = []
+              groups[c].push(h)
+            })
+            Object.values(groups).forEach(list => {
+              list.sort((a, b) => {
+                const aDone = a.todayStatus === 'claimed' || a.todayStatus === 'verified'
+                const bDone = b.todayStatus === 'claimed' || b.todayStatus === 'verified'
+                return aDone === bDone ? 0 : (aDone ? 1 : -1)
+              })
+            })
+            // Order groups by HABIT_CATEGORIES declaration; complete-all groups sink to bottom
+            const orderedIds = Object.keys(HABIT_CATEGORIES).filter(id => groups[id])
+            const groupList = orderedIds.map(id => {
+              const list = groups[id]
+              const done = list.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+              return { id, list, done, total: list.length, allDone: done === list.length }
+            })
+            groupList.sort((a, b) => (a.allDone === b.allDone ? 0 : a.allDone ? 1 : -1))
+
+            const filteredGroups = catFilter === 'all' ? groupList : groupList.filter(g => g.id === catFilter)
+
+            return (
+              <>
+                {/* Category shortcut chips — horizontal scroll */}
+                <div className="-mx-5 px-5 overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none' }}>
+                  <div className="flex gap-2 pb-1">
+                    {/* "All" chip */}
+                    <CategoryChip
+                      active={catFilter === 'all'}
+                      label={t.kid_cat_all}
+                      icon="✨"
+                      color="#00B894"
+                      done={doneCount}
+                      total={habits.length}
+                      onClick={() => setCatFilter('all')}
+                    />
+                    {groupList.map(g => {
+                      const cat = HABIT_CATEGORIES[g.id]
+                      return (
+                        <CategoryChip
+                          key={g.id}
+                          active={catFilter === g.id}
+                          label={getCategoryLabel(g.id, t)}
+                          icon={g.allDone ? '✅' : cat.icon}
+                          color={cat.color}
+                          done={g.done}
+                          total={g.total}
+                          allDone={g.allDone}
+                          onClick={() => setCatFilter(g.id)}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {doneCount === habits.length && catFilter === 'all' && (
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                    className="text-center rounded-3xl p-4 bg-gradient-to-br from-amber-100 to-emerald-100 border-2 border-amber-300"
+                  >
+                    <div className="text-5xl mb-1">🌟</div>
+                    <p className="text-emerald-900 font-extrabold">{t.kid_all_done}</p>
+                  </motion.div>
+                )}
+
+                {filteredGroups.map(g => (
                   <CategoryGroup
                     key={g.id}
                     catId={g.id}
@@ -447,10 +482,10 @@ function KidHomeInner() {
                     t={t}
                     lang={lang}
                   />
-                ))
-              })()}
-            </>
-          )}
+                ))}
+              </>
+            )
+          })()}
         </div>
       </div>
 
@@ -696,6 +731,53 @@ export default function KidHomePage() {
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-emerald-800">Loading…</div>}>
       <KidHomeInner />
     </Suspense>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CategoryChip — shortcut pill for filtering + at-a-glance score
+
+const CategoryChip = ({ active, label, icon, color, done, total, allDone, onClick }) => {
+  const pct = total > 0 ? (done / total) : 0
+  // Priority-glow: not active, not all-done, and 0/total done → urgent tint
+  const isUrgent = !active && !allDone && done === 0
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-shrink-0 rounded-2xl border-2 px-3 py-2 flex items-center gap-2 transition-all active:scale-[0.97] ${
+        active
+          ? 'text-white shadow-lg'
+          : allDone
+            ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
+            : isUrgent
+              ? 'bg-amber-50/90 border-amber-200 text-amber-900'
+              : 'bg-white/80 backdrop-blur border-white/90 text-eq-ink'
+      }`}
+      style={active ? { background: color, borderColor: color } : { boxShadow: !allDone && !active ? `0 0 0 1px ${color}22` : undefined }}
+    >
+      {/* Icon + progress ring */}
+      <div className="relative w-8 h-8 flex-shrink-0">
+        <svg viewBox="0 0 32 32" className="absolute inset-0 -rotate-90">
+          <circle cx="16" cy="16" r="13" fill="none" stroke={active ? 'rgba(255,255,255,0.3)' : `${color}22`} strokeWidth="3" />
+          <circle
+            cx="16" cy="16" r="13" fill="none"
+            stroke={active ? '#fff' : color}
+            strokeWidth="3"
+            strokeDasharray={`${pct * 81.68} 81.68`}
+            strokeLinecap="round"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-sm">
+          {icon}
+        </div>
+      </div>
+      <div className="text-left leading-tight">
+        <div className="text-[10px] font-extrabold uppercase tracking-wider">{label}</div>
+        <div className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-eq-ink/60'}`}>
+          {done}/{total}
+        </div>
+      </div>
+    </button>
   )
 }
 

@@ -72,4 +72,7 @@
   .bg-eq-warm {
     background: linear-gradient(180deg, #FFF8E7 0%, #FDFCF7 100%);
   }
+
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
