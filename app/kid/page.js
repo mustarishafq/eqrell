@@ -427,36 +427,50 @@ function KidHomeInner() {
 
             return (
               <>
-                {/* Category shortcut chips — horizontal scroll */}
-                <div className="-mx-5 px-5 overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none' }}>
-                  <div className="flex gap-2 pb-1">
-                    {/* "All" chip */}
-                    <CategoryChip
-                      active={catFilter === 'all'}
-                      label={t.kid_cat_all}
-                      icon="✨"
-                      color="#00B894"
-                      done={doneCount}
-                      total={habits.length}
-                      onClick={() => setCatFilter('all')}
-                    />
-                    {groupList.map(g => {
-                      const cat = HABIT_CATEGORIES[g.id]
+                {/* Category shortcut chips — all visible in a compact grid, no scroll */}
+                <div className="grid grid-cols-6 gap-1.5">
+                  <CategoryChip
+                    active={catFilter === 'all'}
+                    label={t.kid_cat_all}
+                    icon="✨"
+                    color="#00B894"
+                    done={doneCount}
+                    total={habits.length}
+                    onClick={() => setCatFilter('all')}
+                  />
+                  {Object.keys(HABIT_CATEGORIES).map(id => {
+                    const cat = HABIT_CATEGORIES[id]
+                    const g = groupList.find(x => x.id === id)
+                    if (!g) {
+                      // Category with no habits assigned — show as ghost/disabled
                       return (
                         <CategoryChip
-                          key={g.id}
-                          active={catFilter === g.id}
-                          label={getCategoryLabel(g.id, t)}
-                          icon={g.allDone ? '✅' : cat.icon}
+                          key={id}
+                          active={false}
+                          disabled
+                          label={getCategoryLabel(id, t)}
+                          icon={cat.icon}
                           color={cat.color}
-                          done={g.done}
-                          total={g.total}
-                          allDone={g.allDone}
-                          onClick={() => setCatFilter(g.id)}
+                          done={0}
+                          total={0}
+                          onClick={() => {}}
                         />
                       )
-                    })}
-                  </div>
+                    }
+                    return (
+                      <CategoryChip
+                        key={id}
+                        active={catFilter === id}
+                        label={getCategoryLabel(id, t)}
+                        icon={g.allDone ? '✅' : cat.icon}
+                        color={cat.color}
+                        done={g.done}
+                        total={g.total}
+                        allDone={g.allDone}
+                        onClick={() => setCatFilter(id)}
+                      />
+                    )
+                  })}
                 </div>
 
                 {doneCount === habits.length && catFilter === 'all' && (
@@ -735,47 +749,51 @@ export default function KidHomePage() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// CategoryChip — shortcut pill for filtering + at-a-glance score
+// CategoryChip — compact vertical chip (fits 6 in a row on mobile)
 
-const CategoryChip = ({ active, label, icon, color, done, total, allDone, onClick }) => {
+const CategoryChip = ({ active, label, icon, color, done, total, allDone, disabled, onClick }) => {
   const pct = total > 0 ? (done / total) : 0
-  // Priority-glow: not active, not all-done, and 0/total done → urgent tint
-  const isUrgent = !active && !allDone && done === 0
+  // Priority-glow: not active, has habits, none done yet → urgent tint
+  const isUrgent = !active && !allDone && total > 0 && done === 0
+
   return (
     <button
       onClick={onClick}
-      className={`flex-shrink-0 rounded-2xl border-2 px-3 py-2 flex items-center gap-2 transition-all active:scale-[0.97] ${
+      disabled={disabled}
+      className={`rounded-2xl border-2 px-1 py-1.5 flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] ${
         active
-          ? 'text-white shadow-lg'
-          : allDone
-            ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
-            : isUrgent
-              ? 'bg-amber-50/90 border-amber-200 text-amber-900'
-              : 'bg-white/80 backdrop-blur border-white/90 text-eq-ink'
+          ? 'text-white shadow-md'
+          : disabled
+            ? 'bg-eq-cream/30 border-eq-cream/60 text-eq-ink/30 opacity-60 cursor-not-allowed'
+            : allDone
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : isUrgent
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-white/80 backdrop-blur border-white/90 text-eq-ink'
       }`}
-      style={active ? { background: color, borderColor: color } : { boxShadow: !allDone && !active ? `0 0 0 1px ${color}22` : undefined }}
+      style={active ? { background: color, borderColor: color } : !disabled && !allDone ? { boxShadow: `0 0 0 1px ${color}22` } : undefined}
+      title={total > 0 ? `${label} · ${done}/${total}` : label}
     >
-      {/* Icon + progress ring */}
-      <div className="relative w-8 h-8 flex-shrink-0">
-        <svg viewBox="0 0 32 32" className="absolute inset-0 -rotate-90">
-          <circle cx="16" cy="16" r="13" fill="none" stroke={active ? 'rgba(255,255,255,0.3)' : `${color}22`} strokeWidth="3" />
-          <circle
-            cx="16" cy="16" r="13" fill="none"
-            stroke={active ? '#fff' : color}
-            strokeWidth="3"
-            strokeDasharray={`${pct * 81.68} 81.68`}
-            strokeLinecap="round"
-          />
+      {/* Icon in progress ring */}
+      <div className="relative w-9 h-9 flex-shrink-0">
+        <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
+          <circle cx="18" cy="18" r="15" fill="none" stroke={active ? 'rgba(255,255,255,0.35)' : disabled ? '#e5e5e5' : `${color}22`} strokeWidth="3" />
+          {total > 0 && (
+            <circle
+              cx="18" cy="18" r="15" fill="none"
+              stroke={active ? '#fff' : color}
+              strokeWidth="3"
+              strokeDasharray={`${pct * 94.25} 94.25`}
+              strokeLinecap="round"
+            />
+          )}
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-sm">
+        <div className="absolute inset-0 flex items-center justify-center text-base">
           {icon}
         </div>
       </div>
-      <div className="text-left leading-tight">
-        <div className="text-[10px] font-extrabold uppercase tracking-wider">{label}</div>
-        <div className={`text-[10px] font-bold ${active ? 'text-white/90' : 'text-eq-ink/60'}`}>
-          {done}/{total}
-        </div>
+      <div className={`text-[9px] font-extrabold leading-none ${active ? 'text-white/95' : disabled ? 'text-eq-ink/30' : 'text-eq-ink/70'}`}>
+        {total > 0 ? `${done}/${total}` : '—'}
       </div>
     </button>
   )
