@@ -238,17 +238,79 @@ const LocationEditor = ({ open, current, onClose, onSaved, t }) => {
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
   const [method, setMethod] = useState(3)
+  const [latitude, setLatitude] = useState(null)
+  const [longitude, setLongitude] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [gpsBusy, setGpsBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [suggestOpen, setSuggestOpen] = useState(false)
 
   useEffect(() => {
     if (open) {
       setCity(current?.city || '')
       setCountry(current?.country || '')
       setMethod(current?.method || 3)
-      setErr('')
+      setLatitude(current?.latitude ?? null)
+      setLongitude(current?.longitude ?? null)
+      setErr(''); setSuggestions([]); setSuggestOpen(false)
     }
   }, [open, current])
+
+  // GPS detect
+  const detectGps = () => {
+    if (!navigator.geolocation) { setErr(t.display_gps_unsupported); return }
+    setErr(''); setGpsBusy(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        setLatitude(lat); setLongitude(lng)
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`)
+          const d = await r.json()
+          const a = d?.address || {}
+          const detectedCity = a.city || a.town || a.village || a.municipality || a.county || ''
+          const detectedCountry = a.country || ''
+          if (detectedCity) setCity(detectedCity)
+          if (detectedCountry) setCountry(detectedCountry)
+        } catch (e) { /* keep lat/lng even if reverse geocode fails */ }
+        setGpsBusy(false)
+      },
+      (err) => {
+        setGpsBusy(false)
+        setErr(err.code === 1 ? t.display_gps_denied : t.display_gps_failed)
+      },
+      { enableHighAccuracy: false, timeout: 15000 }
+    )
+  }
+
+  // City search suggestions (debounced)
+  useEffect(() => {
+    if (!open) return
+    if (!city || city.length < 3) { setSuggestions([]); return }
+    const handle = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&format=json&limit=5&accept-language=en`)
+        const d = await r.json()
+        setSuggestions((d || []).map(x => ({
+          display: x.display_name,
+          lat: parseFloat(x.lat), lon: parseFloat(x.lon),
+          city: x.name || (x.display_name?.split(',')[0] || ''),
+          country: x.display_name?.split(',').pop()?.trim() || '',
+        })))
+      } catch (e) { /* ignore */ }
+    }, 400)
+    return () => clearTimeout(handle)
+  }, [city, open])
+
+  const pickSuggestion = (s) => {
+    setCity(s.city)
+    setCountry(s.country)
+    setLatitude(s.lat)
+    setLongitude(s.lon)
+    setSuggestOpen(false)
+    setSuggestions([])
+  }
 
   const save = async () => {
     if (!city.trim() || !country.trim()) { setErr(t.display_form_required); return }
@@ -257,7 +319,10 @@ const LocationEditor = ({ open, current, onClose, onSaved, t }) => {
       const r = await fetch('/api/family/prayer-location', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ city: city.trim(), country: country.trim(), method }),
+        body: JSON.stringify({
+          city: city.trim(), country: country.trim(), method,
+          latitude, longitude,
+        }),
       })
       if (r.ok) onSaved()
       else { const d = await r.json().catch(() => ({})); setErr(d.error || 'Failed') }
@@ -279,13 +344,41 @@ const LocationEditor = ({ open, current, onClose, onSaved, t }) => {
           >
             <div className="p-5">
               <h3 className="text-lg font-extrabold text-emerald-900 mb-1">{t.display_location_title}</h3>
-              <p className="text-xs text-emerald-800/60 mb-4">{t.display_location_sub}</p>
+              <p className="text-xs text-emerald-800/60 mb-3">{t.display_location_sub}</p>
 
-              <label className="block mb-3">
+              {/* GPS auto-detect button */}
+              <button
+                onClick={detectGps}
+                disabled={gpsBusy}
+                className="w-full mb-3 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 py-2.5 px-3 flex items-center justify-center gap-2 font-extrabold text-sm text-emerald-800 active:scale-[0.99] disabled:opacity-60"
+              >
+                {gpsBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                {gpsBusy ? t.display_gps_locating : t.display_gps_detect}
+              </button>
+
+              <label className="block mb-3 relative">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 mb-1">{t.display_city_label}</div>
-                <input value={city} onChange={e => setCity(e.target.value)}
+                <input value={city}
+                  onChange={e => { setCity(e.target.value); setSuggestOpen(true) }}
+                  onFocus={() => setSuggestOpen(true)}
+                  onBlur={() => setTimeout(() => setSuggestOpen(false), 200)}
                   placeholder="Kuala Lumpur"
                   className="w-full rounded-xl border-2 border-eq-cream focus:border-emerald-300 outline-none px-3 py-2 text-sm" />
+                {suggestOpen && suggestions.length > 0 && (
+                  <div className="absolute z-10 left-0 right-0 top-full mt-1 rounded-xl border border-eq-cream bg-white shadow-lg max-h-52 overflow-y-auto">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); pickSuggestion(s) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 border-b border-eq-cream/60 last:border-b-0"
+                      >
+                        <div className="font-bold text-eq-ink truncate">{s.city}</div>
+                        <div className="text-eq-ink/60 text-[10px] truncate">{s.display}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </label>
               <label className="block mb-3">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 mb-1">{t.display_country_label}</div>
@@ -307,6 +400,11 @@ const LocationEditor = ({ open, current, onClose, onSaved, t }) => {
                   <option value={13}>Diyanet İşleri Başkanlığı (Turkey)</option>
                 </select>
               </label>
+              {latitude != null && longitude != null && (
+                <div className="text-[10px] font-mono text-emerald-700/70 mb-2">
+                  📍 {latitude.toFixed(4)}, {longitude.toFixed(4)}
+                </div>
+              )}
               {err && <div className="text-xs text-red-600 mb-2">{err}</div>}
               <div className="flex gap-2 mt-4">
                 <button onClick={onClose} className="flex-1 rounded-xl border-2 border-eq-cream py-2 text-sm font-bold">{t.cancel}</button>
