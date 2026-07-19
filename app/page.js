@@ -9,6 +9,7 @@ import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/Chi
 import { HabitsSheet } from '@/components/eqrel/HabitsSheet'
 import { VerifySheet } from '@/components/eqrel/VerifySheet'
 import { PinModal } from '@/components/eqrel/PinModal'
+import { RewardShopSheet } from '@/components/eqrel/RewardShopSheet'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -139,6 +140,8 @@ const ParentDashboard = () => {
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
   const [kidModeChild, setKidModeChild] = useState(null)   // child pending Kid Mode entry (PIN gate)
   const [pinModalMode, setPinModalMode] = useState(null)   // 'enter' | 'set' | null
+  const [rewardShopOpen, setRewardShopOpen] = useState(false)
+  const [pendingRewardCount, setPendingRewardCount] = useState(0)
 
   // AUTH CHECK — redirect to /login if not authenticated
   useEffect(() => {
@@ -201,6 +204,15 @@ const ParentDashboard = () => {
           if (vq.ok) {
             const vqd = await vq.json()
             setPendingVerifyCount(vqd.claims?.length || 0)
+          }
+        } catch (e) {}
+
+        // Fetch pending reward requests count
+        try {
+          const rr = await fetch('/api/rewards/requests?status=pending', { credentials: 'include' })
+          if (rr.ok) {
+            const rrd = await rr.json()
+            setPendingRewardCount(rrd.requests?.length || 0)
           }
         } catch (e) {}
       } catch (e) {}
@@ -487,6 +499,21 @@ const ParentDashboard = () => {
           <ChevronRight className="w-5 h-5 text-eq-blue flex-shrink-0" strokeWidth={2.5} />
         </motion.button>
 
+        <motion.button
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4 }}
+          onClick={() => setRewardShopOpen(true)}
+          className="w-full bg-amber-100/60 border-2 border-amber-200 rounded-2xl px-3 py-2.5 flex items-center gap-2.5 hover:bg-amber-100 transition-all active:scale-[0.99] flex-shrink-0"
+        >
+          <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-lg flex-shrink-0">🎁</div>
+          <div className="flex-1 text-left">
+            <div className="font-bold text-eq-ink text-sm">{t.reward_shop_title}</div>
+            <div className="text-[11px] text-amber-800/70 leading-tight">{t.reward_pending_count(pendingRewardCount)}</div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-amber-700 flex-shrink-0" strokeWidth={2.5} />
+        </motion.button>
+
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -583,6 +610,29 @@ const ParentDashboard = () => {
           setKidModeChild(null)
           if (c) window.location.href = `/kid?childId=${encodeURIComponent(c.id)}`
         }}
+      />
+
+      {/* Reward Shop — parent view (catalog + requests) */}
+      <RewardShopSheet
+        open={rewardShopOpen}
+        onClose={async () => {
+          setRewardShopOpen(false)
+          // Refresh pending reward count after actions
+          try {
+            const rr = await fetch('/api/rewards/requests?status=pending', { credentials: 'include' })
+            if (rr.ok) {
+              const d = await rr.json()
+              setPendingRewardCount(d.requests?.length || 0)
+            }
+            // Also refresh children (mataReward may have changed)
+            const cr = await fetch('/api/children', { credentials: 'include' })
+            if (cr.ok) {
+              const cd = await cr.json()
+              setChildren(cd.children || [])
+            }
+          } catch (e) {}
+        }}
+        children={children}
       />
     </div>
   )

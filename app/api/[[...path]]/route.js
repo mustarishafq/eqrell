@@ -15,6 +15,26 @@ const CORS = (res) => {
 const json = (data, status = 200) => CORS(NextResponse.json(data, { status }))
 const err = (msg, status = 400) => json({ error: msg }, status)
 
+/**
+ * Compute the delta between two claim states and apply it to child.mataBina/mataReward.
+ * Mata Bina = habit points × (1.5 if ihsan, else 1) awarded on 'verified'.
+ * Mata Reward = +5 flat on 'ihsan' verification only.
+ * prevClaim/nextClaim shape: { status, rubric, pointsAwarded }
+ */
+async function applyMataDelta(db, childId, prevClaim, nextClaim) {
+  const prevPts = (prevClaim?.status === 'verified') ? Number(prevClaim.pointsAwarded || 0) : 0
+  const nextPts = (nextClaim?.status === 'verified') ? Number(nextClaim.pointsAwarded || 0) : 0
+  const prevRw  = (prevClaim?.status === 'verified' && prevClaim?.rubric === 'ihsan') ? 5 : 0
+  const nextRw  = (nextClaim?.status === 'verified' && nextClaim?.rubric === 'ihsan') ? 5 : 0
+  const dBina = nextPts - prevPts
+  const dRw   = nextRw - prevRw
+  if (dBina === 0 && dRw === 0) return
+  const inc = {}
+  if (dBina !== 0) inc.mataBina = dBina
+  if (dRw   !== 0) inc.mataReward = dRw
+  await db.collection('children').updateOne({ id: childId }, { $inc: inc })
+}
+
 export async function OPTIONS() {
   return CORS(new NextResponse(null, { status: 200 }))
 }
@@ -241,6 +261,9 @@ async function handleRoute(request, { params }) {
         lightLevel: body.lightLevel ?? 100,
         blackClouds: body.blackClouds ?? 0,
         buildingCount: body.buildingCount ?? 0,
+        claimMode: ['self','parent'].includes(body.claimMode) ? body.claimMode : 'parent',
+        mataBina: 0,
+        mataReward: 0,
         createdBy: session.userId,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -430,9 +453,11 @@ async function handleRoute(request, { params }) {
       // Parent-log inline verification: rubric provided → record as verified/deleted immediately
       if (rubric) {
         if (!['ihsan', 'sah', 'belum'].includes(rubric)) return err('Invalid rubric', 400)
+        const prevClaim = await db.collection('habit_claims').findOne({ habitId, dateStr })
         if (rubric === 'belum') {
           // Undo/delete existing claim if any
           await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+          await applyMataDelta(db, habit.childId, prevClaim, null)
           await db.collection('verify_log').insertOne({
             habitId, dateStr, childId: habit.childId, familyId: user.familyId,
             rubric, note, points: 0,
@@ -462,6 +487,7 @@ async function handleRoute(request, { params }) {
           { $set: claimData },
           { upsert: true }
         )
+        await applyMataDelta(db, habit.childId, prevClaim, claimData)
         await db.collection('verify_log').insertOne({
           habitId, dateStr, childId: habit.childId, familyId: user.familyId,
           rubric, note, points,
@@ -502,6 +528,7 @@ async function handleRoute(request, { params }) {
       const claim = await db.collection('habit_claims').findOne({ habitId, dateStr, familyId: user.familyId })
       if (!claim) return json({ ok: true, removed: false })
       await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+      await applyMataDelta(db, claim.childId, claim, null)
       return json({ ok: true, removed: true })
     }
 
@@ -595,6 +622,7 @@ async function handleRoute(request, { params }) {
       // 'belum' → remove claim so child can retry today
       if (rubric === 'belum') {
         await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+        await applyMataDelta(db, claim.childId, claim, null)
         // audit trail
         await db.collection('verify_log').insertOne({
           habitId, dateStr, childId: claim.childId, familyId: user.familyId,
@@ -607,7 +635,13 @@ async function handleRoute(request, { params }) {
       // 'ihsan' / 'sah'
       const basePts = Number(habit.points) || 0
       const points = rubric === 'ihsan' ? Math.round(basePts * 1.5) : basePts
-
+      const nextClaim = {
+        ...claim,
+        status: 'verified',
+        rubric,
+        pointsAwarded: points,
+        excellence: rubric === 'ihsan',
+      }
       await db.collection('habit_claims').updateOne(
         { habitId, dateStr },
         { $set: {
@@ -620,6 +654,7 @@ async function handleRoute(request, { params }) {
             verifiedAt: new Date(),
           } }
       )
+      await applyMataDelta(db, claim.childId, claim, nextClaim)
       await db.collection('verify_log').insertOne({
         habitId, dateStr, childId: claim.childId, familyId: user.familyId,
         rubric, note, points,
@@ -687,6 +722,185 @@ async function handleRoute(request, { params }) {
       if (!fam?.pinHash || !fam?.pinSalt) return err('PIN not set', 404)
       const hash = crypto.scryptSync(pin, fam.pinSalt, 32).toString('hex')
       if (hash !== fam.pinHash) return err('PIN incorrect', 403)
+      return json({ ok: true })
+    }
+
+    // ═══ Reward Shop ═══
+    // GET /rewards/catalog  → union of family-custom + built-in template ids (frontend joins with rewardTemplates.js)
+    if (route === '/rewards/catalog' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ templates: [], custom: [] })
+      const custom = await db.collection('rewards_custom')
+        .find({ familyId: user.familyId })
+        .project({ _id: 0 })
+        .toArray()
+      return json({ custom })
+    }
+
+    // POST /rewards/catalog  → add family-custom reward. body: { title, desc?, cost, icon?, category? }
+    if (route === '/rewards/catalog' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const title = String(body.title || '').trim().slice(0, 80)
+      const cost = Number(body.cost)
+      if (!title) return err('Title required', 400)
+      if (!Number.isInteger(cost) || cost < 1 || cost > 999) return err('Invalid cost', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const rec = {
+        id: `rw-c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        familyId: user.familyId,
+        title,
+        desc: String(body.desc || '').trim().slice(0, 200),
+        cost,
+        icon: String(body.icon || '🎁').slice(0, 4),
+        category: ['screen','food','learning','outing','activity','spiritual'].includes(body.category) ? body.category : 'activity',
+        createdAt: new Date(),
+        createdBy: session.userId,
+      }
+      await db.collection('rewards_custom').insertOne(rec)
+      return json({ ok: true, reward: rec })
+    }
+
+    // DELETE /rewards/catalog/:id
+    if (route.match(/^\/rewards\/catalog\/[^/]+$/) && method === 'DELETE') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const id = route.split('/')[3]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      await db.collection('rewards_custom').deleteOne({ id, familyId: user.familyId })
+      return json({ ok: true })
+    }
+
+    // POST /rewards/request  → child (or parent-on-behalf) requests a reward
+    // Body: { childId, rewardId, isTemplate: boolean, snapshot: { title, desc, cost, icon, category } }
+    if (route === '/rewards/request' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const { childId, rewardId, isTemplate, snapshot } = body
+      if (!childId || !rewardId || !snapshot?.title || !snapshot?.cost) return err('Invalid body', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Child not found', 404)
+      const balance = Number(child.mataReward || 0)
+      if (balance < snapshot.cost) return err('Not enough Mata Reward', 402)
+      // Prevent duplicate pending request for same reward
+      const existing = await db.collection('reward_requests').findOne({
+        familyId: user.familyId, childId, rewardId, status: 'pending',
+      })
+      if (existing) return err('Already pending', 409)
+      const rec = {
+        id: `rr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        familyId: user.familyId,
+        childId,
+        rewardId,
+        isTemplate: !!isTemplate,
+        snapshot: {
+          title: String(snapshot.title).slice(0, 80),
+          desc:  String(snapshot.desc || '').slice(0, 200),
+          cost:  Number(snapshot.cost),
+          icon:  String(snapshot.icon || '🎁').slice(0, 4),
+          category: snapshot.category || 'activity',
+        },
+        status: 'pending',
+        requestedAt: new Date(),
+        requestedBy: session.userId,
+      }
+      await db.collection('reward_requests').insertOne(rec)
+      return json({ ok: true, request: rec })
+    }
+
+    // GET /rewards/requests  → list family requests. Query: ?childId=xxx&status=pending
+    if (route === '/rewards/requests' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ requests: [] })
+      const url = new URL(request.url)
+      const qChildId = url.searchParams.get('childId')
+      const qStatus = url.searchParams.get('status')
+      const q = { familyId: user.familyId }
+      if (qChildId) q.childId = qChildId
+      if (qStatus) q.status = qStatus
+      const requests = await db.collection('reward_requests')
+        .find(q)
+        .sort({ requestedAt: -1 })
+        .limit(100)
+        .project({ _id: 0 })
+        .toArray()
+      return json({ requests })
+    }
+
+    // POST /rewards/requests/:id/decide  body: { decision: 'approved'|'rejected', note? }
+    if (route.match(/^\/rewards\/requests\/[^/]+\/decide$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const reqId = route.split('/')[3]
+      const body = await request.json().catch(() => ({}))
+      const decision = body.decision
+      if (!['approved', 'rejected'].includes(decision)) return err('Invalid decision', 400)
+      const note = String(body.note || '').trim().slice(0, 200)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const rr = await db.collection('reward_requests').findOne({ id: reqId, familyId: user.familyId })
+      if (!rr) return err('Request not found', 404)
+      if (rr.status !== 'pending') return err('Already decided', 409)
+      if (decision === 'approved') {
+        // Deduct Mata Reward from child (atomically require sufficient balance)
+        const upd = await db.collection('children').updateOne(
+          { id: rr.childId, familyId: user.familyId, mataReward: { $gte: rr.snapshot.cost } },
+          { $inc: { mataReward: -rr.snapshot.cost } }
+        )
+        if (upd.modifiedCount !== 1) return err('Not enough Mata Reward', 402)
+      }
+      await db.collection('reward_requests').updateOne(
+        { id: reqId },
+        { $set: { status: decision, decidedAt: new Date(), decidedBy: session.userId, decidedNote: note } }
+      )
+      return json({ ok: true, decision })
+    }
+
+    // POST /rewards/requests/:id/fulfill  → mark as delivered (approved → fulfilled)
+    if (route.match(/^\/rewards\/requests\/[^/]+\/fulfill$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const reqId = route.split('/')[3]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const rr = await db.collection('reward_requests').findOne({ id: reqId, familyId: user.familyId })
+      if (!rr) return err('Request not found', 404)
+      if (rr.status !== 'approved') return err('Only approved can be fulfilled', 409)
+      await db.collection('reward_requests').updateOne(
+        { id: reqId },
+        { $set: { status: 'fulfilled', fulfilledAt: new Date(), fulfilledBy: session.userId } }
+      )
+      return json({ ok: true })
+    }
+
+    // DELETE /rewards/requests/:id  → cancel own pending request
+    if (route.match(/^\/rewards\/requests\/[^/]+$/) && method === 'DELETE') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const reqId = route.split('/')[3]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const rr = await db.collection('reward_requests').findOne({ id: reqId, familyId: user.familyId, status: 'pending' })
+      if (!rr) return err('Not found or not pending', 404)
+      await db.collection('reward_requests').deleteOne({ id: reqId })
       return json({ ok: true })
     }
 

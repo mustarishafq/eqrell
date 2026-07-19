@@ -7,6 +7,7 @@ import { Sparkles, Check, LogOut, Star } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
+import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
 import { PinModal } from '@/components/eqrel/PinModal'
 
 function KidHomeInner() {
@@ -17,24 +18,30 @@ function KidHomeInner() {
 
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
+  const [rewardRequests, setRewardRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyHabit, setBusyHabit] = useState(null)
+  const [busyReward, setBusyReward] = useState(null)
   const [toast, setToast] = useState(null)
   const [exitPinOpen, setExitPinOpen] = useState(false)
+  const [showRewards, setShowRewards] = useState(false)
 
   const load = useCallback(async () => {
     if (!childId) return
     setLoading(true)
     try {
-      const [cRes, hRes] = await Promise.all([
+      const [cRes, hRes, rRes] = await Promise.all([
         fetch('/api/children', { credentials: 'include' }),
         fetch(`/api/children/${childId}/habits`, { credentials: 'include' }),
+        fetch(`/api/rewards/requests?childId=${encodeURIComponent(childId)}`, { credentials: 'include' }),
       ])
       const cData = await cRes.json()
       const hData = await hRes.json()
+      const rData = await rRes.json()
       const found = (cData.children || []).find(c => c.id === childId)
       setChild(found || null)
       setHabits(hData.habits || [])
+      setRewardRequests(rData.requests || [])
     } finally {
       setLoading(false)
     }
@@ -73,6 +80,39 @@ function KidHomeInner() {
   const showToast = (type, text) => {
     setToast({ type, text })
     setTimeout(() => setToast(null), 2000)
+  }
+
+  const requestReward = async (r) => {
+    if (!child) return
+    const balance = Number(child.mataReward || 0)
+    if (balance < r.cost) { showToast('locked', t.reward_not_enough); return }
+    // Prevent duplicate pending
+    const already = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')
+    if (already) { showToast('locked', t.reward_requested); return }
+    setBusyReward(r.id)
+    try {
+      const res = await fetch('/api/rewards/request', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          childId: child.id, rewardId: r.id, isTemplate: true,
+          snapshot: {
+            title: getRewardTitle(r, lang),
+            desc:  getRewardDesc(r, lang),
+            cost: r.cost, icon: r.icon, category: r.category,
+          },
+        }),
+      })
+      if (res.ok) {
+        showToast('success', t.reward_requested)
+        await load()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast('locked', d.error || t.verify_error)
+      }
+    } finally {
+      setBusyReward(null)
+    }
   }
 
   const avatarSrc = child?.avatarId ? AVATAR_BY_ID[child.avatarId]?.src : null
@@ -131,25 +171,88 @@ function KidHomeInner() {
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="mt-4 grid grid-cols-2 gap-2"
+            className="mt-4 grid grid-cols-3 gap-2"
           >
             <div className="rounded-2xl p-3 bg-white/80 backdrop-blur border-2 border-white/90 shadow-sm">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-800/70">{t.kid_progress_label}</div>
-              <div className="text-2xl font-extrabold text-emerald-800 mt-0.5">
-                {doneCount}<span className="text-sm opacity-60">/{habits.length}</span>
+              <div className="text-[9px] font-bold uppercase tracking-wide text-emerald-800/70 leading-tight">{t.kid_progress_label}</div>
+              <div className="text-xl font-extrabold text-emerald-800 mt-0.5">
+                {doneCount}<span className="text-xs opacity-60">/{habits.length}</span>
               </div>
             </div>
             <div className="rounded-2xl p-3 bg-white/80 backdrop-blur border-2 border-white/90 shadow-sm">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">{t.kid_mata_label}</div>
-              <div className="text-2xl font-extrabold text-amber-700 mt-0.5 flex items-baseline gap-1">
-                +{totalPoints}
-                <Sparkles className="w-4 h-4 text-amber-500" fill="#FFB703" />
-                {pendingPoints > 0 && (
-                  <span className="text-[10px] font-bold text-emerald-700/70 ms-1">(+{pendingPoints}?)</span>
-                )}
+              <div className="text-[9px] font-bold uppercase tracking-wide text-amber-700 leading-tight">{t.kid_mata_label}</div>
+              <div className="text-xl font-extrabold text-amber-700 mt-0.5 flex items-baseline gap-0.5">
+                +{totalPoints}<Sparkles className="w-3.5 h-3.5 text-amber-500" fill="#FFB703" />
+              </div>
+            </div>
+            <div className="rounded-2xl p-3 bg-white/80 backdrop-blur border-2 border-white/90 shadow-sm">
+              <div className="text-[9px] font-bold uppercase tracking-wide text-purple-700 leading-tight">{t.reward_balance}</div>
+              <div className="text-xl font-extrabold text-purple-700 mt-0.5 flex items-baseline gap-0.5">
+                {Number(child?.mataReward || 0)}<span className="text-base">🎁</span>
               </div>
             </div>
           </motion.div>
+        )}
+
+        {/* Reward Shop toggle */}
+        {!loading && (
+          <button
+            onClick={() => setShowRewards(v => !v)}
+            className={`mt-3 w-full rounded-2xl px-4 py-2.5 border-2 transition-all font-extrabold text-sm flex items-center justify-between ${
+              showRewards
+                ? 'bg-purple-500 border-purple-500 text-white'
+                : 'bg-white/80 backdrop-blur border-white/90 text-purple-800'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-lg">🎁</span>
+              {t.reward_shop_title}
+            </span>
+            <span className="text-[11px] opacity-80">
+              {showRewards ? '×' : '→'}
+            </span>
+          </button>
+        )}
+
+        {/* Rewards grid — shown when toggled on */}
+        {showRewards && !loading && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {REWARD_TEMPLATES.map(r => {
+              const balance = Number(child?.mataReward || 0)
+              const affordable = balance >= r.cost
+              const pending = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')
+              const cat = REWARD_CATEGORIES[r.category] || REWARD_CATEGORIES.activity
+              const isBusy = busyReward === r.id
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => requestReward(r)}
+                  disabled={!affordable || !!pending || isBusy}
+                  className={`text-left rounded-2xl p-2.5 border-2 transition-all active:scale-[0.98] ${
+                    pending    ? 'bg-amber-50 border-amber-200' :
+                    affordable ? 'bg-white border-eq-cream hover:border-purple-300' :
+                                 'bg-eq-cream/40 border-transparent opacity-60'
+                  } ${isBusy ? 'opacity-70' : ''}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="text-2xl">{r.icon}</div>
+                    <div className="text-[10px] font-extrabold text-amber-700 flex items-center gap-0.5">
+                      {r.cost}<Sparkles className="w-3 h-3" fill="#FFB703" />
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>
+                    {getRewardCategoryLabel(r.category, t)}
+                  </div>
+                  <div className="font-bold text-xs text-eq-ink leading-tight mt-0.5 line-clamp-2">
+                    {getRewardTitle(r, lang)}
+                  </div>
+                  {pending && (
+                    <div className="text-[10px] mt-1 text-amber-700 font-bold">{t.reward_requested}</div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
         )}
 
         {/* Habit list */}

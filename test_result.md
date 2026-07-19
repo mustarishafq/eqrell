@@ -840,4 +840,82 @@ metadata:
 
           Backend endpoints for PIN + inline rubric added but not exhaustively unit-tested. Manual verification via UI works (parent-log Sah/Ihsan flows, undo, Kid Mode claim). Recommend backend agent test the 4 new/modified endpoints (POST /api/habits/:id/claim with rubric, DELETE claim, POST /api/family/pin, POST /api/family/pin/verify, GET /api/family/pin).
 
+
+  - task: "Reward Shop — 15 templates + request/approve/fulfill flow + Mata Reward dual-pool"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js, lib/rewardTemplates.js, lib/i18n/strings.js, components/eqrel/RewardShopSheet.js, app/kid/page.js, app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Implemented full Reward Shop with 2-pool point system.
+          
+          Point Model (aligned with PRD):
+            - Mata Bina — earned per verified habit (sah = 1x, ihsan = 1.5x). For world-building later.
+            - Mata Reward — earned only on Ihsan grants (+5 flat each). Spending currency for Reward Shop.
+            - Excellence unlocks spending: parents will actively grant Ihsan when child truly excels.
+          
+          Backend additions (app/api/[[...path]]/route.js):
+            - `applyMataDelta(db, childId, prevClaim, nextClaim)` helper: idempotent transition-based update to child.mataBina/mataReward. Called by all 3 verification paths (parent-log inline, verify-queue verify, DELETE claim). Handles switching between rubrics correctly (e.g. sah→ihsan increments by delta only).
+            - `children.mataBina` and `children.mataReward` fields initialised to 0 on POST /children
+            - GET  /api/rewards/catalog → returns family-custom rewards (frontend joins with 15 built-in templates)
+            - POST /api/rewards/catalog → add custom family reward
+            - DELETE /api/rewards/catalog/:id → remove custom reward
+            - POST /api/rewards/request → child (or parent) creates a pending request. Validates enough balance; blocks duplicates.
+            - GET /api/rewards/requests?childId=&status= → list requests (parent or per-child view)
+            - POST /api/rewards/requests/:id/decide → parent approves (deducts mataReward atomically with $gte guard) or rejects
+            - POST /api/rewards/requests/:id/fulfill → parent marks physically delivered
+            - DELETE /api/rewards/requests/:id → child/parent cancels own pending request
+          
+          Reward Templates (lib/rewardTemplates.js):
+            15 templates × 4 languages (title+desc), mix of worldly + spiritual:
+              rw-01..05 (small 10-20): screen time, snack, ice cream, extra bedtime story, family dinner pick
+              rw-06..10 (medium 25-50): park trip, storybook, playdate, small toy, movie night
+              rw-11..15 (large 60-100): bookstore, Islamic bookstore, craft/Lego, restaurant, sleepover
+            Helpers: getRewardTitle/Desc/CategoryLabel with graceful fallback
+            REWARD_CATEGORIES: screen/food/learning/outing/activity/spiritual with icons + colors
+          
+          Frontend — Parent RewardShopSheet:
+            Two tabs (Permintaan / Katalog):
+            - Permintaan tab: pending requests at top with child avatar + reward icon + cost + status badge. Approve (green) / Reject (red) buttons. Approved shows "Mark delivered" button. History section below.
+            - Katalog tab: 2-column grid of all 15 templates showing icon, category color-coded label, native-script title/desc, cost with sparkle.
+            - Sticky bottom hint explaining Ihsan → Mata Reward relationship.
+          
+          Frontend — Kid Home enhanced:
+            - Stats header now has 3 cards: Habits / Mata Bina / Mata Reward (purple, with 🎁 icon)
+            - New "Kedai Reward" toggle button below stats
+            - When toggled ON: 2-column grid of 15 rewards. Cards color-coded by:
+                * White + hover — affordable
+                * Amber tint — already pending request (with "Menunggu ibu/bapa" badge)
+                * Faded (opacity 60) — cost > balance
+            - Tap card → creates POST /rewards/request. Toast confirmation.
+          
+          Frontend — Dashboard:
+            - New "🎁 Kedai Reward" button (amber-100 bg) below Verify Queue button
+            - Shows pending request count "N permintaan menunggu" or "Tiada permintaan baharu"
+            - Opens RewardShopSheet; on close, refetches pending count + children (to reflect deducted Mata Reward)
+          
+          i18n additions (all 4 languages, ~25 keys):
+            reward_shop_title, reward_pending_count(n), reward_tab_catalog/requests, reward_balance, reward_cost(n),
+            reward_not_enough, reward_request_cta, reward_requested, reward_approved, reward_rejected, reward_fulfilled,
+            reward_confirm_request(title), reward_empty_catalog/requests, reward_add_custom,
+            reward_action_approve/reject/fulfill/cancel, reward_ihsan_note,
+            rw_cat_screen/food/learning/outing/activity/spiritual
+          
+          Verified end-to-end via screenshot tool (420×900 authenticated session, seeded child with mataReward=45, mataBina=340):
+            1. Kid Home shows 3-stat header (5/34 habits, +80 Mata Bina, 45 Mata Reward 🎁), "Kedai Reward" toggle button
+            2. Toggle ON → 2-column grid of all 15 templates visible with proper category labels (SKRIN, MAKANAN, PEMBELAJARAN, AKTIVITI LUAR, AKTIVITI, SPIRITUAL) and icons
+            3. Affordability logic works: items cost 10-40 fully clickable, items cost ≥50 (Movie night, Bookstore, Islamic bookstore, Craft set, Restaurant) appear FADED (opacity-60) with balance=45
+            4. Dashboard shows new "🎁 Kedai Reward" button between Verify Queue and Family Streak
+            5. RewardShopSheet catalog tab (parent view) renders full grid of 15 rewards with pricing + category badges
+          
+          Backend testing recommended for:
+            - Reward endpoints (request/decide/fulfill flow)
+            - Mata pool atomic increments (verify sah→ihsan transition, undo delta)
+            - Custom family rewards CRUD
+
   update_note: "Verify Queue Screen (Parent 3-level rubric) complete — backend 41/41 pass + UI verified across MS/EN/AR (2026-01-18)"
