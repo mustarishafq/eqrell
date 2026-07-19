@@ -18,7 +18,7 @@ import { useLang } from '@/lib/i18n/LangProvider'
 
 const STORAGE_KEY = 'eqrel-device-role'
 
-export function DeviceSettingsSheet({ open, onClose, children = [] }) {
+export function DeviceSettingsSheet({ open, onClose, kids = [] }) {
   const { t } = useLang()
   const [role, setRole] = useState('parent')
   const [saved, setSaved] = useState(false)
@@ -83,7 +83,7 @@ export function DeviceSettingsSheet({ open, onClose, children = [] }) {
               />
 
               {/* One-child options */}
-              {children.map(c => {
+              {kids.map(c => {
                 const avatar = c.avatarId ? AVATAR_BY_ID[c.avatarId] : null
                 const val = `kid:${c.id}`
                 return (
@@ -100,7 +100,7 @@ export function DeviceSettingsSheet({ open, onClose, children = [] }) {
               })}
 
               {/* Shared kid device (chooser) */}
-              {children.length > 1 && (
+              {kids.length > 1 && (
                 <RoleRow
                   selected={role === 'kid:any'}
                   onClick={() => save('kid:any')}
@@ -126,9 +126,9 @@ export function DeviceSettingsSheet({ open, onClose, children = [] }) {
                   <div className="text-[11px] text-sky-900 leading-snug">
                     <div className="font-extrabold mb-1">{t.device_pwa_tip_title}</div>
                     <p>{t.device_pwa_tip_body}</p>
-                    {children.length > 0 && (
+                    {kids.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        {children.map(c => (
+                        {kids.map(c => (
                           <div key={c.id} className="font-mono text-[10px] bg-white/60 rounded px-2 py-1 break-all">
                             /kid?childId={c.id}
                           </div>

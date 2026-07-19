@@ -697,14 +697,14 @@ const ParentDashboard = () => {
             }
           } catch (e) {}
         }}
-        children={children}
+        kids={children}
       />
 
       {/* Device Settings — pick how this device behaves at startup */}
       <DeviceSettingsSheet
         open={deviceSettingsOpen}
         onClose={() => setDeviceSettingsOpen(false)}
-        children={children}
+        kids={children}
       />
     </div>
   )

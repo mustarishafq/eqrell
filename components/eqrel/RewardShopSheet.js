@@ -21,7 +21,7 @@ const REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','
  *   - Proposals  : kids' proposed new rewards → parent may modify cost + approve
  *   - Catalog    : templates + family-custom rewards (add / delete)
  */
-export function RewardShopSheet({ open, onClose, children }) {
+export function RewardShopSheet({ open, onClose, kids }) {
   const { t, lang } = useLang()
   const [tab, setTab] = useState('requests')
   const [requests, setRequests] = useState([])
@@ -62,7 +62,7 @@ export function RewardShopSheet({ open, onClose, children }) {
 
   useEffect(() => { if (open) fetchAll() }, [open, fetchAll])
 
-  const childMap = Object.fromEntries((children || []).map(c => [c.id, c]))
+  const childMap = Object.fromEntries((kids || []).map(c => [c.id, c]))
   const pending = requests.filter(r => r.status === 'pending')
   const decided = requests.filter(r => r.status !== 'pending')
   const pendingProps = proposals.filter(p => p.status === 'pending')
