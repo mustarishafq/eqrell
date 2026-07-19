@@ -760,7 +760,7 @@ agent_communication:
 
   - task: "Verify Queue Screen — Parent 3-level rubric UI"
     implemented: true
-    working: "NA"
+    working: true
     file: "components/eqrel/VerifySheet.js, app/page.js, lib/i18n/strings.js"
     stuck_count: 0
     priority: "high"
@@ -768,27 +768,16 @@ agent_communication:
     status_history:
         -working: "NA"
         -agent: "main"
+        -comment: "Initial VerifySheet component + dashboard wiring"
+        -working: true
+        -agent: "main"
         -comment: |
-          Built VerifySheet — a full bottom-sheet UI (mirrors HabitsSheet UX) that opens from the dashboard "X tugasan sedia disemak" button.
-          
-          Features:
-            - One-item-at-a-time review flow (progress dots for multi-item queue)
-            - Child avatar + nickname + relative time ("baru saja / N min lalu / N jam lalu") localised to all 4 languages
-            - Habit card shows category icon+label, points, custom badge if applicable, localised title & desc via getHabitTitle/getHabitDesc
-            - Optional note textarea for parent → child
-            - Sticky 3-button rubric action bar:
-                Belum (↩️ slate gradient) · Sah (✅ emerald gradient) · Ihsan (🌟 amber gradient)
-                Each with label + hint (e.g. "Cemerlang · +50% Mata")
-            - Toast on success (green sparkles + points), reset (amber), error (red)
-            - Empty state ("Alhamdulillah, semua bersih!") with mascot emoji
-            - Intro tip visible on first item to educate parent
-            - Auto-advance to next item after action; refetches on close via parent
-          
-          Dashboard integration:
-            - New state `verifySheetOpen` in ParentDashboard
-            - Verify button (existing) now has onClick to open sheet
-            - On close, refreshes all children's habit counts (so completed rings update) and updates pending count via onCountChange
-          
-          All copy fully i18n (MS/EN/ID/AR). Rubric buttons render RTL-safe (no directional icons).
-          
-          Not tested via UI yet — will screenshot after backend validation.
+          Verified end-to-end via screenshot tool with authenticated session across MS/EN/AR (3 pending claims seeded):
+          - MS: header "Semak & Sahkan · 3 tugasan menunggu", intro tip, progress dots, child card with avatar+"baru saja", habit card (IBADAH · +15 mata · Solat Asar + desc), note textarea, 3 rubric buttons (Belum · Cuba semula / Sah · Diterima · Penuh / Ihsan · Cemerlang · +50% Mata). Clicking Sah triggered green toast "+15 Mata Bina diberi ✨" and auto-advanced to next item; header count decremented 3→2 automatically.
+          - EN: full localisation — "Review & Verify · 2 tasks waiting", "fathiehah marked as done · just now", "Zuhr Prayer · +15 pts", rubric buttons "Not yet · Try again / Sah · Accepted · Full / Ihsan · Excellent · +50% Points".
+          - AR: full RTL layout preserved. Header "مراجعة وتصديق · 2 مهمة قيد الانتظار", intro in Arabic, "fathiehah وضع علامة تم · الآن", "العبادة · +15 نقطة", habit title "صلاة الظهر", note label "ملاحظة لطفلك (اختياري)", rubric buttons in RTL flex order (right→left) "إحسان / قبول / لم يكتمل" with Arabic hints.
+          Backend 41/41 already passed. Feature is production-ready for Cohort A trial.
+
+metadata:
+  updated_by: "main_agent"
+  update_note: "Verify Queue Screen (Parent 3-level rubric) complete — backend 41/41 pass + UI verified across MS/EN/AR (2026-01-18)"
