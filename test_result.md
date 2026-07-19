@@ -596,6 +596,39 @@ agent_communication:
     -message: "Full i18n audit completed. Every visible UI string (dashboard, habits sheet incl. all 30 template titles/descs, install prompt, child sheet color/gender/lang picker, band labels, category labels, brand tagline, family setup) now dynamically translates. Verified via screenshot tool with authenticated session — AR/ID/EN dashboards + habits list all render correct language. RTL layout in Arabic preserved. No backend changes needed."
     -agent: "testing"
     -message: |
+      🎉 FAMILY DISPLAY ENDPOINTS TESTING COMPLETE - ALL TESTS PASSED (23/23)
+      
+      Tested the 4 new Family Display endpoints as requested:
+      1. GET /api/family/prayer-location - Returns saved prayer location or null
+      2. POST /api/family/prayer-location - Saves prayer location with validation
+      3. GET /api/family/prayer-times - Fetches from Aladhan API with caching
+      4. GET /api/family/display-data - Bundles family + children with today's habits stats
+      
+      All test scenarios passed:
+      ✅ Auth guards (401 without session) - 4 tests
+      ✅ User without family handling - 3 tests
+      ✅ Prayer location validation (missing city/country → 400) - 3 tests
+      ✅ Save & retrieve location with all fields - 3 tests
+      ✅ Prayer times without location set (404 'Prayer location not set') - 1 test
+      ✅ Prayer times fetch from real Aladhan API (all 6 timings in HH:MM format) - 1 test
+      ✅ Prayer times caching (second GET served from cache, verified in DB) - 1 test
+      ✅ Display data bundle (family + children with habitsDone/habitsTotal) - 2 tests
+      ✅ Cross-family isolation (location/data scoped to family) - 5 tests
+      
+      Created comprehensive test suite: /app/test_family_display.py
+      All test data cleaned up successfully.
+      
+      KEY FINDINGS:
+      - All 4 endpoints working correctly with proper auth guards
+      - Prayer location validation comprehensive (city and country required)
+      - Aladhan API integration working (tested with Jakarta, Indonesia)
+      - Prayer times caching working correctly (one entry per family per day)
+      - Display data correctly calculates habitsDone (verified + claimed) and habitsTotal
+      - Cross-family isolation working perfectly (each family has separate location and data)
+      
+      NO ISSUES FOUND. All 4 Family Display endpoints are production-ready.
+    -agent: "testing"
+    -message: |
       🎉 VERIFY QUEUE NEW ENDPOINTS TESTING COMPLETE - ALL TESTS PASSED (41/41)
       
       Tested the 2 new Verify Queue endpoints as requested:
@@ -1541,4 +1574,172 @@ agent_communication:
       - Cross-family isolation working
       
       NO ISSUES FOUND. All quiz endpoints are production-ready.
+
+  - task: "GET /api/family/prayer-location — retrieve family prayer location"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoint GET /api/family/prayer-location returns { location } where location is null if not set,
+          or { city, country, method, latitude?, longitude?, updatedAt } if set.
+          Auth required (401 if no session).
+          Returns location=null if user has no familyId.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (23/23)
+          
+          Comprehensive test suite executed successfully. Created /app/test_family_display.py with automated tests covering all 4 new Family Display endpoints.
+          
+          GET /api/family/prayer-location:
+          ✅ TEST 1: Returns 401 without auth
+          ✅ TEST 5: Returns location=null for user without family
+          ✅ TEST 12: Returns saved location successfully after POST
+          ✅ TEST 19-22: Cross-family isolation working (family A location not visible to family B)
+          
+          KEY FINDINGS:
+          - Auth guard working correctly (401 without session)
+          - Returns location=null for users without family
+          - Returns saved location with all fields (city, country, method, latitude, longitude)
+          - Cross-family isolation working correctly
+          
+          NO ISSUES FOUND. Endpoint is production-ready.
+
+  - task: "POST /api/family/prayer-location — save family prayer location"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoint POST /api/family/prayer-location accepts { city, country, method?, latitude?, longitude? }
+          and saves to families.prayerLocation field.
+          Validates city and country are non-empty (400 if missing).
+          Auth required (401 if no session).
+          Returns 400 if user has no familyId.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (23/23)
+          
+          POST /api/family/prayer-location:
+          ✅ TEST 2: Returns 401 without auth
+          ✅ TEST 6: Returns 400 for user without family
+          ✅ TEST 8-10: Validation working (400 for missing/empty city or country)
+          ✅ TEST 11: Saves location successfully with all fields (city, country, method, lat, lon)
+          ✅ TEST 13: Updates location successfully (without lat/lon)
+          ✅ TEST 20-22: Cross-family isolation working (each family has separate location)
+          
+          KEY FINDINGS:
+          - Auth guard working correctly (401 without session)
+          - Validation comprehensive (city and country required, non-empty)
+          - Saves location with all optional fields (method defaults to 3, lat/lon optional)
+          - Updates existing location correctly
+          - Cross-family isolation working correctly
+          
+          NO ISSUES FOUND. Endpoint is production-ready.
+
+  - task: "GET /api/family/prayer-times — fetch today's prayer times (cached)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoint GET /api/family/prayer-times fetches today's prayer times from Aladhan API.
+          Returns { date, timings: { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha }, location }.
+          Caches result in prayer_times_cache collection (one entry per family per day).
+          Returns 404 'Prayer location not set' if family.prayerLocation is null.
+          Auth required (401 if no session).
+          Returns 400 if user has no familyId.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (23/23)
+          
+          GET /api/family/prayer-times:
+          ✅ TEST 3: Returns 401 without auth
+          ✅ TEST 14: Returns 404 'Prayer location not set' when location not configured
+          ✅ TEST 15: Fetches prayer times from Aladhan API successfully
+             - Returns all 6 required timings (Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha)
+             - All timings in HH:MM format
+             - Date field present (YYYY-MM-DD)
+             - Location field included
+          ✅ TEST 16: Caching working correctly
+             - Second GET on same day served from cache (faster response)
+             - Cache entry verified in prayer_times_cache collection
+             - Cache includes familyId, dateStr, timings, fetchedAt
+          
+          KEY FINDINGS:
+          - Auth guard working correctly (401 without session)
+          - Returns 404 with clear error when location not set
+          - Successfully fetches from real Aladhan API (tested with Jakarta, Indonesia)
+          - All 6 prayer times returned in correct HH:MM format
+          - Caching working correctly (one entry per family per day)
+          - Second request on same day served from cache (performance optimization)
+          
+          NO ISSUES FOUND. Endpoint is production-ready.
+
+  - task: "GET /api/family/display-data — bundle family + children with today's habits"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoint GET /api/family/display-data returns bundled data for ambient display mode.
+          Returns { family, children } where:
+          - family: { id, familyName?, prayerLocation }
+          - children: [{ id, nickname, avatarId, favColor, mataBina, mataReward, habitsTotal, habitsDone }]
+          habitsDone = count of today's claims with status 'claimed' or 'verified'
+          habitsTotal = count of active habits for child
+          Auth required (401 if no session).
+          Returns 400 if user has no familyId.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (23/23)
+          
+          GET /api/family/display-data:
+          ✅ TEST 4: Returns 401 without auth
+          ✅ TEST 7: Returns 400 for user without family
+          ✅ TEST 17: Returns family + children with correct habits stats
+             - Family object includes id and prayerLocation
+             - Children array includes all children in family
+             - Each child has habitsTotal (count of active habits)
+             - Each child has habitsDone (count of today's claims: verified + claimed)
+             - Verified child Ahmad: 2/3 habits done (2 claims today out of 3 total habits)
+             - Verified child Fatimah: 1/2 habits done (1 claim today out of 2 total habits)
+          ✅ TEST 18: Display data includes mataBina and mataReward for all children
+          ✅ TEST 23: Cross-family isolation working (family B sees no children from family A)
+          
+          KEY FINDINGS:
+          - Auth guard working correctly (401 without session)
+          - Returns 400 for users without family
+          - Family object includes id and prayerLocation
+          - Children array correctly populated with all family children
+          - habitsTotal calculation correct (count of active habits per child)
+          - habitsDone calculation correct (count of today's claims with status 'claimed' or 'verified')
+          - mataBina and mataReward fields included for each child
+          - Cross-family isolation working correctly
+          
+          NO ISSUES FOUND. Endpoint is production-ready.
 

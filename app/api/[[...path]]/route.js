@@ -665,6 +665,126 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
     }
 
+    // ═══ Family Display Mode (Prayer Times + ambient data) ══════════════
+    // Aladhan API is used for prayer times. Free, no key, standard REST.
+    // Prayer location is stored on families doc as { city, country, method, latitude?, longitude? }.
+
+    // GET /family/prayer-location
+    if (route === '/family/prayer-location' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return json({ location: null })
+      const family = await db.collection('families').findOne({ id: user.familyId })
+      return json({ location: family?.prayerLocation || null })
+    }
+
+    // POST /family/prayer-location  { city, country, method?, latitude?, longitude? }
+    if (route === '/family/prayer-location' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const city = String(body.city || '').trim().slice(0, 80)
+      const country = String(body.country || '').trim().slice(0, 80)
+      const methodId = Number(body.method) || 3  // 3 = Muslim World League
+      const latitude = body.latitude != null ? Number(body.latitude) : null
+      const longitude = body.longitude != null ? Number(body.longitude) : null
+      if (!city || !country) return err('city and country required', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const loc = { city, country, method: methodId, latitude, longitude, updatedAt: new Date() }
+      await db.collection('families').updateOne({ id: user.familyId }, { $set: { prayerLocation: loc } })
+      return json({ ok: true, location: loc })
+    }
+
+    // GET /family/prayer-times  → today's prayer timings (cached daily per family)
+    // Response: { date, timings: { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha }, location }
+    if (route === '/family/prayer-times' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const family = await db.collection('families').findOne({ id: user.familyId })
+      const loc = family?.prayerLocation
+      if (!loc) return err('Prayer location not set', 404)
+
+      const now = new Date()
+      const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+      // Check cache
+      const cached = await db.collection('prayer_times_cache').findOne({
+        familyId: user.familyId, dateStr,
+      })
+      if (cached) return json({ date: dateStr, timings: cached.timings, location: loc })
+
+      // Fetch from Aladhan
+      const dayParam = `${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${now.getUTCFullYear()}`
+      let url
+      if (loc.latitude != null && loc.longitude != null) {
+        url = `https://api.aladhan.com/v1/timings/${dayParam}?latitude=${loc.latitude}&longitude=${loc.longitude}&method=${loc.method || 3}`
+      } else {
+        url = `https://api.aladhan.com/v1/timingsByCity/${dayParam}?city=${encodeURIComponent(loc.city)}&country=${encodeURIComponent(loc.country)}&method=${loc.method || 3}`
+      }
+      try {
+        const r = await fetch(url, { headers: { 'accept': 'application/json' } })
+        if (!r.ok) return err('Aladhan API error', 502)
+        const data = await r.json()
+        const raw = data?.data?.timings || {}
+        // Keep only the ones we display
+        const timings = {
+          Fajr: raw.Fajr, Sunrise: raw.Sunrise, Dhuhr: raw.Dhuhr,
+          Asr: raw.Asr, Maghrib: raw.Maghrib, Isha: raw.Isha,
+        }
+        await db.collection('prayer_times_cache').updateOne(
+          { familyId: user.familyId, dateStr },
+          { $set: { familyId: user.familyId, dateStr, timings, fetchedAt: new Date() } },
+          { upsert: true }
+        )
+        return json({ date: dateStr, timings, location: loc })
+      } catch (e) {
+        return err('Failed to fetch prayer times', 502)
+      }
+    }
+
+    // GET /family/display-data  → bundle for ambient display
+    // Returns { family, children[compact], streak, todayHabitsDone, todayHabitsTotal }
+    if (route === '/family/display-data' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const family = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, id: 1, familyName: 1, prayerLocation: 1 } })
+      const children = await db.collection('children')
+        .find({ familyId: user.familyId })
+        .project({ _id: 0, id: 1, nickname: 1, avatarId: 1, favColor: 1, mataBina: 1, mataReward: 1 })
+        .toArray()
+
+      // Today's habit progress per child
+      const now = new Date()
+      const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+      const childIds = children.map(c => c.id)
+      const habits = await db.collection('habits').find({ childId: { $in: childIds } }).project({ _id: 0, id: 1, childId: 1 }).toArray()
+      const habitsByChild = {}
+      habits.forEach(h => { habitsByChild[h.childId] = (habitsByChild[h.childId] || 0) + 1 })
+
+      const claimsToday = await db.collection('habit_claims').find({
+        childId: { $in: childIds }, dateStr,
+        status: { $in: ['claimed', 'verified'] },
+      }).project({ _id: 0, childId: 1, status: 1 }).toArray()
+      const doneByChild = {}
+      claimsToday.forEach(c => { doneByChild[c.childId] = (doneByChild[c.childId] || 0) + 1 })
+
+      const childrenOut = children.map(c => ({
+        ...c,
+        habitsTotal: habitsByChild[c.id] || 0,
+        habitsDone: doneByChild[c.id] || 0,
+      }))
+      return json({ family, children: childrenOut })
+    }
+
     // ═══ Quiz ══════════════════════════════════════════════════════
     // POST /quiz/start  { childId }
     // → Starts a new quiz session for a child (1 per day max).

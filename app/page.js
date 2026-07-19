@@ -612,6 +612,21 @@ const ParentDashboard = () => {
           <ChevronRight className="w-5 h-5 text-emerald-700 flex-shrink-0" strokeWidth={2.5} />
         </motion.button>
 
+        <motion.button
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.4 }}
+          onClick={() => (window.location.href = '/display')}
+          className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl px-3 py-2 flex items-center gap-2.5 hover:brightness-110 active:scale-[0.99] flex-shrink-0 shadow-md"
+        >
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-lg flex-shrink-0">🌙</div>
+          <div className="flex-1 text-left min-w-0">
+            <div className="font-bold text-sm">{t.display_tile_title}</div>
+            <div className="text-[11px] text-white/80 leading-tight truncate">{t.display_tile_sub}</div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-white flex-shrink-0" strokeWidth={2.5} />
+        </motion.button>
+
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
