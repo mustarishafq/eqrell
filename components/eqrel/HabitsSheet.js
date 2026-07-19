@@ -22,6 +22,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState(null)
   const [busyTemplateId, setBusyTemplateId] = useState(null)
+  const [catFilter, setCatFilter] = useState('all')  // filter for grouped list: 'all' | category id
 
   // Custom habit form
   const [customTitle, setCustomTitle] = useState('')
@@ -396,6 +397,10 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     })
                   groupList.sort((a, b) => (a.allDone === b.allDone ? 0 : a.allDone ? 1 : -1))
 
+                  // Apply category filter
+                  const filteredGroups = catFilter === 'all' ? groupList : groupList.filter(g => g.id === catFilter)
+                  const overallDone = habits.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+
                   const renderHabit = (habit) => {
                     const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
                     const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
@@ -461,7 +466,51 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
                   return (
                     <div className="space-y-3">
-                      {groupList.map(g => {
+                      {/* Category shortcut chips — 3×2 grid, always visible */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <HabitCategoryChip
+                          active={catFilter === 'all'}
+                          label={t.kid_cat_all}
+                          icon="✨"
+                          color="#00B894"
+                          done={overallDone}
+                          total={habits.length}
+                          onClick={() => setCatFilter('all')}
+                        />
+                        {Object.keys(HABIT_CATEGORIES).map(id => {
+                          const cat = HABIT_CATEGORIES[id]
+                          const g = groupList.find(x => x.id === id)
+                          if (!g) {
+                            return (
+                              <HabitCategoryChip
+                                key={id}
+                                disabled
+                                label={getCategoryLabel(id, t)}
+                                icon={cat.icon}
+                                color={cat.color}
+                                done={0}
+                                total={0}
+                                onClick={() => {}}
+                              />
+                            )
+                          }
+                          return (
+                            <HabitCategoryChip
+                              key={id}
+                              active={catFilter === id}
+                              label={getCategoryLabel(id, t)}
+                              icon={g.allDone ? '✅' : cat.icon}
+                              color={cat.color}
+                              done={g.done}
+                              total={g.total}
+                              allDone={g.allDone}
+                              onClick={() => setCatFilter(id)}
+                            />
+                          )
+                        })}
+                      </div>
+
+                      {filteredGroups.map(g => {
                         const cat = HABIT_CATEGORIES[g.id]
                         const catLabel = getCategoryLabel(g.id, t)
                         const pct = g.total > 0 ? Math.round((g.done / g.total) * 100) : 0
@@ -777,3 +826,58 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 }
 
 export default HabitsSheet
+
+// ─────────────────────────────────────────────────────────────────
+// HabitCategoryChip — icon + label + score chip for filtering (parent view)
+
+const HabitCategoryChip = ({ active, label, icon, color, done, total, allDone, disabled, onClick }) => {
+  const pct = total > 0 ? (done / total) : 0
+  const isUrgent = !active && !allDone && total > 0 && done === 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-2xl border-2 px-1.5 py-1.5 flex items-center gap-1.5 transition-all active:scale-[0.97] ${
+        active
+          ? 'text-white shadow-md'
+          : disabled
+            ? 'bg-eq-cream/30 border-eq-cream/60 text-eq-ink/30 opacity-60 cursor-not-allowed'
+            : allDone
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : isUrgent
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-white border-eq-cream text-eq-ink'
+      }`}
+      style={active ? { background: color, borderColor: color } : !disabled && !allDone ? { boxShadow: `0 0 0 1px ${color}22` } : undefined}
+      title={total > 0 ? `${label} · ${done}/${total}` : label}
+    >
+      <div className="relative w-9 h-9 flex-shrink-0">
+        <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
+          <circle cx="18" cy="18" r="15" fill="none" stroke={active ? 'rgba(255,255,255,0.35)' : disabled ? '#e5e5e5' : `${color}22`} strokeWidth="3" />
+          {total > 0 && (
+            <circle
+              cx="18" cy="18" r="15" fill="none"
+              stroke={active ? '#fff' : color}
+              strokeWidth="3"
+              strokeDasharray={`${pct * 94.25} 94.25`}
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-base">
+          {icon}
+        </div>
+      </div>
+      <div className="flex-1 min-w-0 text-left leading-tight">
+        <div className={`text-[10px] font-extrabold uppercase tracking-tight truncate ${active ? 'text-white' : ''}`}>
+          {label}
+        </div>
+        <div className={`text-[10px] font-bold leading-none mt-0.5 ${active ? 'text-white/95' : disabled ? 'text-eq-ink/30' : 'text-eq-ink/60'}`}>
+          {total > 0 ? `${done}/${total}` : '—'}
+        </div>
+      </div>
+    </button>
+  )
+}
