@@ -6,9 +6,19 @@ import { motion } from 'framer-motion'
 import { Tv, ArrowRight, HelpCircle } from 'lucide-react'
 import { BRAND } from '@/lib/brand'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
+import { useLang, SUPPORTED_LANGS } from '@/lib/i18n/LangProvider'
+
+const COPY = {
+  ms: { pair: 'Family Display Pairing', enter: 'Masukkan Kod TV', hint: 'Buka Setup di phone → Cast to TV → Salin kod 6-digit', expire: 'Kod tamat tempoh 15 minit selepas dijana', help: 'Bantuan / Cara guna', err_short: 'Sila masukkan 6 digit kod', err_invalid: 'Kod tidak sah atau tamat tempoh', err_conn: 'Ralat sambungan' },
+  en: { pair: 'Family Display Pairing', enter: 'Enter TV Code', hint: 'Open Setup on phone → Cast to TV → Copy the 6-digit code', expire: 'Code expires 15 minutes after generation', help: 'Help / How to use', err_short: 'Please enter the 6-digit code', err_invalid: 'Invalid or expired code', err_conn: 'Connection error' },
+  id: { pair: 'Pairing Family Display', enter: 'Masukkan Kode TV', hint: 'Buka Setup di HP → Cast to TV → Salin kode 6-digit', expire: 'Kode habis 15 menit setelah dibuat', help: 'Bantuan / Cara pakai', err_short: 'Harap masukkan kode 6 digit', err_invalid: 'Kode tidak valid atau habis', err_conn: 'Error koneksi' },
+  ar: { pair: 'إقران Family Display', enter: 'أدخل رمز التلفاز', hint: 'افتح الإعدادات على الهاتف ← Cast to TV ← انسخ الرمز المكون من ٦ أرقام', expire: 'ينتهي الرمز بعد ١٥ دقيقة من إنشائه', help: 'مساعدة / كيفية الاستخدام', err_short: 'يرجى إدخال الرمز المكون من ٦ أرقام', err_invalid: 'رمز غير صالح أو منتهي', err_conn: 'خطأ في الاتصال' },
+}
 
 export default function TVPairPage() {
   const router = useRouter()
+  const { lang, setLang, dir } = useLang()
+  const L = COPY[lang] || COPY.ms
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,7 +26,7 @@ export default function TVPairPage() {
 
   const submit = async (e) => {
     e?.preventDefault?.()
-    if (!/^[0-9]{6}$/.test(code)) { setErr('Sila masukkan 6 digit kod'); return }
+    if (!/^[0-9]{6}$/.test(code)) { setErr(L.err_short); return }
     setLoading(true); setErr('')
     try {
       const r = await fetch('/api/tv-pair/redeem', {
@@ -25,13 +35,12 @@ export default function TVPairPage() {
       })
       const d = await r.json()
       if (r.ok && d.ok) {
-        // Redirect to full TV display
         router.push('/display?tv=1')
       } else {
-        setErr(d.error || 'Kod tidak sah atau tamat tempoh')
+        setErr(d.error || L.err_invalid)
       }
     } catch (e) {
-      setErr('Ralat sambungan')
+      setErr(L.err_conn)
     }
     setLoading(false)
   }
@@ -42,22 +51,33 @@ export default function TVPairPage() {
   const del = () => setCode(c => c.slice(0, -1))
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-6 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900 text-white">
+    <div className="min-h-screen w-full flex items-center justify-center p-6 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900 text-white relative" dir={dir}>
+      {/* Language switcher (top-right) */}
+      <div className="absolute top-4 right-4 flex gap-1 bg-white/10 backdrop-blur border border-white/15 rounded-full p-1">
+        {SUPPORTED_LANGS.map(l => (
+          <button key={l.code} onClick={() => setLang(l.code)}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-black transition-all ${lang === l.code ? 'bg-white text-emerald-900' : 'text-white/70 hover:text-white'}`}
+            aria-label={l.label}>
+            {l.short}
+          </button>
+        ))}
+      </div>
+
       <div className="max-w-md w-full">
         {/* Brand header */}
         <div className="flex items-center justify-center gap-3 mb-8">
           <img src={BRAND.mascot.default} alt="EQ" className="w-16 h-16 drop-shadow-2xl" />
           <div>
             <div className="text-3xl font-black tracking-tight">{BRAND.name}</div>
-            <div className="text-xs uppercase tracking-widest font-bold" style={{ color: '#FFB703' }}>Family Display Pairing</div>
+            <div className="text-xs uppercase tracking-widest font-bold" style={{ color: '#FFB703' }}>{L.pair}</div>
           </div>
         </div>
 
         <div className="rounded-3xl bg-white/8 backdrop-blur border border-white/15 p-6 shadow-2xl">
           <div className="text-center mb-5">
             <Tv className="w-10 h-10 mx-auto mb-2" style={{ color: '#FFB703' }} />
-            <h1 className="text-xl font-black">Masukkan Kod TV</h1>
-            <p className="text-sm text-white/70 mt-1">Buka Setup di phone → Cast to TV → Salin kod 6-digit</p>
+            <h1 className="text-xl font-black">{L.enter}</h1>
+            <p className="text-sm text-white/70 mt-1">{L.hint}</p>
           </div>
 
           {/* Code display */}
@@ -86,7 +106,7 @@ export default function TVPairPage() {
             <button onClick={submit} disabled={loading || code.length !== 6}
               className="h-14 rounded-xl text-slate-900 text-sm font-black active:scale-95 disabled:opacity-40 flex items-center justify-center gap-1"
               style={{ backgroundColor: '#FFB703' }}>
-              {loading ? '...' : <><ArrowRight className="w-5 h-5" /></>}
+              {loading ? '...' : <ArrowRight className={`w-5 h-5 ${dir === 'rtl' ? 'rotate-180' : ''}`} />}
             </button>
           </div>
 
@@ -98,14 +118,14 @@ export default function TVPairPage() {
         </div>
 
         <div className="mt-4 text-center text-xs text-white/50">
-          Kod tamat tempoh 15 minit selepas dijana
+          {L.expire}
         </div>
 
         <div className="mt-3 text-center">
           <button onClick={() => setShowHelp(true)}
             className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-2 text-xs font-extrabold text-white/90 active:scale-95">
             <HelpCircle className="w-4 h-4" style={{ color: '#FFB703' }} />
-            Bantuan / Cara guna
+            {L.help}
           </button>
         </div>
       </div>
