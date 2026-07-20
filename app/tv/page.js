@@ -3,14 +3,16 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Tv, ArrowRight } from 'lucide-react'
+import { Tv, ArrowRight, HelpCircle } from 'lucide-react'
 import { BRAND } from '@/lib/brand'
+import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
 
 export default function TVPairPage() {
   const router = useRouter()
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   const submit = async (e) => {
     e?.preventDefault?.()
@@ -98,7 +100,17 @@ export default function TVPairPage() {
         <div className="mt-4 text-center text-xs text-white/50">
           Kod tamat tempoh 15 minit selepas dijana
         </div>
+
+        <div className="mt-3 text-center">
+          <button onClick={() => setShowHelp(true)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-2 text-xs font-extrabold text-white/90 active:scale-95">
+            <HelpCircle className="w-4 h-4" style={{ color: '#FFB703' }} />
+            Bantuan / Cara guna
+          </button>
+        </div>
       </div>
+
+      <TVTutorialModal open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   )
 }

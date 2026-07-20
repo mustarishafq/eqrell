@@ -8,6 +8,7 @@ import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
 import TVPreview from '@/components/eqrel/TVPreview'
+import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -39,6 +40,7 @@ export default function DisplaySetupPage() {
   const [bgAudioUrl, setBgAudioUrl] = useState('')
   const [bgAudioVolume, setBgAudioVolume] = useState(25)
   const [previewingId, setPreviewingId] = useState(null)
+  const [showTVTutorial, setShowTVTutorial] = useState(false)
   const audioRef = useRef(null)
 
   useEffect(() => {
@@ -254,9 +256,15 @@ export default function DisplaySetupPage() {
 
         {/* Cast to TV */}
         <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
-          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
-            <span>📺</span> Cast to TV
-          </h2>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h2 className="font-extrabold text-emerald-900 text-sm flex items-center gap-2">
+              <span>📺</span> Cast to TV
+            </h2>
+            <button onClick={() => setShowTVTutorial(true)}
+              className="rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-extrabold px-2.5 py-1 active:scale-95 flex items-center gap-1 flex-shrink-0">
+              <span>❓</span> Cara Buka di TV
+            </button>
+          </div>
           <p className="text-[11px] text-emerald-800/60 mb-3">Buka Chrome/Safari di TV, pergi ke <span className="font-bold">eqrel.app/tv</span>, masukkan kod di bawah</p>
           <TVPairCode />
         </section>
@@ -447,6 +455,9 @@ export default function DisplaySetupPage() {
           </button>
         </div>
       </div>
+
+      {/* TV Tutorial modal */}
+      <TVTutorialModal open={showTVTutorial} onClose={() => setShowTVTutorial(false)} />
     </div>
   )
 }

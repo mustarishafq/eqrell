@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Login UI polished — elegant language dropdown (no flags) + pre-hydration lang script for build-safe language switching (2026-01-18)"
+  update_note: "Added TV Tutorial modal (Cara Buka di TV) with 3 tabs — Browser TV, Cast Phone, Install PWA — accessible from /display/setup and /tv pages (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
