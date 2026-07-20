@@ -48,43 +48,44 @@ export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', s
   const meta = bubble ? (variantMeta[bubble.variant] || variantMeta.hadith) : null
 
   return (
-    <div className="absolute bottom-3 right-3 z-30 pointer-events-none flex items-end gap-3" dir="ltr">
-      {/* Speech bubble to the LEFT of mascot */}
-      <AnimatePresence mode="wait">
-        {bubble && (
-          <motion.div
-            key={bubble.keyId ?? 'b'}
-            initial={{ opacity: 0, x: 20, scale: 0.9 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 12, scale: 0.95 }}
-            transition={{ duration: 0.5, type: 'spring', stiffness: 220, damping: 22 }}
-            className={`relative max-w-md md:max-w-lg bg-white/95 backdrop-blur px-5 py-4 rounded-3xl shadow-2xl ring-4 ${meta.ring}`}
-            style={{ marginBottom: size * 0.15 }}
-          >
-            {/* Speech tail — pointing right toward mascot */}
-            <div className={`absolute bottom-6 -right-3 w-6 h-6 bg-white/95 rotate-45 ring-4 ${meta.ring} clip-tail`}
-              style={{ clipPath: 'polygon(0 0, 100% 100%, 0 100%)' }} />
-
-            {bubble.intro && (
-              <div className={`text-[11px] uppercase tracking-widest font-black mb-1 bg-gradient-to-r ${meta.accent} bg-clip-text text-transparent`}>
-                {meta.emoji} {bubble.intro}
-              </div>
-            )}
-            <div
-              className={`text-slate-800 text-base md:text-lg font-semibold leading-snug ${isRTL ? 'text-right' : 'text-left'}`}
-              dir={isRTL ? 'rtl' : 'ltr'}
+    <div className="w-full flex items-center justify-between gap-3 pointer-events-none px-3 py-2" dir="ltr">
+      {/* Speech bubble on LEFT — fills remaining space */}
+      <div className="flex-1 min-w-0 flex justify-end">
+        <AnimatePresence mode="wait">
+          {bubble && (
+            <motion.div
+              key={bubble.keyId ?? 'b'}
+              initial={{ opacity: 0, x: 20, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 12, scale: 0.95 }}
+              transition={{ duration: 0.5, type: 'spring', stiffness: 220, damping: 22 }}
+              className={`relative max-w-3xl bg-white/95 backdrop-blur px-5 py-3.5 rounded-3xl shadow-2xl ring-4 ${meta.ring}`}
             >
-              {bubble.message}
-            </div>
-            <div className="mt-2 flex items-center justify-end gap-1">
-              <span className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">— {BRAND.name}</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {/* Speech tail — pointing right toward mascot */}
+              <div className={`absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white/95 rotate-45 ring-4 ${meta.ring}`}
+                style={{ clipPath: 'polygon(0 0, 100% 100%, 0 100%)' }} />
 
-      {/* Mascot */}
-      <div className="relative" style={{ width: size, height: size }}>
+              {bubble.intro && (
+                <div className={`text-[11px] uppercase tracking-widest font-black mb-1 bg-gradient-to-r ${meta.accent} bg-clip-text text-transparent`}>
+                  {meta.emoji} {bubble.intro}
+                </div>
+              )}
+              <div
+                className={`text-slate-800 text-base md:text-lg font-semibold leading-snug ${isRTL ? 'text-right' : 'text-left'}`}
+                dir={isRTL ? 'rtl' : 'ltr'}
+              >
+                {bubble.message}
+              </div>
+              <div className="mt-1.5 flex items-center justify-end gap-1">
+                <span className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">— {BRAND.name}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Mascot on RIGHT — fixed size */}
+      <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
         {/* Glow ring under mascot */}
         <motion.div
           className={`absolute inset-0 rounded-full blur-3xl ${mood === 'celebrate' ? 'bg-amber-400/40' : mood === 'praying' ? 'bg-emerald-400/30' : mood === 'greeting' ? 'bg-sky-400/30' : 'bg-white/10'}`}
@@ -139,7 +140,7 @@ export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', s
           </div>
         )}
 
-        {/* Greeting wave decoration */}
+        {/* Greeting wave */}
         {mood === 'greeting' && (
           <div className="absolute -top-2 left-2 pointer-events-none">
             <motion.div

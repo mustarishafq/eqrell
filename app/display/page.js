@@ -10,10 +10,10 @@ import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
 import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import BigMascot from '@/components/eqrel/BigMascot'
-import { formatHijri } from '@/lib/hijri'
+import { formatHijri, getHijri } from '@/lib/hijri'
+import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
-const PRAYER_EMOJI = { Fajr: '🌄', Sunrise: '☀️', Dhuhr: '🌞', Asr: '🌤️', Maghrib: '🌇', Isha: '🌙' }
 const PRAYER_LABELS = {
   ms: { Fajr: 'Subuh', Sunrise: 'Syuruk', Dhuhr: 'Zohor', Asr: 'Asar', Maghrib: 'Maghrib', Isha: 'Isyak' },
   en: { Fajr: 'Fajr',  Sunrise: 'Sunrise', Dhuhr: 'Dhuhr', Asr: 'Asr',  Maghrib: 'Maghrib', Isha: 'Isha' },
@@ -117,6 +117,9 @@ export default function DisplayPage() {
   const dayStr  = now.toLocaleDateString(lang === 'ar' ? 'ar-EG' : lang, { weekday: 'long' })
   const dateStr = now.toLocaleDateString(lang === 'ar' ? 'ar-EG' : lang, { day: 'numeric', month: 'long', year: 'numeric' })
   const hijriStr = formatHijri(now, lang)
+  const hijri = getHijri(now)
+  const todayEvent = hijri ? getEventForDate(hijri.month, hijri.day) : null
+  const monthContext = hijri ? getMonthlyContext(hijri.month) : null
   const labelFor = (k) => (PRAYER_LABELS[lang] || PRAYER_LABELS.ms)[k]
 
   // Trigger celebration when a NEW ihsan star appears
@@ -315,7 +318,7 @@ export default function DisplayPage() {
   }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t])
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden bg-slate-950 text-white">
+    <div className="min-h-screen w-full relative overflow-hidden bg-slate-950 text-white flex flex-col">
       {/* ═══ AMBIENT BACKGROUND (dim, blurred) ═══ */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-emerald-950" />
 
@@ -333,7 +336,7 @@ export default function DisplayPage() {
           </div>
         </div>
 
-        {/* Prayer strip (integrated with next prayer) */}
+        {/* Prayer strip (integrated with next prayer, no emojis, no countdown chip) */}
         {prayers?.timings ? (
           <div className="flex-1 rounded-2xl bg-white/8 backdrop-blur border border-white/15 px-2 h-14 flex items-center gap-1">
             {PRAYER_KEYS.map(k => {
@@ -343,7 +346,6 @@ export default function DisplayPage() {
                 <div key={k}
                   className={`flex-1 flex flex-col items-center justify-center rounded-xl h-11 transition-all ${isNext ? 'bg-gradient-to-br from-amber-400/40 to-orange-500/40 ring-2 ring-amber-300/70 scale-105' : ''}`}>
                   <div className="flex items-center gap-1">
-                    <span className="text-base leading-none">{PRAYER_EMOJI[k]}</span>
                     <span className={`text-[10px] font-black uppercase tracking-wider ${isNext ? 'text-amber-100' : isPassed ? 'text-white/40' : 'text-white/85'}`}>{labelFor(k)}</span>
                     {isPassed && <span className="text-emerald-300 text-[10px]">✓</span>}
                   </div>
@@ -351,12 +353,6 @@ export default function DisplayPage() {
                 </div>
               )
             })}
-            {nextPrayer && countdown && (
-              <div className="ml-1 hidden md:flex flex-col items-center justify-center rounded-xl bg-amber-400/20 border border-amber-300/40 px-2 h-11">
-                <div className="text-[8px] uppercase tracking-widest text-amber-200 font-black leading-none">{t.display_in_prefix || 'in'}</div>
-                <div className="text-sm font-black text-amber-100 tabular-nums leading-tight">{countdown}</div>
-              </div>
-            )}
           </div>
         ) : (
           <div className="flex-1 rounded-2xl bg-white/8 backdrop-blur border border-white/15 flex items-center justify-center gap-2 px-4 h-14">
@@ -399,9 +395,9 @@ export default function DisplayPage() {
       )}
 
       {/* ═══ MAIN 3-COLUMN GRID ═══ */}
-      <main className="relative z-10 px-3 pt-3 pb-3 grid grid-cols-12 gap-3" style={{ minHeight: 'calc(100vh - 74px)' }}>
+      <main className="relative z-10 px-3 pt-3 pb-3 grid grid-cols-12 gap-3" style={{ minHeight: 'calc(100vh - 74px - 220px)' }}>
 
-        {/* LEFT COLUMN — Time + Date + Hijri (compact vertical) */}
+        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Sirah (compact vertical) */}
         <aside className="col-span-12 md:col-span-3 lg:col-span-2 flex flex-col gap-3">
           <div className="rounded-3xl bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur border border-white/10 shadow-2xl p-5 text-center">
             <div className="text-5xl md:text-6xl lg:text-7xl font-black tabular-nums drop-shadow tracking-tighter leading-none">{timeStr}</div>
@@ -412,7 +408,45 @@ export default function DisplayPage() {
                 🌙 {hijriStr}
               </div>
             )}
+            {nextPrayer && countdown && (
+              <div className="mt-3 pt-3 border-t border-white/10">
+                <div className="text-[9px] uppercase tracking-widest text-white/50 font-black leading-none">
+                  {lang === 'ar' ? 'الصلاة القادمة' : lang === 'en' ? 'Next Prayer' : lang === 'id' ? 'Sholat Berikutnya' : 'Solat Seterusnya'}
+                </div>
+                <div className="mt-1.5 flex items-baseline justify-center gap-1.5">
+                  <div className="text-base md:text-lg font-black text-amber-100 leading-none">{labelFor(nextPrayer.key)}</div>
+                  <div className="text-[10px] text-white/50 tabular-nums leading-none">{nextPrayer.timeStr}</div>
+                </div>
+                <div className="mt-1 text-xl md:text-2xl font-black text-amber-300 tabular-nums leading-none">{countdown}</div>
+              </div>
+            )}
           </div>
+
+          {/* Islamic event / Sirah card */}
+          {(todayEvent || monthContext) && (
+            <div className="rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-yellow-500/10 backdrop-blur border-2 border-amber-300/30 shadow-2xl p-4">
+              <div className="text-[10px] uppercase tracking-widest text-amber-200 font-black mb-1.5 flex items-center gap-1">
+                <span className="text-base">✨</span>
+                {todayEvent
+                  ? (lang === 'ar' ? 'اليوم في التاريخ' : lang === 'en' ? 'Today in History' : lang === 'id' ? 'Hari ini dalam Sejarah' : 'Hari Ini dalam Sirah')
+                  : (lang === 'ar' ? 'هذا الشهر' : lang === 'en' ? 'This Month' : lang === 'id' ? 'Bulan ini' : 'Bulan Ini')}
+              </div>
+              {todayEvent ? (
+                <>
+                  <div className="text-sm md:text-base font-black text-amber-100 leading-tight" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                    {todayEvent.title[lang] || todayEvent.title.ms}
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-amber-100/75 leading-snug" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                    {todayEvent.desc[lang] || todayEvent.desc.ms}
+                  </div>
+                </>
+              ) : monthContext && (
+                <div className="text-[11px] text-amber-100/85 leading-snug italic" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                  {monthContext[lang] || monthContext.ms}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Kids progress rings */}
           {display?.children && display.children.length > 0 && (
@@ -570,13 +604,17 @@ export default function DisplayPage() {
         </aside>
       </main>
 
-      {/* ═══ BIG MASCOT bottom-right with speech bubble ═══ */}
-      <BigMascot
-        mood={mascotMood}
-        bubble={bubble}
-        lang={lang}
-        size={220}
-      />
+      {/* ═══ BIG MASCOT bottom footer strip — full width dedicated area ═══ */}
+      <footer className="relative z-30 mt-auto">
+        <div className="bg-gradient-to-t from-black/60 via-black/40 to-transparent pt-4 pb-2">
+          <BigMascot
+            mood={mascotMood}
+            bubble={bubble}
+            lang={lang}
+            size={180}
+          />
+        </div>
+      </footer>
 
       {/* Pre-azan notice (small overlay) */}
       {preAzanNotice && !azanPlaying && (

@@ -2318,3 +2318,53 @@ frontend:
           
           NO server-side changes needed (existing photos:[url] schema already accepts Cloudinary URLs).
 
+
+#====================================================================================================
+# Family Display - Iteration 5 - UX Polish (mascot footer, Sirah, next-prayer relocated)
+#====================================================================================================
+frontend:
+  - task: "Display: mascot dedicated bottom footer strip (no longer blocks habits)"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/BigMascot.js, /app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          BigMascot refactored: removed absolute positioning; now renders as a full-width horizontal
+          strip (bubble left, mascot right). Display page wraps it in a <footer> with gradient bg,
+          reserving 220px at the bottom. Main grid min-height reduced accordingly. Mascot no longer
+          overlaps the right column (habits/ihsan/zikir).
+
+  - task: "Display: Next Prayer card moved from top strip to below Hijri (left column)"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          - Removed countdown chip from top prayer strip (freed horizontal space)
+          - Added "Next Prayer" section BELOW Hijri date in left column with prayer name, time, and big countdown number
+          - Prayer name emojis removed from top strip (cleaner look)
+
+  - task: "Islamic Calendar (Sirah events + monthly context) shown under Hijri"
+    implemented: true
+    working: true
+    file: "/app/lib/islamicCalendar.js, /app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          New /app/lib/islamicCalendar.js:
+          - ISLAMIC_EVENTS: 16 major dated events (Muharram 1/10, Mawlid, Isra' Mi'raj, Nisfu Sha'ban,
+            Ramadan 1/17/20/27, Aidilfitri, Uhud, Tarwiyah, Arafah, Aidiladha, Mu'tah)
+          - MONTHLY_CONTEXT: ALL 12 months with fallback context (Muharram → Dhul-Hijjah)
+          - Full i18n coverage (ms/en/id/ar)
+          - Helpers: getEventForDate(month, day) + getMonthlyContext(month)
+
+          Display page:
+          - Left column shows "Today in Sirah" card if specific-day event, else "This Month" card
+          - Amber gradient card matches Hijri accent
+          - Verified via screenshot: Safar (month 1) shows monthly myth-buster context correctly
+
