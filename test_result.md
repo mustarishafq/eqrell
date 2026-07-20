@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Added TV Tutorial modal (Cara Buka di TV) with 3 tabs — Browser TV, Cast Phone, Install PWA — accessible from /display/setup and /tv pages (2026-01-19)"
+  update_note: "Fixed hydration mismatch bug on /login (and other pages using OnboardingScaffold) — daily quote used SSR Date() that mismatched client Date(). Moved computation to useEffect so quote renders only after mount. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
@@ -3058,4 +3058,112 @@ agent_communication:
       - Edge cases handled correctly (spaces trimmed, lowercase converted to uppercase)
       
       NO ISSUES FOUND. All 3 TV Pair Code endpoints are production-ready.
+
+  - task: "Hydration mismatch fix on /login and /family/setup pages"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/OnboardingScaffold.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Bug reported: Next.js hydration error on /login page. Server rendered one quote while client rendered different quote.
+          Root cause: useDailyQuote() computed quote using new Date() at both SSR and client render, but different timezones produced different quotes.
+          Fix applied: Refactored useDailyQuote() to compute quote inside useEffect(() => {...}, [lang]) and store in useState(null).
+          During SSR and first client render both return null. Quote block conditionally rendered {showQuote && quote && (...)}.
+          After hydration, useEffect fires → quote appears with smooth fade-in.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ HYDRATION FIX VERIFICATION SUCCESSFUL - ALL TESTS PASSED
+          
+          Comprehensive testing performed across multiple scenarios:
+          
+          ✅ TEST 1: Initial page load
+             - No hydration errors detected on first load
+             - Quote container renders correctly after mount
+             - Quote visible with opacity: 1 after fade-in animation
+          
+          ✅ TEST 2: Stress test - 7 rapid page refreshes
+             - All 7 refreshes completed without hydration errors
+             - Consistent behavior across all loads
+          
+          ✅ TEST 3: Language switching (BM → EN → ID → AR → BM)
+             - Switched through all 4 languages
+             - No hydration errors during any language switch
+             - Quote updates correctly to match selected language
+             - RTL layout works correctly for Arabic
+          
+          ✅ TEST 4: Quote rendering verification
+             - Quote container found with correct CSS classes
+             - Quote text renders correctly in all languages
+             - Attribution text displays correctly
+             - Fade-in animation completes (opacity: 1)
+          
+          ✅ TEST 5: /family/setup page verification
+             - Uses same OnboardingScaffold component
+             - No hydration errors detected
+             - Quote renders correctly on this page as well
+          
+          📊 Test Statistics:
+             - Total console messages monitored: 10
+             - Hydration-related errors: 0
+             - React warnings: 0
+             - Page errors: 0
+             - Non-hydration console errors: 1 (expected 401 from /api/auth/me for unauthenticated users)
+          
+          🎯 Root Cause Fix Confirmed:
+             - useDailyQuote() now uses useState(null) + useEffect pattern
+             - SSR and first client render both output identical state (no quote)
+             - Quote appears after hydration via useEffect (no mismatch possible)
+             - Conditional rendering {showQuote && quote && (...)} ensures consistency
+          
+          Screenshots captured:
+             - login_initial.png - Initial load state
+             - login_with_quote.png - Quote visible after mount
+             - login_lang_dropdown.png - Language picker open
+             - login_english.png - English language
+             - login_indonesian.png - Indonesian language
+             - login_arabic.png - Arabic (RTL) language
+             - family_setup.png - Family setup page
+          
+          NO ISSUES FOUND. Hydration fix is working perfectly. The bug is completely resolved.
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 HYDRATION FIX VERIFICATION COMPLETE - BUG RESOLVED
+      
+      Tested the hydration mismatch fix on /login and /family/setup pages as requested.
+      
+      Original bug: Server rendered one quote ("Ibubapa adalah rumah pertama untuk hati anak.") 
+      while client rendered different quote ("Setiap langkah kecil hari ini, hijrah besar esok.") 
+      causing React hydration error.
+      
+      Fix verification results:
+      ✅ No hydration errors on initial load
+      ✅ No hydration errors across 7 page refreshes (stress test)
+      ✅ No hydration errors when switching languages (BM/EN/ID/AR)
+      ✅ Quote renders correctly after mount with fade-in animation
+      ✅ No hydration errors on /family/setup page
+      ✅ RTL layout works correctly for Arabic
+      
+      The fix is working perfectly:
+      - useDailyQuote() now uses useState(null) + useEffect
+      - SSR and first client render both output identical state (no quote)
+      - Quote appears after hydration via useEffect (no mismatch)
+      
+      Total tests performed: 5 test scenarios covering initial load, stress testing, 
+      language switching, quote rendering, and /family/setup page.
+      
+      NO ISSUES FOUND. The hydration bug is completely resolved and production-ready.
 

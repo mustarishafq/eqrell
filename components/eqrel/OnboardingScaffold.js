@@ -4,6 +4,7 @@
  * Onboarding Scaffold — shared layout for login / family setup / other onboarding pages.
  */
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { BrandLogo } from './BrandLogo'
 import { LangPicker } from './LangPicker'
@@ -53,10 +54,17 @@ const PARENT_QUOTES = {
 
 export function useDailyQuote() {
   const { lang } = useLang()
-  const d = new Date()
-  const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000)
-  const pool = PARENT_QUOTES[lang] || PARENT_QUOTES.ms
-  return pool[dayOfYear % pool.length]
+  // Compute quote only after mount to avoid SSR/client hydration mismatch
+  // (server date/timezone may differ from client, and lang from localStorage
+  //  isn't available at SSR time)
+  const [quote, setQuote] = useState(null)
+  useEffect(() => {
+    const d = new Date()
+    const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000)
+    const pool = PARENT_QUOTES[lang] || PARENT_QUOTES.ms
+    setQuote(pool[dayOfYear % pool.length])
+  }, [lang])
+  return quote
 }
 
 export function OnboardingScaffold({
@@ -122,8 +130,8 @@ export function OnboardingScaffold({
           {children}
         </motion.div>
 
-        {/* Motivational quote */}
-        {showQuote && (
+        {/* Motivational quote — hidden until mounted (prevents SSR/client hydration mismatch) */}
+        {showQuote && quote && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
