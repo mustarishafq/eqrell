@@ -2368,3 +2368,56 @@ frontend:
           - Amber gradient card matches Hijri accent
           - Verified via screenshot: Safar (month 1) shows monthly myth-buster context correctly
 
+
+#====================================================================================================
+# Family Display - Iteration 6 - Auto-fit + Brand CI (2026-01-20)
+#====================================================================================================
+frontend:
+  - task: "Family Display: auto-fit TV (no scroll on 720p/1080p/4K)"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Refactored container from `min-h-screen` → `h-screen overflow-hidden flex flex-col`:
+          - Header: flex-shrink-0 (fixed height)
+          - Main: flex-1 min-h-0 overflow-hidden (fills remaining, columns cap heights)
+          - Footer (mascot): flex-shrink-0 height 190px
+          - Each column: min-h-0 overflow-hidden to prevent internal overflow
+
+          Fluid typography using clamp():
+          - Time: clamp(2.5rem, 5.5vw, 6rem)  → 40px on small, 88px on 1600px, 96px on 4K
+          - Countdown: clamp(1.25rem, 2vw, 2rem)
+          - Zikir number: clamp(2rem, 3vw, 3.5rem)
+
+          Verified via screenshots at 3 resolutions:
+          - 720p (1280x720):  scrollH=720  innerH=720  overflow=NO ✅
+          - 1080p (1920x1080): scrollH=1080 innerH=1080 overflow=NO ✅
+          - 4K (3840x2160):    scrollH=2160 innerH=2160 overflow=NO ✅
+
+  - task: "Family Display: EQrel brand CI consistency (emerald + cream + yellow)"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Complete color audit + repaint using BRAND.colors:
+          - primary #00B894 (emerald teal) — cards borders, zikir gradient, kids progress rings
+          - yellow #FFB703 — hijri date, next prayer, Ihsan star, Sirah card, CTA buttons, tagline
+          - cream #FFF8E7 — all major body text (was white/slate)
+          - ink dark for background base
+
+          Removed generic slate/indigo/purple gradients. New palette:
+          - Base bg: from-emerald-950 via-teal-900 to-slate-900 + radial highlights (emerald + yellow)
+          - Cards: bg-emerald-950/60 backdrop-blur with emerald-400/20 borders
+          - Prayer next-highlight: yellow gradient (was amber/orange)
+          - Setup CTA button: brand yellow (was emerald)
+          - Kids progress ring stroke default: #00B894 (brand primary)
+          - Photo placeholder gradient: brand emerald + yellow mix
+
+          Result: cohesive Islamic-warm-modern feel matching EQrel identity across all cards.
+

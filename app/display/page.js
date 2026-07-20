@@ -318,35 +318,34 @@ export default function DisplayPage() {
   }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t])
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden bg-slate-950 text-white flex flex-col">
-      {/* ═══ AMBIENT BACKGROUND (dim, blurred) ═══ */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-emerald-950" />
+    <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c' }}>
+      {/* ═══ AMBIENT BACKGROUND — EQrel brand emerald/teal ═══ */}
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900" />
+      <div className="absolute inset-0 opacity-40" style={{ background: 'radial-gradient(ellipse at top left, rgba(0,184,148,0.3), transparent 60%), radial-gradient(ellipse at bottom right, rgba(255,183,3,0.15), transparent 60%)' }} />
 
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
-
-      {/* ═══ TOP HEADER: EQrel + prayer strip ═══ */}
-      <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3">
+      {/* ═══ TOP HEADER: EQrel wordmark + prayer strip + nav ═══ */}
+      <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3 flex-shrink-0">
         {/* EQrel wordmark */}
-        <div className="flex items-center gap-2 rounded-2xl bg-white/8 backdrop-blur border border-white/15 pl-2 pr-3 h-14">
+        <div className="flex items-center gap-2 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 pl-2 pr-3 h-14 shadow-lg">
           <img src={BRAND.mascot.default} alt="EQ" className="w-10 h-10 object-contain drop-shadow" />
           <div className="flex flex-col leading-tight">
-            <span className="text-base font-black tracking-tight">{BRAND.name}</span>
-            <span className="text-[9px] uppercase tracking-widest text-white/60 font-bold">{BRAND.tagline[lang] || BRAND.tagline.ms}</span>
+            <span className="text-base font-black tracking-tight text-white">{BRAND.name}</span>
+            <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: '#FFB703' }}>{BRAND.tagline[lang] || BRAND.tagline.ms}</span>
           </div>
         </div>
 
-        {/* Prayer strip (integrated with next prayer, no emojis, no countdown chip) */}
+        {/* Prayer strip — no emojis, no countdown chip */}
         {prayers?.timings ? (
-          <div className="flex-1 rounded-2xl bg-white/8 backdrop-blur border border-white/15 px-2 h-14 flex items-center gap-1">
+          <div className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 px-2 h-14 flex items-center gap-1 shadow-lg">
             {PRAYER_KEYS.map(k => {
               const isNext = nextPrayer?.key === k
               const isPassed = passedPrayers.has(k) && !isNext
               return (
                 <div key={k}
-                  className={`flex-1 flex flex-col items-center justify-center rounded-xl h-11 transition-all ${isNext ? 'bg-gradient-to-br from-amber-400/40 to-orange-500/40 ring-2 ring-amber-300/70 scale-105' : ''}`}>
+                  className={`flex-1 flex flex-col items-center justify-center rounded-xl h-11 transition-all ${isNext ? 'ring-2 scale-105' : ''}`}
+                  style={isNext ? { background: 'linear-gradient(135deg, rgba(255,183,3,0.35), rgba(255,183,3,0.15))', boxShadow: '0 0 0 2px rgba(255,183,3,0.6)' } : {}}>
                   <div className="flex items-center gap-1">
-                    <span className={`text-[10px] font-black uppercase tracking-wider ${isNext ? 'text-amber-100' : isPassed ? 'text-white/40' : 'text-white/85'}`}>{labelFor(k)}</span>
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${isNext ? '' : isPassed ? 'text-white/40' : 'text-white/85'}`} style={isNext ? { color: '#FFB703' } : {}}>{labelFor(k)}</span>
                     {isPassed && <span className="text-emerald-300 text-[10px]">✓</span>}
                   </div>
                   <div className={`text-xs font-extrabold tabular-nums ${isNext ? 'text-white' : isPassed ? 'text-white/40 line-through' : 'text-white/80'}`}>{prayers.timings[k]}</div>
@@ -355,23 +354,24 @@ export default function DisplayPage() {
             })}
           </div>
         ) : (
-          <div className="flex-1 rounded-2xl bg-white/8 backdrop-blur border border-white/15 flex items-center justify-center gap-2 px-4 h-14">
-            <MapPin className="w-4 h-4 text-amber-300" />
-            <span className="text-sm font-bold text-white/80">{t.display_setup_cta || 'Set location'}</span>
+          <div className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 flex items-center justify-center gap-2 px-4 h-14 shadow-lg">
+            <MapPin className="w-4 h-4" style={{ color: '#FFB703' }} />
+            <span className="text-sm font-bold text-white/85">{t.display_setup_cta || 'Set location'}</span>
           </div>
         )}
 
         {/* Nav buttons */}
         <div className="flex items-center gap-1.5">
-          <button onClick={() => router.push('/?parent=1')} className="w-11 h-11 rounded-2xl bg-white/8 backdrop-blur border border-white/15 hover:bg-white/15 flex items-center justify-center">
+          <button onClick={() => router.push('/?parent=1')} className="w-11 h-11 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 flex items-center justify-center shadow-lg">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <button onClick={() => router.push('/display/setup')} className="w-11 h-11 rounded-2xl bg-white/8 backdrop-blur border border-white/15 hover:bg-white/15 flex items-center justify-center">
+          <button onClick={() => router.push('/display/setup')} className="w-11 h-11 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 flex items-center justify-center shadow-lg">
             <Settings className="w-4 h-4" />
           </button>
           {config?.azanEnabled && !audioUnlocked && (
             <button onClick={unlockAudio}
-              className="px-2.5 h-11 rounded-2xl bg-emerald-500 text-white flex items-center gap-1 text-[11px] font-extrabold animate-pulse">
+              className="px-2.5 h-11 rounded-2xl text-slate-900 flex items-center gap-1 text-[11px] font-extrabold animate-pulse shadow-lg"
+              style={{ backgroundColor: '#FFB703' }}>
               <Volume2 className="w-3.5 h-3.5" /> {(t.display_enable_audio || '').replace('🔊', '').trim()}
             </button>
           )}
@@ -394,38 +394,39 @@ export default function DisplayPage() {
         </div>
       )}
 
-      {/* ═══ MAIN 3-COLUMN GRID ═══ */}
-      <main className="relative z-10 px-3 pt-3 pb-3 grid grid-cols-12 gap-3" style={{ minHeight: 'calc(100vh - 74px - 220px)' }}>
+      {/* ═══ MAIN 3-COLUMN GRID — flex-1, no scroll ═══ */}
+      <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
-        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Sirah (compact vertical) */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-2 flex flex-col gap-3">
-          <div className="rounded-3xl bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur border border-white/10 shadow-2xl p-5 text-center">
-            <div className="text-5xl md:text-6xl lg:text-7xl font-black tabular-nums drop-shadow tracking-tighter leading-none">{timeStr}</div>
-            <div className="mt-3 text-sm md:text-base text-white/85 capitalize font-bold">{dayStr}</div>
+        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Sirah + Kids */}
+        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden">
+          <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-4 text-center flex-shrink-0">
+            <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2.5rem, 5.5vw, 6rem)', color: '#FFF8E7' }}>{timeStr}</div>
+            <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
             <div className="mt-0.5 text-xs md:text-sm text-white/70">{dateStr}</div>
             {hijriStr && (
-              <div className="mt-3 pt-3 border-t border-white/10 text-xs md:text-sm text-amber-200/90 font-semibold" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+              <div className="mt-2 pt-2 border-t border-emerald-400/20 text-xs md:text-sm font-semibold" style={{ color: '#FFB703' }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
                 🌙 {hijriStr}
               </div>
             )}
             {nextPrayer && countdown && (
-              <div className="mt-3 pt-3 border-t border-white/10">
+              <div className="mt-2 pt-2 border-t border-emerald-400/20">
                 <div className="text-[9px] uppercase tracking-widest text-white/50 font-black leading-none">
                   {lang === 'ar' ? 'الصلاة القادمة' : lang === 'en' ? 'Next Prayer' : lang === 'id' ? 'Sholat Berikutnya' : 'Solat Seterusnya'}
                 </div>
-                <div className="mt-1.5 flex items-baseline justify-center gap-1.5">
-                  <div className="text-base md:text-lg font-black text-amber-100 leading-none">{labelFor(nextPrayer.key)}</div>
-                  <div className="text-[10px] text-white/50 tabular-nums leading-none">{nextPrayer.timeStr}</div>
+                <div className="mt-1 flex items-baseline justify-center gap-1.5">
+                  <div className="text-base md:text-lg font-black leading-none" style={{ color: '#FFF8E7' }}>{labelFor(nextPrayer.key)}</div>
+                  <div className="text-[10px] text-white/60 tabular-nums leading-none">{nextPrayer.timeStr}</div>
                 </div>
-                <div className="mt-1 text-xl md:text-2xl font-black text-amber-300 tabular-nums leading-none">{countdown}</div>
+                <div className="mt-1 font-black tabular-nums leading-none" style={{ color: '#FFB703', fontSize: 'clamp(1.25rem, 2vw, 2rem)' }}>{countdown}</div>
               </div>
             )}
           </div>
 
           {/* Islamic event / Sirah card */}
           {(todayEvent || monthContext) && (
-            <div className="rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-yellow-500/10 backdrop-blur border-2 border-amber-300/30 shadow-2xl p-4">
-              <div className="text-[10px] uppercase tracking-widest text-amber-200 font-black mb-1.5 flex items-center gap-1">
+            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, rgba(255,183,3,0.15), rgba(255,183,3,0.05))', borderColor: 'rgba(255,183,3,0.3)' }}>
+              <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#FFB703' }}>
                 <span className="text-base">✨</span>
                 {todayEvent
                   ? (lang === 'ar' ? 'اليوم في التاريخ' : lang === 'en' ? 'Today in History' : lang === 'id' ? 'Hari ini dalam Sejarah' : 'Hari Ini dalam Sirah')
@@ -433,15 +434,15 @@ export default function DisplayPage() {
               </div>
               {todayEvent ? (
                 <>
-                  <div className="text-sm md:text-base font-black text-amber-100 leading-tight" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                  <div className="text-sm md:text-base font-black leading-tight" style={{ color: '#FFF8E7' }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
                     {todayEvent.title[lang] || todayEvent.title.ms}
                   </div>
-                  <div className="mt-1.5 text-[11px] text-amber-100/75 leading-snug" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                  <div className="mt-1.5 text-[11px] leading-snug" style={{ color: '#FFF8E7', opacity: 0.75 }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
                     {todayEvent.desc[lang] || todayEvent.desc.ms}
                   </div>
                 </>
               ) : monthContext && (
-                <div className="text-[11px] text-amber-100/85 leading-snug italic" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                <div className="text-[11px] leading-snug italic" style={{ color: '#FFF8E7', opacity: 0.85 }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
                   {monthContext[lang] || monthContext.ms}
                 </div>
               )}
@@ -450,8 +451,8 @@ export default function DisplayPage() {
 
           {/* Kids progress rings */}
           {display?.children && display.children.length > 0 && (
-            <div className="rounded-3xl bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur border border-white/10 shadow-2xl p-4">
-              <div className="text-[10px] uppercase tracking-widest text-white/60 font-black text-center mb-3">
+            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 flex-1 min-h-0 overflow-hidden">
+              <div className="text-[10px] uppercase tracking-widest text-white/60 font-black text-center mb-2">
                 {lang === 'ar' ? 'الأبناء' : lang === 'en' ? 'Kids' : 'Anak-anak'}
               </div>
               <div className="flex justify-center flex-wrap gap-3">
@@ -464,7 +465,7 @@ export default function DisplayPage() {
                     <div key={c.id} className="flex flex-col items-center gap-1">
                       <div className="relative w-14 h-14">
                         <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90">
-                          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="5" />
+                          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(0,184,148,0.2)" strokeWidth="5" />
                           <circle cx="32" cy="32" r="28" fill="none" stroke={c.favColor || '#00B894'} strokeWidth="5"
                             strokeDasharray={`${pct * 175.9} 175.9`} strokeLinecap="round" />
                         </svg>
@@ -484,8 +485,8 @@ export default function DisplayPage() {
         </aside>
 
         {/* CENTER — Family Photo Slideshow (MAIN FOCAL) */}
-        <section className="col-span-12 md:col-span-6 lg:col-span-7 flex flex-col gap-3">
-          <div className="relative flex-1 rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-slate-900 min-h-[300px] md:min-h-[440px]">
+        <section className="col-span-12 md:col-span-6 lg:col-span-5 xl:col-span-7 flex flex-col gap-2.5 min-h-0 overflow-hidden">
+          <div className="relative flex-1 rounded-3xl overflow-hidden shadow-2xl border border-emerald-400/20 bg-emerald-950/40 min-h-0">
             {hasPhotos ? (
               <AnimatePresence mode="wait">
                 <motion.img
@@ -500,13 +501,15 @@ export default function DisplayPage() {
                 />
               </AnimatePresence>
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-purple-900/60 to-emerald-900/40">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+                style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.15), rgba(255,183,3,0.08))' }}>
                 <div className="text-6xl opacity-60">📸</div>
-                <div className="text-sm text-white/70 max-w-xs text-center px-4">
+                <div className="text-sm max-w-xs text-center px-4" style={{ color: '#FFF8E7', opacity: 0.8 }}>
                   {lang === 'ar' ? 'أضف صور العائلة في الإعدادات' : lang === 'en' ? 'Add family photos in Setup' : lang === 'id' ? 'Tambah foto keluarga di pengaturan' : 'Tambah gambar keluarga dalam tetapan'}
                 </div>
                 <button onClick={() => router.push('/display/setup')}
-                  className="mt-1 px-4 py-2 rounded-xl bg-emerald-500 text-white font-extrabold text-sm hover:bg-emerald-400">
+                  className="mt-1 px-4 py-2 rounded-xl text-slate-900 font-extrabold text-sm hover:scale-105 transition-transform shadow-lg"
+                  style={{ backgroundColor: '#FFB703' }}>
                   {t.setup_title || 'Setup'}
                 </button>
               </div>
@@ -514,10 +517,10 @@ export default function DisplayPage() {
 
             {/* Photo overlay: family motto at bottom */}
             {config?.familyMotto && (
-              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-6 pt-16">
+              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 pt-14">
                 <div className="text-center">
-                  <div className="text-[10px] uppercase tracking-widest text-amber-300/80 font-black">✨ {lang === 'ar' ? 'شعار العائلة' : lang === 'en' ? 'Family Motto' : lang === 'id' ? 'Motto Keluarga' : 'Motto Keluarga'}</div>
-                  <div className="mt-1 text-lg md:text-xl italic text-amber-100 font-bold drop-shadow-lg">
+                  <div className="text-[10px] uppercase tracking-widest font-black" style={{ color: '#FFB703' }}>✨ {lang === 'ar' ? 'شعار العائلة' : lang === 'en' ? 'Family Motto' : lang === 'id' ? 'Motto Keluarga' : 'Motto Keluarga'}</div>
+                  <div className="mt-1 text-lg md:text-xl italic font-bold drop-shadow-lg" style={{ color: '#FFF8E7' }}>
                     “{config.familyMotto}”
                   </div>
                 </div>
@@ -527,7 +530,7 @@ export default function DisplayPage() {
         </section>
 
         {/* RIGHT COLUMN — Ihsan Star + Zikir + Undone habits */}
-        <aside className="col-span-12 md:col-span-3 flex flex-col gap-3">
+        <aside className="col-span-12 md:col-span-3 xl:col-span-3 flex flex-col gap-2.5 min-h-0 overflow-hidden">
           {/* Ihsan Star */}
           {display?.ihsanStar && (() => {
             const star = display.ihsanStar
@@ -535,8 +538,9 @@ export default function DisplayPage() {
             return (
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="rounded-3xl bg-gradient-to-br from-amber-500/25 via-orange-500/25 to-yellow-500/25 backdrop-blur border-2 border-amber-300/50 shadow-2xl p-4">
-                <div className="text-[10px] uppercase tracking-widest text-amber-200 font-black mb-2 flex items-center gap-1">
+                className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, rgba(255,183,3,0.28), rgba(255,183,3,0.12))', borderColor: 'rgba(255,183,3,0.5)' }}>
+                <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#FFB703' }}>
                   <span className="text-lg">🌟</span> {t.display_ihsan_star_title}
                 </div>
                 <div className="flex items-center gap-3">
@@ -549,51 +553,53 @@ export default function DisplayPage() {
                       transition={{ duration: 2, repeat: Infinity }}>🌟</motion.div>
                   </div>
                   <div>
-                    <div className="text-lg font-black text-white leading-tight">{star.nickname}</div>
-                    <div className="text-xs text-amber-100/85">{t.display_ihsan_star_sub(star.ihsanCount)}</div>
+                    <div className="text-lg font-black leading-tight" style={{ color: '#FFF8E7' }}>{star.nickname}</div>
+                    <div className="text-xs" style={{ color: '#FFF8E7', opacity: 0.75 }}>{t.display_ihsan_star_sub(star.ihsanCount)}</div>
                   </div>
                 </div>
               </motion.div>
             )
           })()}
 
-          {/* Zikir (read-only ambient) */}
+          {/* Zikir (read-only ambient) — brand emerald */}
           {display?.zikir && (
-            <div className="rounded-3xl bg-gradient-to-br from-emerald-500/25 via-teal-500/25 to-cyan-500/25 backdrop-blur border-2 border-emerald-300/50 shadow-2xl p-4">
-              <div className="text-[10px] uppercase tracking-widest text-emerald-200 font-black mb-2 flex items-center gap-1">
+            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(0,184,148,0.10))', borderColor: 'rgba(0,184,148,0.5)' }}>
+              <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#00B894' }}>
                 <span className="text-lg">📿</span> {t.display_zikir_title}
               </div>
               <div className="flex items-baseline gap-2">
                 <motion.div
                   key={display.zikir.today}
-                  initial={{ scale: 1.3, color: '#FFD54A' }}
-                  animate={{ scale: 1, color: '#ffffff' }}
+                  initial={{ scale: 1.3 }}
+                  animate={{ scale: 1 }}
                   transition={{ duration: 0.5 }}
-                  className="text-4xl md:text-5xl font-black tabular-nums leading-none">
+                  className="font-black tabular-nums leading-none"
+                  style={{ color: '#FFF8E7', fontSize: 'clamp(2rem, 3vw, 3.5rem)' }}>
                   {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
                 </motion.div>
-                <div className="text-[10px] uppercase tracking-widest text-emerald-100/80 font-bold">{t.display_zikir_sub_today}</div>
+                <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>{t.display_zikir_sub_today}</div>
               </div>
               {display.zikir.total > (display.zikir.today || 0) && (
-                <div className="mt-1 text-[10px] text-emerald-100/60">
-                  {t.display_zikir_sub_total}: <span className="font-bold text-emerald-100/90">{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
+                <div className="mt-1 text-[10px]" style={{ color: '#FFF8E7', opacity: 0.6 }}>
+                  {t.display_zikir_sub_total}: <span className="font-bold" style={{ opacity: 0.9 }}>{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
                 </div>
               )}
-              <div className="mt-2 pt-2 border-t border-emerald-300/20 text-[10px] text-emerald-100/70 italic leading-tight">
+              <div className="mt-2 pt-2 border-t italic leading-tight text-[10px]" style={{ color: '#FFF8E7', opacity: 0.65, borderColor: 'rgba(0,184,148,0.2)' }}>
                 {lang === 'ar' ? 'اضغط للذكر من هاتف كل فرد' : lang === 'en' ? 'Everyone taps zikir from their own phone' : lang === 'id' ? 'Semua tap zikir dari HP masing-masing' : 'Semua orang tap zikir dari phone masing-masing'}
               </div>
             </div>
           )}
 
-          {/* Undone habits */}
+          {/* Undone habits — brand cream text */}
           {config?.showHabits && display?.undoneHabits && display.undoneHabits.length > 0 && (
-            <div className="rounded-3xl bg-slate-900/70 backdrop-blur border border-white/10 shadow-2xl p-4 flex-1 min-h-0">
-              <div className="text-[10px] uppercase tracking-widest text-amber-200 font-black mb-2 flex items-center gap-1">
+            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3.5 flex-1 min-h-0 overflow-hidden">
+              <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#FFB703' }}>
                 <span className="text-lg">📋</span> {t.display_undone_title}
               </div>
-              <div className="grid grid-cols-1 gap-1 text-xs">
+              <div className="grid grid-cols-1 gap-1 text-xs overflow-hidden">
                 {display.undoneHabits.slice(0, 8).map(h => (
-                  <div key={h.id} className="flex items-center gap-1.5 text-white/85">
+                  <div key={h.id} className="flex items-center gap-1.5" style={{ color: '#FFF8E7', opacity: 0.85 }}>
                     <span>{h.icon || '•'}</span>
                     <span className="truncate">{h.i18n?.[lang]?.title || h.title}</span>
                   </div>
@@ -605,13 +611,13 @@ export default function DisplayPage() {
       </main>
 
       {/* ═══ BIG MASCOT bottom footer strip — full width dedicated area ═══ */}
-      <footer className="relative z-30 mt-auto">
-        <div className="bg-gradient-to-t from-black/60 via-black/40 to-transparent pt-4 pb-2">
+      <footer className="relative z-30 flex-shrink-0">
+        <div className="bg-gradient-to-t from-black/70 via-black/30 to-transparent pt-3 pb-2" style={{ height: '190px' }}>
           <BigMascot
             mood={mascotMood}
             bubble={bubble}
             lang={lang}
-            size={180}
+            size={160}
           />
         </div>
       </footer>
