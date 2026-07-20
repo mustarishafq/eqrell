@@ -2235,3 +2235,86 @@ agent_communication:
       All test data cleaned up successfully.
       
       NO ISSUES FOUND. Both endpoints are production-ready.
+
+#====================================================================================================
+# Family Display Mode - Iteration 4 - Complete Redesign + Cloudinary Direct Upload (2026-01-19)
+#====================================================================================================
+frontend:
+  - task: "Family Display 3-column TV Layout Redesign"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js, /app/components/eqrel/BigMascot.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          COMPLETE REWRITE of /app/app/display/page.js into 3-column TV-optimized layout:
+          - Top header: EQrel wordmark + integrated prayer strip (5 waqt + Sunrise) with next-prayer highlight
+                        + countdown chip + ✓ for passed prayers + audio unlock button
+          - Left column (2 cols): Time (huge), day, date, Hijri date. Below: kids progress rings.
+          - Center (7 cols): FAMILY PHOTO SLIDESHOW (main focal). Family motto overlay bottom.
+          - Right column (3 cols): Ihsan Star card + Zikir (READ-ONLY ambient, no tap), Undone habits
+          - Bottom-right: BIG MASCOT (220px) with prominent speech bubble
+
+  - task: "BigMascot component — 6 mood states + reactions"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/BigMascot.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Moods: idle (float), celebrate (jump+sparkles), praying (sway+moon), greeting (wave), sleeping (Z's), listening (pulse).
+          Bubble variants: hadith (amber), doa (emerald), celebrate (pink), prayer (sky), greet (yellow).
+          Priority-based rotation: azan→pre-azan→new ihsan star→night mood→default rotation (hadith/doa/greet).
+
+  - task: "Cloudinary Direct Browser Upload for Photos"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/PhotoUploader.js, /app/app/display/setup/page.js, /app/.env"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          BREAKTHROUGH: Cloudinary unsigned upload preset integration for photo uploads.
+          
+          Why: iCloud shared links (share.icloud.com/photos/TOKEN) require Apple ID auth — cannot resolve
+          programmatically. Direct-to-cloud upload is the only practical solution.
+          
+          Env vars added (public, safe):
+            NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=mt6ai8x3
+            NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=eqrel_family_photos
+          
+          Cloudinary preset config (unsigned, folder=family-photos, max 10MB, auto format/quality).
+          
+          Component /app/components/eqrel/PhotoUploader.js:
+          - Uses XMLHttpRequest (not fetch) for real upload progress
+          - Accepts image/*,.heic,.heif — iPhone HEIC natively supported
+          - Multiple files, sequential upload
+          - Progress bar per file, success/error states
+          - Direct browser → Cloudinary CDN (server bandwidth = 0)
+          - Only secure_url returned to app; stored in family displayConfig.photos
+          
+          Setup page integrated:
+          - Primary CTA: big "Upload from Device" dashed button
+          - Helper: "📱 iPhone: Pick from Photos (includes iCloud)" + "🤖 Android: Pick from Google Photos / Files"
+          - Fallback: collapsed "🔗 Or paste URL" details (backwards compat)
+          - Photo grid: preview thumbs with delete + count indicator
+          
+          Verified end-to-end via curl:
+          - POST https://api.cloudinary.com/v1_1/mt6ai8x3/image/upload with preset+file → 200 OK
+          - secure_url returned, image accessible via CDN with proper caching
+          
+          i18n: Full 4-language coverage (ms/en/id/ar) for all upload strings.
+          
+          NO server-side changes needed (existing photos:[url] schema already accepts Cloudinary URLs).
+

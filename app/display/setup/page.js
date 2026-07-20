@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Trash2, Save, MapPin, Image as ImageIcon, Volume2 } fr
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
+import PhotoUploader from '@/components/eqrel/PhotoUploader'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -142,30 +143,56 @@ export default function DisplaySetupPage() {
           </h2>
           <p className="text-[11px] text-emerald-800/60 mb-3">{t.setup_photos_sub}</p>
 
-          <div className="flex gap-2 mb-3">
-            <input value={photoInput} onChange={e => setPhotoInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addPhoto()}
-              placeholder="https://example.com/photo.jpg"
-              className="flex-1 rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
-            <button onClick={addPhoto} className="rounded-xl bg-emerald-500 text-white px-3 font-extrabold text-sm active:scale-95">
-              <Plus className="w-4 h-4" />
-            </button>
+          {/* Primary: Direct upload from device (iOS + Android + Desktop) */}
+          <PhotoUploader
+            labels={{
+              pick: t.setup_photo_upload,
+              uploading: t.setup_photo_uploading,
+              done: t.setup_photo_uploaded,
+              tooLarge: t.setup_photo_toolarge,
+              remove: t.setup_photo_remove,
+            }}
+            onUploaded={(urls) => setPhotos(prev => [...prev, ...urls].slice(0, 20))}
+          />
+          <div className="mt-2 grid grid-cols-1 gap-0.5 text-[10px] text-emerald-800/60">
+            <div>{t.setup_photo_helper_ios}</div>
+            <div>{t.setup_photo_helper_android}</div>
           </div>
 
+          {/* Fallback: URL paste */}
+          <details className="mt-3 rounded-xl border border-eq-cream">
+            <summary className="cursor-pointer px-3 py-2 text-[11px] font-bold text-emerald-800/80 select-none">
+              {t.setup_photo_url}
+            </summary>
+            <div className="p-2 flex gap-2">
+              <input value={photoInput} onChange={e => setPhotoInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addPhoto()}
+                placeholder="https://…"
+                className="flex-1 rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
+              <button onClick={addPhoto} className="rounded-xl bg-emerald-500 text-white px-3 font-extrabold text-sm active:scale-95">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </details>
+
+          {/* Photos grid */}
           {photos.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 mt-3">
               {photos.map((url, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-eq-cream/50">
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-eq-cream/50 group">
                   <img src={url} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.opacity = 0.3 }} />
                   <button onClick={() => removePhoto(i)}
-                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center">
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/90 text-white flex items-center justify-center shadow-md active:scale-90">
                     <Trash2 className="w-3 h-3" />
                   </button>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 py-1 text-[9px] text-white/90 font-bold">
+                    {i + 1}/{photos.length}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border-2 border-dashed border-eq-cream py-6 text-center text-xs text-emerald-800/50">
+            <div className="mt-3 rounded-xl border-2 border-dashed border-eq-cream py-4 text-center text-xs text-emerald-800/50">
               {t.setup_photos_empty}
             </div>
           )}
