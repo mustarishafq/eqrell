@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, MapPin, Settings, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, MapPin, Settings, Volume2, VolumeX, Moon, Sun } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { HADITH_BANK, DOA_BANK } from '@/lib/islamicContent'
 import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import BigMascot from '@/components/eqrel/BigMascot'
+import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
@@ -198,6 +199,21 @@ export default function DisplayPage() {
     setAzanPlaying(null)
   }
 
+  // ═══ Dim mode logic (auto-dim during scheduled night hours) ═══
+  const [manualDim, setManualDim] = useState(false)
+  const isInDimWindow = (() => {
+    if (!config?.dimEnabled) return false
+    const h = now.getHours()
+    const s = config.dimStartHour ?? 22
+    const e = config.dimEndHour ?? 6
+    // Handle overnight window (e.g., 22 → 6)
+    if (s === e) return false
+    if (s < e) return h >= s && h < e
+    return h >= s || h < e
+  })()
+  const dimActive = isInDimWindow || manualDim
+  const dimBrightness = dimActive ? ((config?.dimLevel ?? 30) / 100) : 1
+
   const hasPhotos = photos.length > 0
   const hourNow = now.getHours()
   const isNightHour = hourNow >= 23 || hourNow < 5
@@ -318,7 +334,16 @@ export default function DisplayPage() {
   }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t])
 
   return (
-    <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c' }}>
+    <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c', fontSize: 'clamp(14px, 1.4vmin + 0.4vw, 30px)', filter: `brightness(${dimBrightness})`, transition: 'filter 0.8s ease-in-out' }}>
+      {/* ═══ YouTube background audio (hidden) ═══ */}
+      {config?.bgAudioEnabled && config?.bgAudioUrl && (
+        <YouTubeBgPlayer
+          url={config.bgAudioUrl}
+          enabled={config.bgAudioEnabled}
+          volume={config.bgAudioVolume ?? 25}
+          audioUnlocked={audioUnlocked}
+        />
+      )}
       {/* ═══ AMBIENT BACKGROUND — EQrel brand emerald/teal ═══ */}
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900" />
       <div className="absolute inset-0 opacity-40" style={{ background: 'radial-gradient(ellipse at top left, rgba(0,184,148,0.3), transparent 60%), radial-gradient(ellipse at bottom right, rgba(255,183,3,0.15), transparent 60%)' }} />
@@ -367,6 +392,12 @@ export default function DisplayPage() {
           </button>
           <button onClick={() => router.push('/display/setup')} className="w-11 h-11 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 flex items-center justify-center shadow-lg">
             <Settings className="w-4 h-4" />
+          </button>
+          {/* Manual dim toggle */}
+          <button onClick={() => setManualDim(v => !v)}
+            className={`w-11 h-11 rounded-2xl backdrop-blur border flex items-center justify-center shadow-lg transition-all ${dimActive ? 'bg-slate-800/90 border-slate-500/50' : 'bg-emerald-900/50 border-emerald-400/25 hover:bg-emerald-800/60'}`}
+            title={dimActive ? 'Terangkan' : 'Redupkan'}>
+            {dimActive ? <Sun className="w-4 h-4" style={{ color: '#FFB703' }} /> : <Moon className="w-4 h-4" />}
           </button>
           {config?.azanEnabled && !audioUnlocked && (
             <button onClick={unlockAudio}

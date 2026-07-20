@@ -28,6 +28,15 @@ export default function DisplaySetupPage() {
   const [azanVolume, setAzanVolume] = useState(80)
   const [preAzanEnabled, setPreAzanEnabled] = useState(true)
   const [preAzanMin, setPreAzanMin] = useState(10)
+  // Dim mode
+  const [dimEnabled, setDimEnabled] = useState(false)
+  const [dimStartHour, setDimStartHour] = useState(22)
+  const [dimEndHour, setDimEndHour] = useState(6)
+  const [dimLevel, setDimLevel] = useState(30)
+  // Background audio
+  const [bgAudioEnabled, setBgAudioEnabled] = useState(false)
+  const [bgAudioUrl, setBgAudioUrl] = useState('')
+  const [bgAudioVolume, setBgAudioVolume] = useState(25)
   const [previewingId, setPreviewingId] = useState(null)
   const audioRef = useRef(null)
 
@@ -54,6 +63,13 @@ export default function DisplaySetupPage() {
           setAzanVolume(typeof c.azanVolume === 'number' ? c.azanVolume : 80)
           setPreAzanEnabled(c.preAzanEnabled !== false)
           setPreAzanMin(typeof c.preAzanMin === 'number' ? c.preAzanMin : 10)
+          setDimEnabled(!!c.dimEnabled)
+          setDimStartHour(typeof c.dimStartHour === 'number' ? c.dimStartHour : 22)
+          setDimEndHour(typeof c.dimEndHour === 'number' ? c.dimEndHour : 6)
+          setDimLevel(typeof c.dimLevel === 'number' ? c.dimLevel : 30)
+          setBgAudioEnabled(!!c.bgAudioEnabled)
+          setBgAudioUrl(c.bgAudioUrl || '')
+          setBgAudioVolume(typeof c.bgAudioVolume === 'number' ? c.bgAudioVolume : 25)
         }
         setPrayerLocationSet(!!lData.location)
       } finally { setLoading(false) }
@@ -76,6 +92,8 @@ export default function DisplaySetupPage() {
       body: JSON.stringify({
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
+        dimEnabled, dimStartHour, dimEndHour, dimLevel,
+        bgAudioEnabled, bgAudioUrl, bgAudioVolume,
       }),
     })
     if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
@@ -205,6 +223,77 @@ export default function DisplaySetupPage() {
               <input type="range" min={3} max={30} value={slideshowSec}
                 onChange={e => setSlideshowSec(Number(e.target.value))}
                 className="w-full accent-emerald-500 mt-1" />
+            </div>
+          )}
+        </section>
+
+        {/* Dim Mode */}
+        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
+          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
+            <span>🌙</span> {t.setup_dim_title}
+          </h2>
+          <p className="text-[11px] text-emerald-800/60 mb-3">{t.setup_dim_sub}</p>
+          <ToggleRow label={t.setup_dim_enable} desc="" value={dimEnabled} onChange={setDimEnabled} />
+          {dimEnabled && (
+            <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">{t.setup_dim_start}</label>
+                  <select value={dimStartHour} onChange={e => setDimStartHour(Number(e.target.value))}
+                    className="w-full mt-1 rounded-xl border-2 border-eq-cream px-2 py-1.5 text-xs">
+                    {Array.from({ length: 24 }).map((_, h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">{t.setup_dim_end}</label>
+                  <select value={dimEndHour} onChange={e => setDimEndHour(Number(e.target.value))}
+                    className="w-full mt-1 rounded-xl border-2 border-eq-cream px-2 py-1.5 text-xs">
+                    {Array.from({ length: 24 }).map((_, h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+                  {t.setup_dim_level}: <span className="text-emerald-700">{dimLevel}%</span>
+                </label>
+                <input type="range" min={10} max={80} value={dimLevel}
+                  onChange={e => setDimLevel(Number(e.target.value))}
+                  className="w-full accent-emerald-500 mt-1" />
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Background Audio (YouTube) */}
+        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
+          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
+            <span>🎵</span> {t.setup_bg_audio_title}
+          </h2>
+          <p className="text-[11px] text-emerald-800/60 mb-3">{t.setup_bg_audio_sub}</p>
+          <ToggleRow label={t.setup_bg_audio_enable} desc="" value={bgAudioEnabled} onChange={setBgAudioEnabled} />
+          {bgAudioEnabled && (
+            <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
+                  {t.setup_bg_audio_url}
+                </label>
+                <input value={bgAudioUrl} onChange={e => setBgAudioUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=… or /playlist?list=…"
+                  className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
+                <p className="text-[10px] text-emerald-800/60 mt-1 italic">{t.setup_bg_audio_helper}</p>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+                  {t.setup_bg_audio_volume}: <span className="text-emerald-700">{bgAudioVolume}%</span>
+                </label>
+                <input type="range" min={0} max={100} value={bgAudioVolume}
+                  onChange={e => setBgAudioVolume(Number(e.target.value))}
+                  className="w-full accent-emerald-500 mt-1" />
+              </div>
             </div>
           )}
         </section>

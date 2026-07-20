@@ -696,9 +696,20 @@ async function handleRoute(request, { params }) {
       const azanVolume = Math.min(100, Math.max(0, Number(body.azanVolume ?? 80)))
       const preAzanEnabled = body.preAzanEnabled !== false
       const preAzanMin = [0, 5, 10, 15, 20, 30].includes(Number(body.preAzanMin)) ? Number(body.preAzanMin) : 10
+      // Dim mode (night)
+      const dimEnabled = !!body.dimEnabled
+      const dimStartHour = Math.min(23, Math.max(0, Number(body.dimStartHour ?? 22)))
+      const dimEndHour = Math.min(23, Math.max(0, Number(body.dimEndHour ?? 6)))
+      const dimLevel = Math.min(100, Math.max(10, Number(body.dimLevel ?? 30)))
+      // Background audio (YouTube URL)
+      const bgAudioEnabled = !!body.bgAudioEnabled
+      const bgAudioUrl = String(body.bgAudioUrl || '').trim().slice(0, 500)
+      const bgAudioVolume = Math.min(100, Math.max(0, Number(body.bgAudioVolume ?? 25)))
       const config = {
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
+        dimEnabled, dimStartHour, dimEndHour, dimLevel,
+        bgAudioEnabled, bgAudioUrl, bgAudioVolume,
         updatedAt: new Date(),
       }
       const db = await getDb()

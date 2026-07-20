@@ -2421,3 +2421,188 @@ frontend:
 
           Result: cohesive Islamic-warm-modern feel matching EQrel identity across all cards.
 
+
+#====================================================================================================
+# Family Display - Iteration 7 - Fluid Scaling + Dim Mode + YouTube BG Audio (2026-01-20)
+#====================================================================================================
+backend:
+  - task: "displayConfig extended with dim + bgAudio fields"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Extended POST /api/family/display-config to accept:
+          - dimEnabled (bool)
+          - dimStartHour (0-23, default 22)
+          - dimEndHour (0-23, default 6)
+          - dimLevel (10-100, default 30) — brightness % during dim window
+          - bgAudioEnabled (bool)
+          - bgAudioUrl (string ≤500 chars, YouTube URL)
+          - bgAudioVolume (0-100, default 25)
+          All previous fields preserved.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (45/45)
+          
+          Comprehensive test suite executed successfully. Created /app/test_display_config_dim_audio.py with automated tests covering:
+          
+          ✅ TEST 1-2: Auth Guards (2 tests)
+             - POST without session → 401
+             - GET without session → 401
+          
+          ✅ TEST 3: All New Fields Persisted (8 tests)
+             - POST with all 7 new fields → 200 ok:true
+             - All fields persisted correctly via GET:
+               * dimEnabled=true, dimStartHour=21, dimEndHour=5, dimLevel=40
+               * bgAudioEnabled=true, bgAudioUrl='https://www.youtube.com/watch?v=dQw4w9WgXcQ', bgAudioVolume=50
+          
+          ✅ TEST 4: Default Values (7 tests)
+             - POST with no new fields (only photos:[])
+             - All defaults correct:
+               * dimEnabled=false, dimStartHour=22, dimEndHour=6, dimLevel=30
+               * bgAudioEnabled=false, bgAudioUrl='', bgAudioVolume=25
+          
+          ✅ TEST 5: Clamping Dim Hours (3 tests)
+             - dimStartHour=30 → clamped to 23 ✓
+             - dimStartHour=-5 → clamped to 0 ✓
+             - dimEndHour=25 → clamped to 23 ✓
+          
+          ✅ TEST 6: Clamping Dim Level (3 tests)
+             - dimLevel=5 → clamped to 10 (min is 10 not 0) ✓
+             - dimLevel=150 → clamped to 100 ✓
+             - dimLevel=50 → stays 50 ✓
+          
+          ✅ TEST 7: Clamping Background Audio Volume (2 tests)
+             - bgAudioVolume=200 → clamped to 100 ✓
+             - bgAudioVolume=-10 → clamped to 0 ✓
+          
+          ✅ TEST 8: URL Truncation and Trimming (3 tests)
+             - URL of 600 chars → truncated to 500 ✓
+             - URL with leading/trailing spaces → trimmed ✓
+             - Empty string → stored as '' ✓
+          
+          ✅ TEST 9: Regression - Existing Fields (17 tests)
+             - All existing fields still work correctly:
+               * photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto
+               * azanEnabled, azanVolume, preAzanEnabled, preAzanMin
+             - All new fields work alongside existing fields
+          
+          KEY FINDINGS:
+          - All 7 new Dim Mode and Background Audio fields working correctly
+          - Clamping logic correct for all numeric fields (hours 0-23, dimLevel 10-100, volume 0-100)
+          - URL truncation to 500 chars working
+          - URL trimming (leading/trailing spaces) working
+          - Default values correct for all fields
+          - Auth guards working (401 without session)
+          - No regression: all existing fields (photos, azan, motto, etc.) still work
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. Extended display-config endpoint with Dim Mode + Background Audio is production-ready.
+
+frontend:
+  - task: "Family Display: fluid scaling proportional to viewport (720p → 4K)"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Root font-size on display container now uses:
+          `fontSize: 'clamp(14px, 1.4vmin + 0.4vw, 30px)'`
+
+          This makes ALL rem-based Tailwind classes (text-sm, p-3, gap-2, w-4, etc) scale
+          proportionally to the viewport. Result:
+            - 720p:  root font ≈ 15.2px → cards look normal
+            - 1080p: root font ≈ 22.8px → cards ~1.4x bigger (proportional)
+            - 4K:    root font clamped 30px → cards ~1.9x bigger
+
+          Verified via getComputedStyle: 1080p → 22.8px confirmed.
+
+  - task: "Dim Mode — auto night dim + manual toggle button"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js, /app/app/display/setup/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Display page:
+          - Outer container has `filter: brightness(X)` with smooth 0.8s transition
+          - Auto-dim: if config.dimEnabled AND current hour within [dimStartHour, dimEndHour] window
+                     (handles overnight wrap e.g. 22→6)
+          - Manual dim: Moon/Sun toggle button in top nav (overrides schedule)
+          - Brightness = dimLevel% (10-80% range)
+
+          Setup page:
+          - New "Mode Redup Malam" section with toggle + start/end hour dropdowns + dim level slider
+          - i18n: 4 languages (ms/en/id/ar)
+
+  - task: "YouTube Background Audio — hidden iframe player"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/YouTubeBgPlayer.js, /app/lib/youtube.js, /app/app/display/page.js, /app/app/display/setup/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          NEW /app/lib/youtube.js: parseYouTubeUrl() + buildYouTubeEmbedUrl()
+          - Supports: single video, playlist (list=), video-in-playlist
+          - Auto-loop, controls hidden, JS API enabled
+
+          NEW /app/components/eqrel/YouTubeBgPlayer.js:
+          - Loads YouTube Iframe API lazily
+          - Renders 1x1 invisible iframe (opacity 0, pointer-events none)
+          - Volume control via YT.Player.setVolume()
+          - Auto-replay for single videos on ENDED state
+          - Only mounts when audioUnlocked (respects browser autoplay policy)
+
+          Display page:
+          - Renders <YouTubeBgPlayer/> if config.bgAudioEnabled + bgAudioUrl set
+          - Uses same audioUnlocked gate as azan (single Enable Audio button unlocks both)
+
+          Setup page:
+          - New "Audio Latar (YouTube)" section with toggle + URL input + volume slider
+          - Helper text guides parents to copy YouTube share link
+          - i18n: 4 languages
+
+          Storage cost: ZERO — YouTube hosts everything.
+
+
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 FAMILY DISPLAY CONFIG DIM MODE + BACKGROUND AUDIO TESTING COMPLETE - ALL TESTS PASSED (45/45)
+      
+      Tested the extended POST /api/family/display-config endpoint with 7 new fields for Dim Mode and Background Audio as requested.
+      
+      All test scenarios passed:
+      ✅ Auth guards (POST/GET without session → 401) - 2 tests
+      ✅ All 7 new fields persisted correctly - 8 tests
+      ✅ Default values when fields missing - 7 tests
+      ✅ Clamping dimStartHour/dimEndHour (0-23 range) - 3 tests
+      ✅ Clamping dimLevel (10-100 range, min is 10 not 0) - 3 tests
+      ✅ Clamping bgAudioVolume (0-100 range) - 2 tests
+      ✅ URL truncation to 500 chars - 3 tests
+      ✅ URL trimming (leading/trailing spaces) - included above
+      ✅ Regression: all existing fields still work - 17 tests
+      
+      Created comprehensive test suite: /app/test_display_config_dim_audio.py
+      All test data cleaned up successfully.
+      
+      KEY FINDINGS:
+      - All 7 new fields working correctly (dimEnabled, dimStartHour, dimEndHour, dimLevel, bgAudioEnabled, bgAudioUrl, bgAudioVolume)
+      - Clamping logic correct: hours 0-23, dimLevel 10-100, volume 0-100
+      - URL truncation to 500 chars working
+      - URL trimming working (spaces removed)
+      - Default values correct for all fields
+      - No regression: existing fields (photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto, azanEnabled, azanVolume, preAzanEnabled, preAzanMin) all still work
+      
+      NO ISSUES FOUND. Extended display-config endpoint with Dim Mode + Background Audio is production-ready.
