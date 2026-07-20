@@ -12,6 +12,7 @@ import { BRAND } from '@/lib/brand'
 import BigMascot from '@/components/eqrel/BigMascot'
 import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
 import TVPreview from '@/components/eqrel/TVPreview'
+import HabitBoard from '@/components/eqrel/HabitBoard'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
@@ -559,7 +560,7 @@ export default function DisplayPage() {
 
           {/* Kids progress rings */}
           {display?.children && display.children.length > 0 && (
-            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 flex-1 min-h-0 overflow-hidden">
+            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 flex-shrink-0">
               <div className="text-[10px] uppercase tracking-widest text-white/60 font-black text-center mb-2">
                 {lang === 'ar' ? 'الأبناء' : lang === 'en' ? 'Kids' : 'Anak-anak'}
               </div>
@@ -587,6 +588,36 @@ export default function DisplayPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Zikir (moved here — family-shared with kids) */}
+          {display?.zikir && (
+            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(0,184,148,0.10))', borderColor: 'rgba(0,184,148,0.5)' }}>
+              <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#00B894' }}>
+                <span className="text-lg">📿</span> {t.display_zikir_title}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <motion.div
+                  key={display.zikir.today}
+                  initial={{ scale: 1.3 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="font-black tabular-nums leading-none"
+                  style={{ color: '#FFF8E7', fontSize: 'clamp(2rem, 3vw, 3.5rem)' }}>
+                  {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
+                </motion.div>
+                <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>{t.display_zikir_sub_today}</div>
+              </div>
+              {display.zikir.total > (display.zikir.today || 0) && (
+                <div className="mt-1 text-[10px]" style={{ color: '#FFF8E7', opacity: 0.6 }}>
+                  {t.display_zikir_sub_total}: <span className="font-bold" style={{ opacity: 0.9 }}>{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
+                </div>
+              )}
+              <div className="mt-1.5 pt-1.5 border-t italic leading-tight text-[10px]" style={{ color: '#FFF8E7', opacity: 0.65, borderColor: 'rgba(0,184,148,0.2)' }}>
+                {lang === 'ar' ? 'اضغط للذكر من هاتف كل فرد' : lang === 'en' ? 'Everyone taps zikir from their own phone' : lang === 'id' ? 'Semua tap zikir dari HP masing-masing' : 'Semua orang tap zikir dari phone masing-masing'}
               </div>
             </div>
           )}
@@ -637,7 +668,7 @@ export default function DisplayPage() {
           </div>
         </section>
 
-        {/* RIGHT COLUMN — Ihsan Star + Zikir + Undone habits */}
+        {/* RIGHT COLUMN — Ihsan Star + Family Habit Board (Skylight-style) */}
         <aside className="col-span-12 md:col-span-3 xl:col-span-3 flex flex-col gap-2.5 min-h-0 overflow-hidden">
           {/* Ihsan Star */}
           {display?.ihsanStar && (() => {
@@ -646,74 +677,36 @@ export default function DisplayPage() {
             return (
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
+                className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3 flex-shrink-0"
                 style={{ background: 'linear-gradient(135deg, rgba(255,183,3,0.28), rgba(255,183,3,0.12))', borderColor: 'rgba(255,183,3,0.5)' }}>
-                <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#FFB703' }}>
+                <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#FFB703' }}>
                   <span className="text-lg">🌟</span> {t.display_ihsan_star_title}
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 rounded-full overflow-hidden bg-white/15 border-4" style={{ borderColor: star.favColor || '#FFB703' }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="relative w-14 h-14 rounded-full overflow-hidden bg-white/15 border-4 flex-shrink-0" style={{ borderColor: star.favColor || '#FFB703' }}>
                     {avatar ? <img src={avatar.src} alt="" className="w-full h-full object-cover" /> :
                       <div className="w-full h-full flex items-center justify-center text-2xl">🧒</div>}
                     <motion.div
-                      className="absolute -bottom-1 -right-1 text-2xl"
+                      className="absolute -bottom-1 -right-1 text-xl"
                       animate={{ rotate: [0, 20, -20, 0], scale: [1, 1.2, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}>🌟</motion.div>
                   </div>
-                  <div>
-                    <div className="text-lg font-black leading-tight" style={{ color: '#FFF8E7' }}>{star.nickname}</div>
-                    <div className="text-xs" style={{ color: '#FFF8E7', opacity: 0.75 }}>{t.display_ihsan_star_sub(star.ihsanCount)}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-black leading-tight truncate" style={{ color: '#FFF8E7' }}>{star.nickname}</div>
+                    <div className="text-[11px] leading-tight" style={{ color: '#FFF8E7', opacity: 0.75 }}>{t.display_ihsan_star_sub(star.ihsanCount)}</div>
                   </div>
                 </div>
               </motion.div>
             )
           })()}
 
-          {/* Zikir (read-only ambient) — brand emerald */}
-          {display?.zikir && (
-            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(0,184,148,0.10))', borderColor: 'rgba(0,184,148,0.5)' }}>
-              <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#00B894' }}>
-                <span className="text-lg">📿</span> {t.display_zikir_title}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <motion.div
-                  key={display.zikir.today}
-                  initial={{ scale: 1.3 }}
-                  animate={{ scale: 1 }}
-                  transition={{ duration: 0.5 }}
-                  className="font-black tabular-nums leading-none"
-                  style={{ color: '#FFF8E7', fontSize: 'clamp(2rem, 3vw, 3.5rem)' }}>
-                  {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
-                </motion.div>
-                <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>{t.display_zikir_sub_today}</div>
-              </div>
-              {display.zikir.total > (display.zikir.today || 0) && (
-                <div className="mt-1 text-[10px]" style={{ color: '#FFF8E7', opacity: 0.6 }}>
-                  {t.display_zikir_sub_total}: <span className="font-bold" style={{ opacity: 0.9 }}>{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
-                </div>
-              )}
-              <div className="mt-2 pt-2 border-t italic leading-tight text-[10px]" style={{ color: '#FFF8E7', opacity: 0.65, borderColor: 'rgba(0,184,148,0.2)' }}>
-                {lang === 'ar' ? 'اضغط للذكر من هاتف كل فرد' : lang === 'en' ? 'Everyone taps zikir from their own phone' : lang === 'id' ? 'Semua tap zikir dari HP masing-masing' : 'Semua orang tap zikir dari phone masing-masing'}
-              </div>
-            </div>
-          )}
-
-          {/* Undone habits — brand cream text */}
-          {config?.showHabits && display?.undoneHabits && display.undoneHabits.length > 0 && (
-            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3.5 flex-1 min-h-0 overflow-hidden">
-              <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1" style={{ color: '#FFB703' }}>
-                <span className="text-lg">📋</span> {t.display_undone_title}
-              </div>
-              <div className="grid grid-cols-1 gap-1 text-xs overflow-hidden">
-                {display.undoneHabits.slice(0, 8).map(h => (
-                  <div key={h.id} className="flex items-center gap-1.5" style={{ color: '#FFF8E7', opacity: 0.85 }}>
-                    <span>{h.icon || '•'}</span>
-                    <span className="truncate">{h.i18n?.[lang]?.title || h.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* Family Habit Board (Skylight-inspired) */}
+          {config?.showHabits !== false && display?.children && display.children.length > 0 && (
+            <HabitBoard
+              kids={display.children}
+              lang={lang}
+              title={lang === 'ar' ? 'لوحة عادات العائلة' : lang === 'en' ? 'Family Habit Board' : lang === 'id' ? 'Papan Kebiasaan Keluarga' : 'Papan Habit Keluarga'}
+            />
           )}
         </aside>
       </main>

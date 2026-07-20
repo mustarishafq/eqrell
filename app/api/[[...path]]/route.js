@@ -839,11 +839,34 @@ async function handleRoute(request, { params }) {
       // Undone habits list (for display "belum siap" section)
       const undoneClaims = await db.collection('habit_claims').find({
         childId: { $in: childIds }, dateStr, status: 'verified', rubric: { $in: ['sah', 'ihsan'] }
-      }).project({ _id: 0, habitId: 1, childId: 1 }).toArray()
+      }).project({ _id: 0, habitId: 1, childId: 1, rubric: 1 }).toArray()
       const doneSet = new Set(undoneClaims.map(c => `${c.childId}:${c.habitId}`))
+      const ihsanHabitSet = new Set(undoneClaims.filter(c => c.rubric === 'ihsan').map(c => `${c.childId}:${c.habitId}`))
       const allHabits = await db.collection('habits').find({ childId: { $in: childIds } })
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1 }).toArray()
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1 }).toArray()
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
+
+      // Group habits per child with status (for Skylight-style board)
+      const habitsByChildDetail = {}
+      for (const h of allHabits) {
+        const key = `${h.childId}:${h.id}`
+        let status = 'pending'
+        if (ihsanHabitSet.has(key)) status = 'ihsan'
+        else if (doneSet.has(key)) status = 'done'
+        if (!habitsByChildDetail[h.childId]) habitsByChildDetail[h.childId] = []
+        habitsByChildDetail[h.childId].push({
+          id: h.id, title: h.title, icon: h.icon || '⭐', category: h.category, i18n: h.i18n, status,
+        })
+      }
+      // Sort each child's habits: pending first, then done, then ihsan at top
+      Object.values(habitsByChildDetail).forEach(list => {
+        list.sort((a, b) => {
+          const order = { ihsan: 0, pending: 1, done: 2 }
+          return (order[a.status] ?? 3) - (order[b.status] ?? 3)
+        })
+      })
+      // Attach to children output
+      childrenOut.forEach(c => { c.habits = habitsByChildDetail[c.id] || [] })
 
       // Ihsan Star: child with most ihsan-rated claims today (tiebreaker: highest mataBina)
       const ihsanCountByChild = {}

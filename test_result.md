@@ -2606,6 +2606,45 @@ agent_communication:
       - No regression: existing fields (photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto, azanEnabled, azanVolume, preAzanEnabled, preAzanMin) all still work
       
       NO ISSUES FOUND. Extended display-config endpoint with Dim Mode + Background Audio is production-ready.
+  - agent: "testing"
+    message: |
+      🎉 GET /api/family/display-data HABITS[] ARRAY TESTING COMPLETE - ALL TESTS PASSED (8/8)
+      
+      Tested the extended GET /api/family/display-data endpoint that now attaches per-child habits[] array with status determination logic.
+      
+      All test scenarios passed:
+      ✅ TEST 1: Auth guard - Returns 401 without session
+      ✅ TEST 2: Child with 3 habits (1 ihsan, 1 sah, 1 pending)
+         - Verified habits array has all required fields (id, title, icon, category, i18n, status)
+         - Verified status determination logic: ihsan claim → 'ihsan', sah claim → 'done', no claim → 'pending'
+         - Verified sorting order: ihsan (0) → pending (1) → done (2)
+      ✅ TEST 3: Child with 0 habits - habits array is empty [] (not null/undefined)
+      ✅ TEST 4: Child with habits but no claims today - all status='pending'
+         - Verified yesterday's claims don't affect today's status
+      ✅ TEST 5: Multiple children - each has their own habits[] correctly
+         - No cross-contamination between children
+         - Each child's habits have correct statuses based on their own claims
+      ✅ TEST 6: Existing fields still present (backward compatible)
+         - children[].id, nickname, avatarId, favColor, mataBina, mataReward, habitsTotal, habitsDone
+         - ihsanStar (nullable)
+         - zikir (object with today/total)
+         - undoneHabits (flat array, backward compat)
+      ✅ TEST 7: Cross-family isolation - Family A habits don't appear in Family B response
+      ✅ TEST 8: Sorting order verified - ihsan first, then pending, then done
+      
+      Created comprehensive test suite: /app/test_display_data_habits.py
+      All test data cleaned up successfully.
+      
+      KEY FINDINGS:
+      - Status determination logic working correctly (ihsan → 'ihsan', sah → 'done', no claim → 'pending')
+      - Sorting algorithm working correctly (ihsan: 0, pending: 1, done: 2)
+      - Empty habits array [] for children with no habits (not null/undefined)
+      - Yesterday's claims correctly excluded from today's status
+      - Cross-family isolation working perfectly
+      - All existing fields preserved (backward compatible)
+      
+      NO ISSUES FOUND. The extended GET /api/family/display-data endpoint with habits[] array is production-ready.
+
 
 #====================================================================================================
 # Family Display - Iteration 8 - TV Preview (mobile-friendly) (2026-01-20)
@@ -2673,4 +2712,100 @@ frontend:
           - playAzan() returns early if isPreview
           - YouTubeBgPlayer not rendered if isPreview
           - Ensures silent scaled previews in setup + portrait fallback pages
+
+
+#====================================================================================================
+# Family Display - Iteration 9 - Skylight-style Habit Board + Position Swap (2026-01-20)
+#====================================================================================================
+backend:
+  - task: "GET /family/display-data — attach per-child habits[] with status"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Extended /family/display-data to include per-child habits list with status.
+          Each child in `children` array now has `habits[]`:
+            { id, title, icon, category, i18n, status: 'ihsan' | 'done' | 'pending' }
+          Sorted: ihsan first, then pending, then done.
+          Status derived from today's habit_claims (rubric='ihsan' vs 'sah' vs no claim).
+
+          Also added habitId to ihsanClaims projection (for accurate per-habit ihsan detection).
+          Existing `undoneHabits` array preserved for backward compat.
+          `ihsanStar` computation unchanged.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (8/8)
+          
+          Comprehensive test suite executed successfully. Created /app/test_display_data_habits.py with automated tests covering:
+          
+          ✅ TEST 1: Auth guard - Returns 401 without session
+          ✅ TEST 2: Child with 3 habits (1 ihsan, 1 sah, 1 pending)
+             - Verified habits array has all required fields (id, title, icon, category, i18n, status)
+             - Verified status determination logic: ihsan claim → 'ihsan', sah claim → 'done', no claim → 'pending'
+             - Verified sorting order: ihsan (0) → pending (1) → done (2)
+          ✅ TEST 3: Child with 0 habits - habits array is empty [] (not null/undefined)
+          ✅ TEST 4: Child with habits but no claims today - all status='pending'
+             - Verified yesterday's claims don't affect today's status
+          ✅ TEST 5: Multiple children - each has their own habits[] correctly
+             - No cross-contamination between children
+             - Each child's habits have correct statuses based on their own claims
+          ✅ TEST 6: Existing fields still present (backward compatible)
+             - children[].id, nickname, avatarId, favColor, mataBina, mataReward, habitsTotal, habitsDone
+             - ihsanStar (nullable)
+             - zikir (object with today/total)
+             - undoneHabits (flat array, backward compat)
+          ✅ TEST 7: Cross-family isolation - Family A habits don't appear in Family B response
+          ✅ TEST 8: Sorting order verified - ihsan first, then pending, then done
+          
+          KEY FINDINGS:
+          - Status determination logic working correctly (ihsan → 'ihsan', sah → 'done', no claim → 'pending')
+          - Sorting algorithm working correctly (ihsan: 0, pending: 1, done: 2)
+          - Empty habits array [] for children with no habits (not null/undefined)
+          - Yesterday's claims correctly excluded from today's status
+          - Cross-family isolation working perfectly
+          - All existing fields preserved (backward compatible)
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. The extended GET /api/family/display-data endpoint is production-ready.
+
+frontend:
+  - task: "HabitBoard component — Skylight-inspired per-child mini cards"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/HabitBoard.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Renders a grid of per-child cards (1-4 kids), each showing:
+          - Avatar + nickname header + mini progress ring (%)
+          - Up to 6 habits with visual status:
+            * ihsan → 🌟 gold background + gold ring
+            * done → ✓ green with line-through text
+            * pending → ○ amber
+          - Category color dot (ibadah=emerald, akhlak=violet, ilmu=blue, fizikal=amber, rumah=pink)
+          - Habit icon + title (i18n)
+          - "+N more" if more than 6 habits
+          i18n title supports 4 languages.
+
+  - task: "Display page — swap Zikir → Left column (with Kids), Habit Board → Right"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Position swap per user feedback (Zikir + Kids related, To-do habits actionable):
+          - LEFT column now: Time + Hijri + Next Prayer + Sirah + Kids progress + **Zikir counter**
+          - RIGHT column now: Ihsan Star + **HabitBoard** (was Zikir + Undone habits)
+          - Habit Board fills the vertical space of right column (flex-1 min-h-0)
+          - Ihsan Star card made more compact (14px vs 16px avatar) to give board more room
+          - Undone habits flat list REMOVED (superseded by HabitBoard which shows all habits with status)
 
