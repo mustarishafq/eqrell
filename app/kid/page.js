@@ -12,6 +12,7 @@ import { PinModal } from '@/components/eqrel/PinModal'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
 import { QuizSheet } from '@/components/eqrel/QuizSheet'
+import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -136,6 +137,7 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
   const [quizOpen, setQuizOpen] = useState(false)
   const [quizStatus, setQuizStatus] = useState({ doneToday: false, correctCount: 0, total: 0 })
+  const [zikirOpen, setZikirOpen] = useState(false)
 
   // Tutorials
   const tutWelcome = useTutorial('kid_welcome')
@@ -419,6 +421,20 @@ function KidHomeActive({ router, childId, t, lang }) {
               </span>
             </button>
           </div>
+        )}
+
+        {/* Zikir tile — full width, family shared */}
+        {!loading && (
+          <button
+            onClick={() => setZikirOpen(true)}
+            className="mt-2 w-full rounded-2xl border-2 border-white/90 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 font-extrabold text-xs flex items-center justify-between shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-lg">📿</span>
+              <span>{t.zikir_tile_title || 'Family Zikir'}</span>
+            </span>
+            <span className="text-[10px] opacity-90">{t.zikir_tile_cta || 'Tap to start →'}</span>
+          </button>
         )}
 
         {/* Rewards grid — shown when toggled on */}
@@ -745,6 +761,39 @@ function KidHomeActive({ router, childId, t, lang }) {
         childId={childId}
         onComplete={load}
       />
+
+      {/* Zikir bottom sheet */}
+      <AnimatePresence>
+        {zikirOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setZikirOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-x-0 bottom-0 z-50 bg-eq-cream rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto">
+              <div className="sticky top-0 bg-eq-cream/95 backdrop-blur px-4 py-3 border-b border-emerald-100 flex items-center justify-between rounded-t-3xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">📿</span>
+                  <div>
+                    <div className="text-sm font-black text-emerald-900 leading-tight">{t.zikir_tile_title || 'Family Zikir'}</div>
+                    <div className="text-[10px] text-emerald-800/60">{t.zikir_tile_sub || 'Kaunter dikongsi keluarga'}</div>
+                  </div>
+                </div>
+                <button onClick={() => setZikirOpen(false)}
+                  className="w-9 h-9 rounded-full bg-white border border-emerald-200 flex items-center justify-center active:scale-95">
+                  <X className="w-4 h-4 text-emerald-800" />
+                </button>
+              </div>
+              <div className="p-4">
+                <ZikirTasbih />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

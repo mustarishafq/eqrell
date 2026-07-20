@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
-import { Bell, ChevronRight, Sparkles, Plus } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Bell, ChevronRight, Sparkles, Plus, X } from 'lucide-react'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
 import { InstallPrompt } from '@/components/eqrel/InstallPrompt'
 import { ChildSheet, calculateAge, ageBandFromAge } from '@/components/eqrel/ChildSheet'
@@ -15,6 +15,7 @@ import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { BRAND } from '@/lib/brand'
+import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -140,6 +141,7 @@ const ParentDashboard = () => {
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
+  const [zikirOpen, setZikirOpen] = useState(false)
   const [kidModeChild, setKidModeChild] = useState(null)   // child pending Kid Mode entry (PIN gate)
   const [pinModalMode, setPinModalMode] = useState(null)   // 'enter' | 'set' | null
   const [rewardShopOpen, setRewardShopOpen] = useState(false)
@@ -599,6 +601,22 @@ const ParentDashboard = () => {
         <motion.button
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.53, duration: 0.4 }}
+          onClick={() => setZikirOpen(true)}
+          className="w-full rounded-2xl px-3 py-2.5 flex items-center gap-2.5 hover:brightness-105 transition-all active:scale-[0.99] flex-shrink-0 shadow-sm border-2"
+          style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.12), rgba(0,184,148,0.05))', borderColor: 'rgba(0,184,148,0.35)' }}
+        >
+          <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center text-lg flex-shrink-0">📿</div>
+          <div className="flex-1 text-left">
+            <div className="font-bold text-eq-ink text-sm">{t.zikir_tile_title || 'Zikir Keluarga'}</div>
+            <div className="text-[11px] text-emerald-800/70 leading-tight">{t.zikir_tile_sub || 'Kaunter dikongsi keluarga'}</div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-emerald-700 flex-shrink-0" strokeWidth={2.5} />
+        </motion.button>
+
+        <motion.button
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55, duration: 0.4 }}
           onClick={() => setDeviceSettingsOpen(true)}
           className="w-full bg-white/70 backdrop-blur border-2 border-eq-cream rounded-2xl px-3 py-2 flex items-center gap-2.5 hover:bg-white active:scale-[0.99] flex-shrink-0"
@@ -755,6 +773,39 @@ const ParentDashboard = () => {
         onClose={() => setDeviceSettingsOpen(false)}
         kids={children}
       />
+
+      {/* Zikir bottom sheet */}
+      <AnimatePresence>
+        {zikirOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setZikirOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-x-0 bottom-0 z-50 bg-eq-cream rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto">
+              <div className="sticky top-0 bg-eq-cream/95 backdrop-blur px-4 py-3 border-b border-emerald-100 flex items-center justify-between rounded-t-3xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">📿</span>
+                  <div>
+                    <div className="text-sm font-black text-eq-ink leading-tight">{t.zikir_tile_title || 'Zikir Keluarga'}</div>
+                    <div className="text-[10px] text-emerald-800/60">{t.zikir_tile_sub || 'Kaunter dikongsi keluarga'}</div>
+                  </div>
+                </div>
+                <button onClick={() => setZikirOpen(false)}
+                  className="w-9 h-9 rounded-full bg-white border border-emerald-200 flex items-center justify-center active:scale-95">
+                  <X className="w-4 h-4 text-emerald-800" />
+                </button>
+              </div>
+              <div className="p-4">
+                <ZikirTasbih />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

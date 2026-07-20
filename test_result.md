@@ -2809,3 +2809,58 @@ frontend:
           - Ihsan Star card made more compact (14px vs 16px avatar) to give board more room
           - Undone habits flat list REMOVED (superseded by HabitBoard which shows all habits with status)
 
+
+#====================================================================================================
+# Zikir Tasbih Widget - Family-shared tap counter (2026-01-20)
+#====================================================================================================
+frontend:
+  - task: "ZikirTasbih component — 6 zikir choices + big tap counter + family sync"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/ZikirTasbih.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Reusable widget for both Kid Mode and Parent Dashboard.
+          
+          Features:
+          - 6 zikir choices with Arabic text + transliteration + meaning:
+            SubhanAllah, Alhamdulillah, Allahu Akbar, La ilaha illa Allah, Astaghfirullah, Salawat
+          - Each choice has distinct color (brand emerald, yellow, violet, blue, pink, primary green)
+          - Big tap button with pulse animation + floating ✨ emoji on tap
+          - Haptic vibration (navigator.vibrate 30ms)
+          - Personal session counter with Reset button
+          - Family Today + Total counters at top (real-time sync)
+          - Polls /api/family/display-data every 10s to catch other family members' taps
+          - Debounced backend send (500ms) to batch rapid taps efficiently
+          - Optimistic UI update (increments immediately, syncs to server after)
+          - Full 4-language i18n
+
+  - task: "Kid Mode — Zikir tile + bottom sheet"
+    implemented: true
+    working: true
+    file: "/app/app/kid/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added a full-width gradient tile below Quiz/Reward row: "📿 Family Zikir • Tap to start →"
+          On tap → opens bottom sheet with ZikirTasbih widget.
+          Bottom sheet: 92vh max-height, sticky header with close button, cream background.
+
+  - task: "Parent Dashboard — Zikir tile + bottom sheet"
+    implemented: true
+    working: true
+    file: "/app/app/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added a Zikir tile between Reward Shop and Device Settings (subtle emerald gradient bg).
+          Same bottom sheet pattern as Kid Mode — reuses ZikirTasbih component.
+          Parents can now tap zikir from their own phone, contributing to family shared count.
+          
+          Backend: POST /api/family/zikir/tap (already tested 11/11 in previous iteration).
+          Display page: shows real-time zikir count via /api/family/display-data (auto-refreshes every 60s).
+
