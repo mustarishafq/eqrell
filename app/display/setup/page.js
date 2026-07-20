@@ -252,6 +252,15 @@ export default function DisplaySetupPage() {
           )}
         </section>
 
+        {/* Cast to TV */}
+        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
+          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
+            <span>📺</span> Cast to TV
+          </h2>
+          <p className="text-[11px] text-emerald-800/60 mb-3">Buka Chrome/Safari di TV, pergi ke <span className="font-bold">eqrel.app/tv</span>, masukkan kod di bawah</p>
+          <TVPairCode />
+        </section>
+
         {/* Dim Mode */}
         <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
           <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
@@ -441,6 +450,66 @@ export default function DisplaySetupPage() {
     </div>
   )
 }
+
+const TVPairCode = () => {
+  const [code, setCode] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/family/tv-pair/current', { credentials: 'include' })
+      .then(r => r.json()).then(d => { if (d.code) setCode(d.code) }).catch(() => {})
+  }, [])
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/family/tv-pair/generate', { method: 'POST', credentials: 'include' })
+      const d = await r.json()
+      if (r.ok && d.code) setCode(d.code)
+    } catch (e) { /* ignore */ }
+    setLoading(false)
+  }
+
+  const copy = () => {
+    if (code) {
+      navigator.clipboard?.writeText(code)
+      setCopied(true); setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  if (!code) {
+    return (
+      <button onClick={generate} disabled={loading}
+        className="w-full rounded-xl bg-emerald-500 text-white font-extrabold py-3 text-sm active:scale-95 disabled:opacity-50">
+        {loading ? 'Menjana...' : '🔑 Jana Kod TV Baru'}
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4 shadow-lg text-center">
+        <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-black mb-1">Kod Pairing (15 min)</div>
+        <div className="text-5xl font-black tabular-nums tracking-widest my-1" style={{ letterSpacing: '0.3em' }}>{code}</div>
+        <div className="flex gap-2 mt-3">
+          <button onClick={copy} className="flex-1 rounded-lg bg-white/20 backdrop-blur px-3 py-1.5 text-xs font-extrabold active:scale-95">
+            {copied ? '✓ Copied!' : '📋 Copy'}
+          </button>
+          <button onClick={generate} disabled={loading} className="flex-1 rounded-lg bg-white/20 backdrop-blur px-3 py-1.5 text-xs font-extrabold active:scale-95">
+            {loading ? '...' : '🔄 Regenerate'}
+          </button>
+        </div>
+      </div>
+      <ol className="mt-3 space-y-1 text-[11px] text-emerald-800/75 list-decimal list-inside">
+        <li>Buka browser di TV / Chromecast</li>
+        <li>Lawat <span className="font-bold font-mono">eqrel.app/tv</span></li>
+        <li>Masukkan kod di atas → TV auto-load Family Display</li>
+      </ol>
+    </div>
+  )
+}
+
 
 const ToggleRow = ({ label, desc, value, onChange }) => (
   <div className="flex items-start gap-3 py-1.5">

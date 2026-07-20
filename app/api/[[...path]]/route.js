@@ -893,6 +893,55 @@ async function handleRoute(request, { params }) {
     }
 
     // POST /family/zikir/tap  → increment family-shared zikir counter by 1 (auto-reset new day)
+
+    // POST /family/tv-pair/generate  → parent creates a 6-digit code (valid 15 min) for TV pairing
+    if (route === '/family/tv-pair/generate' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      // Invalidate any previous unused codes for this family
+      await db.collection('tv_pair_codes').deleteMany({ familyId: user.familyId, usedAt: null })
+      const code = String(Math.floor(100000 + Math.random() * 900000))
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+      await db.collection('tv_pair_codes').insertOne({
+        code, familyId: user.familyId, createdBy: session.userId, createdAt: new Date(), expiresAt, usedAt: null,
+      })
+      return json({ ok: true, code, expiresAt })
+    }
+
+    // GET /family/tv-pair/current  → parent checks current active code
+    if (route === '/family/tv-pair/current' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const row = await db.collection('tv_pair_codes').findOne({
+        familyId: user.familyId, usedAt: null, expiresAt: { $gt: new Date() },
+      }, { sort: { createdAt: -1 } })
+      if (!row) return json({ code: null })
+      return json({ code: row.code, expiresAt: row.expiresAt })
+    }
+
+    // POST /tv-pair/redeem  → TV enters code, gets session cookie (no auth required)
+    if (route === '/tv-pair/redeem' && method === 'POST') {
+      const body = await request.json().catch(() => ({}))
+      const code = String(body.code || '').trim().toUpperCase().slice(0, 8)
+      if (!/^[0-9]{6}$/.test(code)) return err('Invalid code format', 400)
+      const db = await getDb()
+      const row = await db.collection('tv_pair_codes').findOne({ code, usedAt: null, expiresAt: { $gt: new Date() } })
+      if (!row) return err('Code invalid or expired', 400)
+      const creator = await db.collection('users').findOne({ id: row.createdBy })
+      if (!creator) return err('Creator not found', 400)
+      // Mark code as used
+      await db.collection('tv_pair_codes').updateOne({ _id: row._id }, { $set: { usedAt: new Date() } })
+      // Create session for TV (using creator's user identity, scoped by role)
+      await createSession({ userId: creator.id, email: creator.email, familyId: creator.familyId, role: 'tv' })
+      return json({ ok: true, familyId: creator.familyId })
+    }
+
     if (route === '/family/zikir/tap' && method === 'POST') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
