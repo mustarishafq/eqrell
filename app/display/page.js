@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, MapPin, Settings, Volume2, VolumeX, Moon, Sun } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
@@ -11,6 +11,7 @@ import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import BigMascot from '@/components/eqrel/BigMascot'
 import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
+import TVPreview from '@/components/eqrel/TVPreview'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
@@ -26,6 +27,29 @@ const AZAN_TRIGGER_KEYS = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 export default function DisplayPage() {
   const router = useRouter()
   const { t, lang } = useLang()
+  const searchParams = useSearchParams()
+  const isPreview = searchParams?.get('preview') === '1'
+  const forceTv = searchParams?.get('tv') === '1'
+
+  // Portrait detection — if phone in portrait & not forced TV mode, show scaled TV preview
+  const [isPortrait, setIsPortrait] = useState(false)
+  useEffect(() => {
+    if (forceTv) return
+    const check = () => {
+      const w = window.innerWidth
+      const h = window.innerHeight
+      // Portrait if height > width AND width is phone-sized (<900px)
+      setIsPortrait(h > w && w < 900)
+    }
+    check()
+    window.addEventListener('resize', check)
+    window.addEventListener('orientationchange', check)
+    return () => {
+      window.removeEventListener('resize', check)
+      window.removeEventListener('orientationchange', check)
+    }
+  }, [forceTv])
+
   const [now, setNow] = useState(new Date())
   const [config, setConfig] = useState(null)
   const [location, setLocation] = useState(null)
@@ -135,7 +159,7 @@ export default function DisplayPage() {
 
   // ═══ Azan auto-play logic ═══
   const playAzan = useCallback((prayerKey) => {
-    if (!config?.azanEnabled || !audioUnlocked) return
+    if (!config?.azanEnabled || !audioUnlocked || isPreview) return
     const isFajr = prayerKey === 'Fajr'
     const azan = getAzan(isFajr ? config.azanFajrId : config.azanId, isFajr)
     if (!azan) return
@@ -147,7 +171,7 @@ export default function DisplayPage() {
     }).catch(() => {})
     audioRef.current.onended = () => setAzanPlaying(null)
     audioRef.current.onerror = () => setAzanPlaying(null)
-  }, [config, audioUnlocked, lang])
+  }, [config, audioUnlocked, lang, isPreview])
 
   const playChime = useCallback(() => {
     if (!audioUnlocked) return
@@ -333,10 +357,63 @@ export default function DisplayPage() {
     }
   }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t])
 
+  // ═══ Portrait phone: render as scaled TV preview instead of broken layout ═══
+  if (isPortrait) {
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900 text-white p-4 flex flex-col">
+        <div className="flex items-center gap-2 mb-3">
+          <button onClick={() => router.push('/?parent=1')} className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 flex-1">
+            <img src={BRAND.mascot.default} alt="EQ" className="w-8 h-8" />
+            <div>
+              <div className="text-sm font-black leading-none">{BRAND.name}</div>
+              <div className="text-[9px] uppercase tracking-widest font-bold leading-none mt-0.5" style={{ color: '#FFB703' }}>{BRAND.tagline[lang] || BRAND.tagline.ms}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-3 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 p-3">
+          <div className="text-xs font-bold text-emerald-100 mb-1">📺 {lang === 'ar' ? 'شاشة العائلة مصممة للتلفاز' : lang === 'en' ? 'Family Display is designed for TV' : lang === 'id' ? 'Family Display didesain untuk TV' : 'Family Display direka untuk TV'}</div>
+          <div className="text-[11px] text-emerald-100/75 leading-snug">
+            {lang === 'ar' ? 'هذه معاينة صغيرة لما سيظهر على التلفاز. اذهب للإعدادات لتخصيصها.' :
+              lang === 'en' ? 'Below is a preview of what will show on your TV. Open Setup to customise.' :
+              lang === 'id' ? 'Di bawah adalah preview yang akan tampil di TV kamu. Buka Setup untuk sesuaikan.' :
+              'Di bawah adalah preview apa yang akan keluar di TV. Buka Setup untuk sesuaikan.'}
+          </div>
+        </div>
+
+        <TVPreview src="/display?preview=1&tv=1" label={lang === 'ar' ? 'معاينة التلفاز' : 'TV Preview'} showOpenBtn={false} />
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button onClick={() => router.push('/display/setup')}
+            className="rounded-xl bg-emerald-500 py-3 font-extrabold text-sm text-white active:scale-95 shadow-lg">
+            ⚙️ {t.setup_title || 'Setup'}
+          </button>
+          <button onClick={() => router.push('/display?tv=1')}
+            className="rounded-xl py-3 font-extrabold text-sm text-slate-900 active:scale-95 shadow-lg"
+            style={{ backgroundColor: '#FFB703' }}>
+            📺 {lang === 'ar' ? 'فتح للتلفاز' : lang === 'en' ? 'Open TV Mode' : 'Buka Mod TV'}
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-slate-900/50 border border-white/10 p-3 text-[11px] text-white/70 leading-snug">
+          💡 <span className="font-bold text-white/85">{lang === 'ar' ? 'كيف تعرض على التلفاز؟' : lang === 'en' ? 'How to cast to TV?' : 'Cara paparkan ke TV?'}</span>
+          <ol className="mt-1 space-y-0.5 list-decimal list-inside">
+            <li>{lang === 'en' ? 'Open Chrome on Smart TV / Chromecast' : 'Buka Chrome di Smart TV / Chromecast'}</li>
+            <li>{lang === 'en' ? 'Visit the URL above' : 'Lawat URL di atas'}</li>
+            <li>{lang === 'en' ? 'Or use Google Cast from this phone' : 'Atau guna Google Cast dari phone ini'}</li>
+          </ol>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c', fontSize: 'clamp(14px, 1.4vmin + 0.4vw, 30px)', filter: `brightness(${dimBrightness})`, transition: 'filter 0.8s ease-in-out' }}>
-      {/* ═══ YouTube background audio (hidden) ═══ */}
-      {config?.bgAudioEnabled && config?.bgAudioUrl && (
+      {/* ═══ YouTube background audio (hidden, skipped in preview) ═══ */}
+      {!isPreview && config?.bgAudioEnabled && config?.bgAudioUrl && (
         <YouTubeBgPlayer
           url={config.bgAudioUrl}
           enabled={config.bgAudioEnabled}

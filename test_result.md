@@ -2606,3 +2606,71 @@ agent_communication:
       - No regression: existing fields (photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto, azanEnabled, azanVolume, preAzanEnabled, preAzanMin) all still work
       
       NO ISSUES FOUND. Extended display-config endpoint with Dim Mode + Background Audio is production-ready.
+
+#====================================================================================================
+# Family Display - Iteration 8 - TV Preview (mobile-friendly) (2026-01-20)
+#====================================================================================================
+frontend:
+  - task: "TVPreview component — scaled iframe of /display (16:9)"
+    implemented: true
+    working: true
+    file: "/app/components/eqrel/TVPreview.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          New component that renders an iframe at native 1920x1080, then applies
+          `transform: scale(container_width / 1920)` with `transform-origin: top left`.
+          Wrapped in a 16:9 aspect container with TV-bezel styling.
+          Uses ResizeObserver for dynamic width detection.
+          - pointer-events: none (preview-only, no interaction)
+          - sandbox="allow-scripts allow-same-origin" (cookies inherit)
+          - Reload button + Open-in-new-tab button
+          - Reload triggered via `reloadKey` prop change (used after save)
+
+  - task: "Setup page — always-visible TV Preview widget (live)"
+    implemented: true
+    working: true
+    file: "/app/app/display/setup/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added TVPreview widget right after brand welcome strip.
+          - Uses src '/display?preview=1&tv=1' (silent iframe, forces TV mode)
+          - `reloadKey={previewReloadKey}` — updated when parent saves
+          - Save handler now: sets reloadKey, shows success toast, scrolls to top
+          - Toast: "Tersimpan! Lihat preview di atas" — auto-dismisses in 4s
+          - Preview auto-reflects: photos, motto, hadith, doa toggles etc.
+
+  - task: "Display page — auto TV Preview for portrait phones"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Display page now detects portrait phone (viewport height > width AND width < 900px).
+          If portrait: early-returns a mobile-friendly view with:
+            - EQrel header + info banner: "Family Display is designed for TV"
+            - TVPreview (silent) showing what will appear on TV
+            - Two CTAs: "Display Setup" and "Open TV Mode"
+            - "How to cast to TV" instructions (Chrome, Google Cast)
+
+          Landscape / TV: renders full display as before.
+          `?tv=1` query overrides portrait detection (used inside iframes).
+
+  - task: "Display page — preview mode (?preview=1) suppresses audio"
+    implemented: true
+    working: true
+    file: "/app/app/display/page.js"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added `isPreview` from ?preview=1 query param.
+          - playAzan() returns early if isPreview
+          - YouTubeBgPlayer not rendered if isPreview
+          - Ensures silent scaled previews in setup + portrait fallback pages
+

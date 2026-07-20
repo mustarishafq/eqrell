@@ -7,6 +7,7 @@ import { useLang } from '@/lib/i18n/LangProvider'
 import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
+import TVPreview from '@/components/eqrel/TVPreview'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -85,6 +86,9 @@ export default function DisplaySetupPage() {
   }
   const removePhoto = (i) => setPhotos(photos.filter((_, idx) => idx !== i))
 
+  const [previewReloadKey, setPreviewReloadKey] = useState(0)
+  const [saveToast, setSaveToast] = useState(false)
+
   const save = async () => {
     const r = await fetch('/api/family/display-config', {
       method: 'POST', credentials: 'include',
@@ -96,7 +100,13 @@ export default function DisplaySetupPage() {
         bgAudioEnabled, bgAudioUrl, bgAudioVolume,
       }),
     })
-    if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+    if (r.ok) {
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+      setPreviewReloadKey(Date.now())
+      setSaveToast(true); setTimeout(() => setSaveToast(false), 4000)
+      // Scroll to top so parent sees updated preview
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
 
   const previewAzan = (id, isFajr = false) => {
@@ -142,6 +152,21 @@ export default function DisplaySetupPage() {
             <div className="text-sm font-black leading-tight">{BRAND.name} — {BRAND.tagline[lang] || BRAND.tagline.ms}</div>
           </div>
         </div>
+
+        {/* TV Preview — always visible sticky */}
+        <div className="mb-4 rounded-2xl bg-white/80 backdrop-blur border-2 border-emerald-200 p-3 shadow-lg">
+          <TVPreview reloadKey={previewReloadKey} showOpenBtn={true} label={lang === 'ar' ? 'معاينة التلفاز' : lang === 'en' ? 'TV Preview (live)' : lang === 'id' ? 'Preview TV (langsung)' : 'Preview TV (langsung)'} />
+          <p className="mt-2 text-[10px] text-emerald-800/60 italic text-center">
+            {lang === 'ar' ? 'ستتحدث المعاينة بعد الحفظ' : lang === 'en' ? 'Preview updates after you save' : lang === 'id' ? 'Preview akan update setelah kamu save' : 'Preview akan update selepas tuan save'}
+          </p>
+        </div>
+
+        {/* Save toast */}
+        {saveToast && (
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-emerald-500 text-white px-4 py-2.5 shadow-2xl flex items-center gap-2 font-extrabold text-sm animate-in fade-in slide-in-from-top">
+            <Save className="w-4 h-4" /> {lang === 'ar' ? 'تم الحفظ! المعاينة أعلاه' : lang === 'en' ? 'Saved! See preview above' : lang === 'id' ? 'Tersimpan! Lihat preview di atas' : 'Tersimpan! Lihat preview di atas'}
+          </div>
+        )}
 
         {/* Prayer location shortcut */}
         <button onClick={() => router.push('/display')}
