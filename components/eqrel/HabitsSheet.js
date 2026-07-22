@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
-import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'
+import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel } from '@/lib/prayerSession'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -47,6 +47,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [customDesc, setCustomDesc] = useState('')
   const [customCategory, setCustomCategory] = useState('ibadah')
   const [customPoints, setCustomPoints] = useState(10)
+  const [customSession, setCustomSession] = useState('anytime')
+  const [customRecurring, setCustomRecurring] = useState('daily')  // 'daily' | 'perPrayer'
 
   const avatarSrc = child ? (AVATAR_BY_ID[child.avatarId]?.src ||
     (child.gender === 'female' ? AVATAR_BY_ID[DEFAULT_GIRL_ID].src : AVATAR_BY_ID[DEFAULT_BOY_ID].src)) : null
@@ -86,7 +88,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   }, [open])
 
   const dismissBrief = () => {
-    try { localStorage.setItem(BRIEF_STORAGE_KEY, '1') } catch (e) {}
+    try { localStorage.setItem(BRIEF_STORAGE_KEY, '1') } catch { /* ignore */ }
     setView('list')
   }
 
@@ -259,6 +261,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         body: JSON.stringify({
           templateId: null,
           category: customCategory,
+          session: customSession,
+          recurring: customRecurring,
           title: customTitle.trim(),
           desc: customDesc.trim(),
           points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
@@ -273,6 +277,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           return next
         })
         setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
+        setCustomSession('anytime'); setCustomRecurring('daily')
         setView('list')
       }
     } catch (e) { console.error(e) }
@@ -801,6 +806,66 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                       className="w-16 rounded-xl border-2 border-transparent bg-eq-cream/50 focus:border-eq-green focus:bg-white outline-none text-center font-extrabold text-sm text-eq-ink"
                     />
                   </div>
+                </div>
+
+                {/* Session (waktu) picker */}
+                <div>
+                  <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
+                    {lang === 'ar' ? 'الوقت' : lang === 'en' ? 'Time' : lang === 'id' ? 'Waktu' : 'Waktu'}
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {['anytime','subuh','zohor','asar','maghrib','isyak','sebelumTidur'].map(sid => {
+                      const meta = SESSIONS.find(s => s.id === sid)
+                      const active = customSession === sid
+                      return (
+                        <button
+                          key={sid}
+                          type="button"
+                          onClick={() => setCustomSession(sid)}
+                          disabled={customRecurring === 'perPrayer' && sid !== 'anytime'}
+                          className={`rounded-xl border-2 py-1.5 px-1 text-center transition-all ${active ? 'scale-[1.02]' : 'opacity-60'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                          style={active
+                            ? { borderColor: meta?.color, background: `${meta?.color}18` }
+                            : { borderColor: 'transparent', background: 'rgba(0,0,0,0.03)' }}
+                        >
+                          <div className="text-base leading-none">{meta?.icon}</div>
+                          <div className="text-[9px] font-black mt-0.5 leading-tight truncate" style={{ color: active ? meta?.color : undefined }}>
+                            {getSessionLabel(sid, lang).replace('Selepas ', '').replace('After ', '').replace('Setelah ', '').replace('بعد ', '')}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Recurring toggle */}
+                <div>
+                  <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
+                    {lang === 'ar' ? 'التكرار' : lang === 'en' ? 'Repetition' : lang === 'id' ? 'Pengulangan' : 'Pengulangan'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCustomRecurring('daily')}
+                      className={`rounded-xl border-2 py-2 px-2 text-left transition-all ${customRecurring === 'daily' ? 'border-emerald-500 bg-emerald-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}
+                    >
+                      <div className="text-xs font-black text-eq-ink">📅 {lang === 'ar' ? 'مرة يومياً' : lang === 'en' ? 'Once daily' : lang === 'id' ? 'Sekali sehari' : 'Sekali sehari'}</div>
+                      <div className="text-[9px] text-eq-ink/60 mt-0.5">{lang === 'ar' ? 'مرة واحدة في اليوم' : lang === 'en' ? '1× per day' : lang === 'id' ? '1× per hari' : '1× sehari'}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCustomRecurring('perPrayer'); setCustomSession('anytime') }}
+                      className={`rounded-xl border-2 py-2 px-2 text-left transition-all ${customRecurring === 'perPrayer' ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}
+                    >
+                      <div className="text-xs font-black text-eq-ink">🔁 {lang === 'ar' ? 'كل صلاة' : lang === 'en' ? 'Each prayer' : lang === 'id' ? 'Tiap salat' : 'Tiap solat'}</div>
+                      <div className="text-[9px] text-eq-ink/60 mt-0.5">{lang === 'ar' ? '٥× في اليوم' : lang === 'en' ? '5× per day' : lang === 'id' ? '5× per hari' : '5× sehari'}</div>
+                    </button>
+                  </div>
+                  {customRecurring === 'perPrayer' && (
+                    <div className="mt-1.5 text-[10px] text-indigo-700 bg-indigo-50 rounded-lg px-2 py-1 leading-relaxed">
+                      💡 {lang === 'ar' ? 'ستظهر هذه العادة في كل صلوات اليوم الخمس، ويمكن تحديدها بشكل منفصل' : lang === 'en' ? 'This habit will appear in all 5 daily prayers and can be checked independently' : lang === 'id' ? 'Kebiasaan ini akan muncul di 5 salat & bisa dicentang terpisah' : 'Habit ini akan muncul di 5 solat harian & boleh ditick berasingan'}
+                    </div>
+                  )}
                 </div>
 
                 <button

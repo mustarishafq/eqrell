@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Extended prayer-time session model with `recurring: perPrayer` field — habits like Wudhu now claimable 5x/day (once per prayer session). Backend claims scoped by session, GET returns sessionsClaimed[]. Kid Mode default view = 'session'. (2026-01-19)"
+  update_note: "Parent Habit form (Add Custom) now supports Session picker (7 options with icons) + Recurring toggle (Sekali sehari / Tiap solat) — parents can now create custom habits that recur 5x per prayer, not just built-in Wudhu. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
