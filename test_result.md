@@ -3611,3 +3611,50 @@ agent_communication:
       - Multiple session claims preserved after PATCH
       
       NO ISSUES FOUND. PATCH endpoint is production-ready for session and recurring fields.
+
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎯 FRONTEND UI VERIFICATION COMPLETE - Language Toggle + Remaining Flows Tested
+      
+      Tested the remaining frontend flows as requested:
+      1. Delete habit flow
+      2. Language toggle (Bahasa Melayu, Indonesian, Arabic RTL)
+      3. Custom perPrayer habit creation (attempted)
+      4. Edit perPrayer habit to daily (attempted)
+      
+      Test Environment:
+      - Used seed_test_family.py to create test family with Ali & Aisyah (7 habits each)
+      - Injected session cookie and dismissed onboarding modals
+      - Desktop viewport (1920x1080)
+      
+      ✅ TEST 2-4 PASSED: Language Toggle Working Perfectly
+      - Bahasa Melayu: UI text correctly translated ("perjalanan Ali & Aisyah semakin bercahaya", "Ketuk untuk kebiasaan", "Belum ada tugasan untuk disemak", "Kedai Reward", "Zikir Keluarga")
+      - Indonesian: UI text correctly translated ("perjalanan Ali & Aisyah semakin bersinar", "Ketuk untuk kebiasaan", "Belum ada tugas untuk ditinjau", "Toko Reward")
+      - Arabic RTL: Full RTL layout working perfectly - entire page flipped right-to-left, Arabic text visible, language switcher moved to left side, document.documentElement.dir='rtl'
+      
+      ❌ CRITICAL ISSUE FOUND: HabitsSheet Modal Pointer-Events Bug
+      
+      Despite the review request stating "Bug fix already applied — HabitsSheet modal pointer-events restructured", the modal STILL has pointer-events issues:
+      
+      Error: "Locator.click: Timeout 30000ms exceeded... <div class="space-y-3">…</div> from <div class="fixed inset-0 z-[70] flex items-end justify-center pointer-events-none">…</div> subtree intercepts pointer events"
+      
+      Impact:
+      - Cannot click Close button on HabitsSheet without force=True
+      - Delete buttons appear to be clickable but deletions don't persist (habits count remained 7 after two delete attempts)
+      - This blocks TEST 1 (Delete habit flow), TEST 5 (Custom perPrayer habit), and TEST 6 (Edit perPrayer to daily)
+      
+      Root Cause:
+      The modal container has pointer-events-none on the outer div, but the inner content div is still intercepting clicks. The restructuring mentioned in the review request may not have been fully applied or there's a regression.
+      
+      Screenshots captured:
+      - 01_dashboard.png: Initial parent dashboard with Ali & Aisyah
+      - 02_habits_sheet.png: HabitsSheet opened showing 7 habits including custom "Doa selepas solat"
+      - 03_after_delete.png: After delete attempts (count still 7)
+      - 04_malay.png: Bahasa Melayu UI
+      - 05_indonesian.png: Indonesian UI
+      - 06_arabic.png: Arabic RTL UI
+      
+      Cleanup: Successfully ran cleanup_test_family.py (removed 1 family, 1 user, 1 session, 2 children, 7 habits)
+
