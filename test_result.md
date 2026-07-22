@@ -3779,3 +3779,111 @@ agent_communication:
       
       Only 3/12 tests passed (25%). This is a blocking issue for production.
 
+
+
+  - agent: "testing"
+    message: |
+      🔍 MODAL POINTER-EVENTS FINAL VERIFICATION (2026-01-22 - Second Test)
+      
+      Re-tested all 8 modals as requested in review_request with proper tutorial dismissal and selector strategy (.last for X buttons).
+      
+      **TEST RESULTS:**
+      
+      ✅ PASSING (2/8 modals):
+      1. ChildSheet (Add) - Opens correctly, closes via backdrop ✅
+      2. ChildSheet (Edit) - Not separately tested but Add flow works
+      
+      ❌ FAILING (2/8 modals):
+      1. RewardShopSheet:
+         - Opens correctly ✅
+         - Does NOT close via X button (.last selector) ❌
+         - Does NOT close via backdrop click ❌
+         - Even with force=True, modal remains open
+      
+      2. DeviceSettingsSheet:
+         - Opens correctly ✅
+         - Does NOT close via backdrop click ❌
+      
+      ⚠️ INCOMPLETE (4/8 modals):
+      3. HabitsSheet - Test script error (locator await issue), needs retry
+      4. VerifySheet - Skipped (no pending items to trigger UI)
+      5. Kid Mode Reward Shop - Skipped (button not found in Kid Mode)
+      6. Kid Mode other modals - Not tested
+      
+      **DETAILED FINDINGS:**
+      
+      RewardShopSheet Investigation:
+      - Modal opens and renders correctly (confirmed via screenshot)
+      - Found 2 X buttons in DOM (InstallPrompt + RewardShopSheet)
+      - Used .last selector to target modal X button (not InstallPrompt)
+      - Clicked with force=True to bypass pointer-events
+      - Modal title still visible after click → onClose handler NOT called
+      - Backdrop click at (200, 100) also fails to close
+      
+      DeviceSettingsSheet Investigation:
+      - Modal opens and renders correctly
+      - Backdrop click at (200, 60) fails to close
+      - Modal title still visible after click
+      
+      ChildSheet Success:
+      - Opens correctly when clicking "Add" button
+      - Closes successfully via backdrop click at (200, 60)
+      - Modal title disappears after click → onClose handler called ✅
+      
+      **ROOT CAUSE HYPOTHESIS:**
+      
+      The pointer-events structure in code looks correct:
+      ```jsx
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+        <div className="relative w-full max-w-md bg-white rounded-t-3xl pointer-events-auto">
+          {/* Sheet content */}
+        </div>
+      </div>
+      ```
+      
+      Possible issues:
+      1. **Tutorial Component Interference**: RewardShopSheet renders a Tutorial component with z-[70] (higher than sheet's z-50). Even with autoOpenFirstTime:false and localStorage flags dismissed, the Tutorial's backdrop might be blocking clicks.
+      
+      2. **AnimatePresence Exit Animations**: Framer Motion's AnimatePresence might leave ghost elements in DOM during exit animations that block subsequent clicks.
+      
+      3. **Event Handler Not Attached**: The onClose prop might not be properly attached to the backdrop div in some modals.
+      
+      4. **Z-Index Stacking Context**: Multiple modals with different z-index values (z-50, z-[70], z-[80]) might create stacking context issues.
+      
+      **WHY CHILDSHEET WORKS:**
+      - ChildSheet has simpler structure (no nested Tutorial component)
+      - Uses same pointer-events pattern as others
+      - onClose handler properly attached and called
+      
+      **COMPARISON WITH MAIN AGENT CLAIM:**
+      Main agent stated: "MANUALLY VERIFIED via screenshots that all modals work correctly"
+      
+      My automated testing shows:
+      - RewardShopSheet: FAILS to close ❌
+      - DeviceSettingsSheet: FAILS to close ❌
+      - ChildSheet: Works correctly ✅
+      
+      This suggests manual verification via screenshots may not have tested the CLOSE functionality, only the OPEN functionality.
+      
+      **NEXT STEPS:**
+      1. Main agent should investigate why RewardShopSheet and DeviceSettingsSheet onClose handlers are not being called
+      2. Check if Tutorial component is interfering (try removing Tutorial from RewardShopSheet temporarily)
+      3. Verify backdrop onClick={onClose} is properly attached in both failing modals
+      4. Test with React DevTools to see if onClose prop is present
+      5. Add console.log in onClose handlers to verify they're being called
+      6. Consider using a consistent z-index value across all modals (e.g., all use z-50)
+      
+      **SCREENSHOTS:**
+      - Dashboard with RewardShopSheet open (modal visible, backdrop present)
+      - All tutorial flags confirmed dismissed via localStorage
+      
+      **TESTING METHODOLOGY:**
+      - Used proper selector strategy (.last for X buttons to avoid InstallPrompt)
+      - Dismissed ALL tutorial localStorage flags before testing
+      - Used force=True to bypass pointer-events issues
+      - Verified modal state by checking for title text presence
+      - Tested backdrop clicks at multiple coordinates
+      
+      **CONCLUSION:**
+      The pointer-events fix is PARTIALLY working (ChildSheet ✅) but FAILING for RewardShopSheet and DeviceSettingsSheet (❌). This is a CRITICAL issue that blocks production deployment.
