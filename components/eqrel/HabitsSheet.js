@@ -160,9 +160,16 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     }
   }
 
-  const removeHabit = async (habitId) => {
-    if (!confirm(t.habits_delete_confirm)) return
-    unassignHabit(habitId)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)  // habitId pending delete confirmation
+
+  const removeHabit = (habitId) => {
+    setConfirmDeleteId(habitId)
+  }
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return
+    await unassignHabit(confirmDeleteId)
+    setConfirmDeleteId(null)
   }
 
   const isParentLogMode = child?.claimMode === 'parent' || !child?.claimMode
@@ -343,9 +350,10 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[70] flex items-end justify-center pointer-events-none"
         >
-          {/* Backdrop behind sheet — click to close */}
+          {/* Backdrop behind sheet — click to close (explicit z-0 to sit behind sheet) */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
             onClick={onClose}
           />
           <motion.div
@@ -354,6 +362,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="relative bg-white w-full max-w-md rounded-t-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
@@ -1011,6 +1020,54 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       {/* Tutorial: parent habit categories */}
       <Tutorial open={tutCats.open}  onClose={tutCats.close}  config={getTutorial('parent_habit_categories', lang)} />
       <Tutorial open={tutIhsan.open} onClose={tutIhsan.close} config={getTutorial('ihsan_meaning', lang)} />
+
+      {/* Delete confirmation dialog */}
+      {confirmDeleteId && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-none"
+        >
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={() => setConfirmDeleteId(null)}
+          />
+          <motion.div
+            initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95 }}
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-5 pointer-events-auto"
+            style={{ zIndex: 10 }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-base font-black text-eq-ink mb-0.5">
+                  {lang === 'ar' ? 'حذف العادة؟' : lang === 'en' ? 'Delete this habit?' : lang === 'id' ? 'Hapus kebiasaan ini?' : 'Padam habit ini?'}
+                </div>
+                <div className="text-xs text-eq-ink/60 leading-relaxed">
+                  {lang === 'ar' ? 'لا يمكن التراجع عن هذا الإجراء.' : lang === 'en' ? 'This action cannot be undone.' : lang === 'id' ? 'Tindakan ini tidak bisa dibatalkan.' : 'Tindakan ini tidak boleh dibatalkan.'}
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 rounded-2xl border-2 border-eq-cream text-eq-ink font-extrabold py-2.5 text-sm active:scale-[0.98]"
+              >
+                {lang === 'ar' ? 'إلغاء' : lang === 'en' ? 'Cancel' : lang === 'id' ? 'Batal' : 'Batal'}
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-extrabold py-2.5 text-sm active:scale-[0.98] flex items-center justify-center gap-1"
+              >
+                <Trash2 className="w-4 h-4" />
+                {lang === 'ar' ? 'حذف' : lang === 'en' ? 'Delete' : lang === 'id' ? 'Hapus' : 'Padam'}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   )
 }
