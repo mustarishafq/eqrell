@@ -139,15 +139,19 @@ export function PinModal({ open, mode = 'enter', onClose, onSuccess }) {
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-5"
-          onClick={onClose}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-5 pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-md pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={onClose}
+          />
           <motion.div
             initial={{ scale: 0.94, y: 12 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.94, y: 12 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             {/* Header */}
             <div className="px-5 pt-5 pb-3 flex items-start justify-between">

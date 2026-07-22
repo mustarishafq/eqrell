@@ -99,16 +99,20 @@ export function Tutorial({ open, onClose, config }) {
       {open && step && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center px-4"
-          onClick={onClose}
+          className="fixed inset-0 z-[70] flex items-center justify-center px-4 pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={onClose}
+          />
           <motion.div
             initial={{ scale: 0.92, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-            className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             {/* Colored top strip */}
             <div className="h-1.5 w-full" style={{ background: color }} />

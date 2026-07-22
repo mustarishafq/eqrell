@@ -122,15 +122,19 @@ export function InstallPrompt() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-            onClick={() => setShowTutorial(false)}
+            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 pointer-events-none"
           >
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+              style={{ zIndex: 0 }}
+              onClick={() => setShowTutorial(false)}
+            />
             <motion.div
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl"
+              className="relative bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl pointer-events-auto"
+              style={{ zIndex: 10 }}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>

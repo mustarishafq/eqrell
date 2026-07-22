@@ -121,16 +121,20 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete, onEnterKi
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-end justify-center"
-          onClick={onClose}
+          className="fixed inset-0 z-[70] flex items-end justify-center pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={onClose}
+          />
           <motion.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full max-w-md rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto"
+            className="relative bg-white w-full max-w-md rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-eq-ink/15 rounded-full" />

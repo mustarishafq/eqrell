@@ -120,14 +120,18 @@ export function RewardShopSheet({ open, onClose, kids }) {
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={onClose}
+          />
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+            className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             <div className="pt-2 pb-1 flex justify-center">
               <div className="w-10 h-1 bg-eq-ink/15 rounded-full" />
@@ -556,13 +560,17 @@ const AddCustomModal = ({ open, onClose, onSaved, t }) => {
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={onClose}
+          />
           <motion.div
             initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+            className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             <div className="px-5 pt-4 pb-2 flex items-center gap-2">
               <button onClick={onClose} className="w-8 h-8 rounded-full bg-eq-cream/60 flex items-center justify-center">
@@ -634,13 +642,17 @@ const ReviewProposalModal = ({ open, proposal, childMap, onClose, onApprove, onR
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center"
+        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none"
       >
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+          style={{ zIndex: 0 }}
+          onClick={onClose}
+        />
         <motion.div
           initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+          className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden pointer-events-auto"
+          style={{ zIndex: 10 }}
         >
           <div className="px-5 pt-4 pb-2 flex items-center gap-2">
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-eq-cream/60 flex items-center justify-center">

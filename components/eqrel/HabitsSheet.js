@@ -969,13 +969,17 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       {rubricPickerHabit && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={() => setRubricPickerHabit(null)}
+          className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 pointer-events-none"
         >
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            style={{ zIndex: 0 }}
+            onClick={() => setRubricPickerHabit(null)}
+          />
           <motion.div
             initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto"
+            style={{ zIndex: 10 }}
           >
             <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-2">
               <div className="min-w-0">
