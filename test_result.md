@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "BUG FIX — HabitsSheet modal backdrop was intercepting pointer events preventing clicks on Edit/Delete buttons in Playwright & possibly in slower browsers. Restructured modal: outer container pointer-events-none, backdrop absolute pointer-events-auto (still closes on outside click), inner sheet pointer-events-auto. Also added seed_test_family.py + cleanup_test_family.py scripts for reliable frontend testing. (2026-01-19)"
+  update_note: "Fixed 2 bugs found during frontend UI testing: (1) HabitsSheet modal backdrop was blocking clicks via z-index stacking — added explicit style.zIndex 0/10 to backdrop/sheet. (2) Delete used window.confirm() which Playwright dismisses — replaced with beautiful custom in-app confirmation dialog (Cancel + red Delete buttons, i18n MS/EN/ID/AR). Also added aria-label to Close X button. Verified all flows work: Custom perPrayer creation, Edit habit with pre-fill, Delete with confirmation, Language toggle BM+AR RTL. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
