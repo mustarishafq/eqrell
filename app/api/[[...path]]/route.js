@@ -912,7 +912,7 @@ async function handleRoute(request, { params }) {
       const doneSet = new Set(undoneClaims.map(c => `${c.childId}:${c.habitId}`))
       const ihsanHabitSet = new Set(undoneClaims.filter(c => c.rubric === 'ihsan').map(c => `${c.childId}:${c.habitId}`))
       const allHabits = await db.collection('habits').find({ childId: { $in: childIds } })
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1 }).toArray()
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1 }).toArray()
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
 
       // Group habits per child with status (for Skylight-style board)
@@ -924,7 +924,11 @@ async function handleRoute(request, { params }) {
         else if (doneSet.has(key)) status = 'done'
         if (!habitsByChildDetail[h.childId]) habitsByChildDetail[h.childId] = []
         habitsByChildDetail[h.childId].push({
-          id: h.id, title: h.title, icon: h.icon || '⭐', category: h.category, i18n: h.i18n, status,
+          id: h.id, title: h.title, icon: h.icon || '⭐',
+          category: h.category, i18n: h.i18n, status,
+          session: h.session || null,
+          recurring: h.recurring || (h.templateId === 'ib-10' ? 'perPrayer' : 'daily'),
+          templateId: h.templateId || null,
         })
       }
       // Sort each child's habits: pending first, then done, then ihsan at top

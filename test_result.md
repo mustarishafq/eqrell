@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Pre-emptive polish — applied consistent pointer-events pattern (outer wrapper pointer-events-none, backdrop absolute pointer-events-auto zIndex 0, sheet relative pointer-events-auto zIndex 10) to 8 modals: HabitsSheet (main + rubric picker + delete dialog), VerifySheet, RewardShopSheet (main + custom add + proposal), ChildSheet, DeviceSettingsSheet, PinModal, Tutorial, InstallPrompt. Verified via manual screenshots + DOM element count assertions that all modals now open, close via X button, and close via backdrop click without needing force=True in Playwright. (2026-01-19)"
+  update_note: "Family Display TV HabitBoard redesigned with session grouping — per-child card now shows Anytime zone + Prayer sessions (Fajr/Zuhr/Asr/Maghrib/Isha/Before Bed) as mini blocks with icons, progress bars, per-session count. Current session auto-highlighted with pulsing color. PerPrayer habits (Wudhu) show '5×' badge. Backend display-data projection updated to include session/recurring/templateId fields. Verified visually at 1920x1080. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
