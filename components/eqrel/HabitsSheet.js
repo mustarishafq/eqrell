@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle } from 'lucide-react'
+import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle, Edit3 } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel } from '@/lib/prayerSession'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
@@ -49,6 +49,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [customPoints, setCustomPoints] = useState(10)
   const [customSession, setCustomSession] = useState('anytime')
   const [customRecurring, setCustomRecurring] = useState('daily')  // 'daily' | 'perPrayer'
+  const [editingHabit, setEditingHabit] = useState(null)           // null = create mode, else habit being edited
 
   const avatarSrc = child ? (AVATAR_BY_ID[child.avatarId]?.src ||
     (child.gender === 'female' ? AVATAR_BY_ID[DEFAULT_GIRL_ID].src : AVATAR_BY_ID[DEFAULT_BOY_ID].src)) : null
@@ -251,9 +252,56 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     } catch (e) { console.error(e) }
   }
 
+  const openEditHabit = (habit) => {
+    setEditingHabit(habit)
+    setCustomTitle(habit.title || '')
+    setCustomDesc(habit.desc || '')
+    setCustomCategory(habit.category || 'ibadah')
+    setCustomPoints(habit.points ?? 10)
+    setCustomSession(habit.session || 'anytime')
+    setCustomRecurring(habit.recurring === 'perPrayer' ? 'perPrayer' : 'daily')
+    setView('custom')
+  }
+
+  const resetCustomForm = () => {
+    setEditingHabit(null)
+    setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
+    setCustomSession('anytime'); setCustomRecurring('daily')
+  }
+
   const submitCustom = async () => {
     if (!childId || !customTitle.trim()) return
     try {
+      // EDIT mode → PATCH existing habit
+      if (editingHabit) {
+        const res = await fetch(`/api/habits/${editingHabit.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            category: customCategory,
+            session: customSession,
+            recurring: customRecurring,
+            title: customTitle.trim(),
+            desc: customDesc.trim(),
+            points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}))
+          setHabits(prev => prev.map(h => h.id === editingHabit.id
+            ? { ...h, ...(data.habit || {}),
+                category: customCategory, session: customSession,
+                recurring: customRecurring, title: customTitle.trim(),
+                desc: customDesc.trim(),
+                points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)) }
+            : h))
+          resetCustomForm()
+          setView('list')
+        }
+        return
+      }
+      // CREATE mode → POST new habit
       const res = await fetch(`/api/children/${childId}/habits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -276,8 +324,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           onCountChange?.(next.length)
           return next
         })
-        setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
-        setCustomSession('anytime'); setCustomRecurring('daily')
+        resetCustomForm()
         setView('list')
       }
     } catch (e) { console.error(e) }
@@ -499,6 +546,13 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                               <div className="text-[11px] text-eq-ink/60 mt-0.5 leading-snug">{displayDesc}</div>
                             )}
                           </div>
+                          <button
+                            onClick={() => openEditHabit(habit)}
+                            className="w-8 h-8 rounded-full hover:bg-blue-50 flex items-center justify-center flex-shrink-0"
+                            aria-label={lang === 'ar' ? 'تعديل' : lang === 'en' ? 'Edit' : lang === 'id' ? 'Edit' : 'Edit'}
+                          >
+                            <Edit3 className="w-4 h-4 text-blue-500/80" />
+                          </button>
                           <button
                             onClick={() => removeHabit(habit.id)}
                             className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0"
@@ -732,11 +786,22 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
             {view === 'custom' && (
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between mb-1">
-                  <button onClick={() => setView('list')} className="text-emerald-700 font-bold text-sm flex items-center gap-1">
+                  <button onClick={() => { resetCustomForm(); setView('list') }} className="text-emerald-700 font-bold text-sm flex items-center gap-1">
                     {t.setup_back}
                   </button>
                   <div className="text-xs text-eq-ink/60 flex items-center gap-1">
-                    <Pencil className="w-3 h-3" /> {t.habits_custom_title}
+                    {editingHabit ? (
+                      <>
+                        <Edit3 className="w-3 h-3 text-blue-600" />
+                        <span className="text-blue-700 font-black">
+                          {lang === 'ar' ? 'تعديل العادة' : lang === 'en' ? 'Edit habit' : lang === 'id' ? 'Edit kebiasaan' : 'Edit habit'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Pencil className="w-3 h-3" /> {t.habits_custom_title}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -873,7 +938,9 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   disabled={!customTitle.trim()}
                   className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 disabled:from-eq-ink/20 disabled:to-eq-ink/20 disabled:cursor-not-allowed hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
                 >
-                  {t.habits_custom_create}
+                  {editingHabit
+                    ? (lang === 'ar' ? 'حفظ التغييرات' : lang === 'en' ? 'Save changes' : lang === 'id' ? 'Simpan perubahan' : 'Simpan perubahan')
+                    : t.habits_custom_create}
                 </button>
                 <div className="h-2" />
               </div>
