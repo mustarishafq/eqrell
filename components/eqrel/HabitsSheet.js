@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
-import { TEMPLATE_DEFAULT_SESSION } from '@/lib/prayerSession'
+import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -110,6 +110,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           templateId: tpl.id,
           category: tpl.category,
           session: TEMPLATE_DEFAULT_SESSION[tpl.id] || 'anytime',
+          recurring: TEMPLATE_DEFAULT_RECURRING[tpl.id] || 'daily',
           title: tpl.title,
           desc: tpl.desc,
           points: tpl.points,

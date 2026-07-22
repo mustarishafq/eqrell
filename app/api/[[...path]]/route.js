@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
+import { TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'
 import crypto from 'node:crypto'
+
+// Helper: determine if a habit is per-prayer recurring, using explicit field or template default
+const isPerPrayerHabit = (habit) => {
+  if (habit?.recurring === 'perPrayer') return true
+  if (habit?.templateId && TEMPLATE_DEFAULT_RECURRING[habit.templateId] === 'perPrayer') return true
+  return false
+}
 
 // ────────────────────── HELPERS ──────────────────────
 const CORS = (res) => {
@@ -338,14 +346,44 @@ async function handleRoute(request, { params }) {
         .toArray()
 
       // Attach today's claim status + rubric + pointsAwarded (needed by Kid Mode + parent-log UI)
+      // For perPrayer habits, aggregate ALL session claims into sessionsClaimed[] array
       const todayStr = new Date().toISOString().slice(0, 10)
       const claims = await db.collection('habit_claims')
         .find({ childId, dateStr: todayStr })
-        .project({ _id: 0, habitId: 1, status: 1, rubric: 1, pointsAwarded: 1, note: 1 })
+        .project({ _id: 0, habitId: 1, status: 1, rubric: 1, pointsAwarded: 1, note: 1, session: 1 })
         .toArray()
-      const claimMap = Object.fromEntries(claims.map(c => [c.habitId, c]))
+
+      // Build per-habit maps: primary claim (daily) and session-claim map (perPrayer)
+      const primaryClaimMap = {}
+      const perPrayerClaimsMap = {}  // habitId → { session: claim }
+      claims.forEach(c => {
+        if (c.session) {
+          if (!perPrayerClaimsMap[c.habitId]) perPrayerClaimsMap[c.habitId] = {}
+          perPrayerClaimsMap[c.habitId][c.session] = c
+        } else {
+          primaryClaimMap[c.habitId] = c
+        }
+      })
+
       const enriched = habits.map(h => {
-        const c = claimMap[h.id]
+        if (isPerPrayerHabit(h)) {
+          const perPrayerClaims = perPrayerClaimsMap[h.id] || {}
+          const sessionsClaimed = Object.keys(perPrayerClaims)
+          // Sum points across all claimed sessions (verified only)
+          const totalPointsAwarded = Object.values(perPrayerClaims)
+            .filter(c => c.status === 'verified' && typeof c.pointsAwarded === 'number')
+            .reduce((sum, c) => sum + c.pointsAwarded, 0)
+          return {
+            ...h,
+            recurring: 'perPrayer',        // Force expose to frontend even if DB missing field
+            sessionsClaimed,               // ['subuh', 'zohor'] etc.
+            perPrayerClaims,               // full per-session detail
+            todayStatus: sessionsClaimed.length > 0 ? 'claimed' : 'pending',
+            pointsAwarded: totalPointsAwarded || null,
+          }
+        }
+        // Daily habit — existing behavior
+        const c = primaryClaimMap[h.id]
         return {
           ...h,
           todayStatus: c?.status || 'pending',
@@ -380,6 +418,7 @@ async function handleRoute(request, { params }) {
         templateId: body.templateId || null,   // if from template, keep reference
         category: body.category || 'ibadah',
         session: body.session || 'anytime',    // prayer-time anchor: subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime
+        recurring: body.recurring === 'perPrayer' ? 'perPrayer' : 'daily',  // 'daily' (1x/day) or 'perPrayer' (5x/day)
         title: body.title.trim(),
         desc: body.desc || '',
         points: body.points ?? 10,
@@ -404,7 +443,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
 
-      const allowed = ['title', 'desc', 'category', 'session', 'points', 'frequency', 'active']
+      const allowed = ['title', 'desc', 'category', 'session', 'recurring', 'points', 'frequency', 'active']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
 
@@ -433,9 +472,10 @@ async function handleRoute(request, { params }) {
     }
 
     // POST /habits/:id/claim  → child (Kid Mode) or parent (Parent Log) marks habit
-    // Body: { childId?, status?: 'claimed'|'skipped'|'verified', rubric?: 'ihsan'|'sah'|'belum', note? }
+    // Body: { childId?, status?: 'claimed'|'skipped'|'verified', rubric?: 'ihsan'|'sah'|'belum', note?, session? }
     //  - If rubric provided (parent-log mode): create as verified with rubric + pointsAwarded (writes verify_log too)
     //  - Otherwise: default 'claimed' → goes into verify queue (Kid Mode flow)
+    //  - `session` used ONLY for perPrayer recurring habits — allows 5 independent claims/day
     if (route.match(/^\/habits\/[^/]+\/claim$/) && method === 'POST') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
@@ -452,17 +492,27 @@ async function handleRoute(request, { params }) {
       const rubric = body.rubric
       const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
 
+      // Determine claim session (perPrayer habits scope claims by prayer session)
+      const isPerPrayer = isPerPrayerHabit(habit)
+      const claimSession = isPerPrayer && body.session ? String(body.session) : null
+      // For perPrayer, session is required (unique per session per day)
+      if (isPerPrayer && !claimSession) return err('Session required for per-prayer habits', 400)
+      // Build the composite claim key (session included only for perPrayer)
+      const claimKey = claimSession
+        ? { habitId, dateStr, session: claimSession }
+        : { habitId, dateStr, session: { $in: [null, undefined] } }
+
       // Parent-log inline verification: rubric provided → record as verified/deleted immediately
       if (rubric) {
         if (!['ihsan', 'sah', 'belum'].includes(rubric)) return err('Invalid rubric', 400)
-        const prevClaim = await db.collection('habit_claims').findOne({ habitId, dateStr })
+        const prevClaim = await db.collection('habit_claims').findOne(claimKey)
         if (rubric === 'belum') {
           // Undo/delete existing claim if any
-          await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+          await db.collection('habit_claims').deleteOne(claimKey)
           await applyMataDelta(db, habit.childId, prevClaim, null)
           await db.collection('verify_log').insertOne({
             habitId, dateStr, childId: habit.childId, familyId: user.familyId,
-            rubric, note, points: 0,
+            rubric, note, points: 0, session: claimSession,
             verifiedBy: session.userId, verifiedAt: new Date(),
           })
           return json({ ok: true, rubric, points: 0, removed: true })
@@ -474,6 +524,7 @@ async function handleRoute(request, { params }) {
           childId: habit.childId,
           familyId: habit.familyId,
           dateStr,
+          session: claimSession,
           status: 'verified',
           rubric,
           note,
@@ -484,15 +535,19 @@ async function handleRoute(request, { params }) {
           verifiedBy: session.userId,
           verifiedAt: new Date(),
         }
+        // Upsert using positive key (session set to specific value for perPrayer, or null for daily)
+        const upsertKey = claimSession
+          ? { habitId, dateStr, session: claimSession }
+          : { habitId, dateStr, session: null }
         await db.collection('habit_claims').updateOne(
-          { habitId, dateStr },
+          upsertKey,
           { $set: claimData },
           { upsert: true }
         )
         await applyMataDelta(db, habit.childId, prevClaim, claimData)
         await db.collection('verify_log').insertOne({
           habitId, dateStr, childId: habit.childId, familyId: user.familyId,
-          rubric, note, points,
+          rubric, note, points, session: claimSession,
           verifiedBy: session.userId, verifiedAt: new Date(),
         })
         return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
@@ -505,12 +560,16 @@ async function handleRoute(request, { params }) {
         childId: habit.childId,
         familyId: habit.familyId,
         dateStr,
+        session: claimSession,
         status,
         claimedAt: new Date(),
         claimedBy: session.userId,
       }
+      const upsertKey = claimSession
+        ? { habitId, dateStr, session: claimSession }
+        : { habitId, dateStr, session: null }
       await db.collection('habit_claims').updateOne(
-        { habitId, dateStr },
+        upsertKey,
         { $set: claimData },
         { upsert: true }
       )
@@ -518,18 +577,27 @@ async function handleRoute(request, { params }) {
     }
 
     // DELETE /habits/:id/claim  → undo today's claim (used by Kid Mode + parent toggle)
+    // Query params: ?dateStr=YYYY-MM-DD&session=<sessionId>  (session used for perPrayer)
     // Only allowed if claim exists and status is 'claimed' (not yet verified) OR it's your own verified claim from parent-log
     if (route.match(/^\/habits\/[^/]+\/claim$/) && method === 'DELETE') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
       const habitId = route.split('/')[2]
-      const dateStr = new URL(request.url).searchParams.get('dateStr') || new Date().toISOString().slice(0, 10)
+      const url = new URL(request.url)
+      const dateStr = url.searchParams.get('dateStr') || new Date().toISOString().slice(0, 10)
+      const claimSession = url.searchParams.get('session') || null
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
-      const claim = await db.collection('habit_claims').findOne({ habitId, dateStr, familyId: user.familyId })
+      const claimKey = claimSession
+        ? { habitId, dateStr, session: claimSession, familyId: user.familyId }
+        : { habitId, dateStr, familyId: user.familyId, session: { $in: [null, undefined] } }
+      const claim = await db.collection('habit_claims').findOne(claimKey)
       if (!claim) return json({ ok: true, removed: false })
-      await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+      const deleteKey = claimSession
+        ? { habitId, dateStr, session: claimSession }
+        : { habitId, dateStr, session: { $in: [null, undefined] } }
+      await db.collection('habit_claims').deleteOne(deleteKey)
       await applyMataDelta(db, claim.childId, claim, null)
       return json({ ok: true, removed: true })
     }

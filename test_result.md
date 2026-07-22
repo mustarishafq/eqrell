@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Added prayer-time session anchor to habits — new `session` field on habit schema (subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime). Kid Mode has new toggle 'Kategori ⇆ Waktu' — session view shows anywhere zone + accordion of prayer sessions with current session auto-expanded. (2026-01-19)"
+  update_note: "Extended prayer-time session model with `recurring: perPrayer` field — habits like Wudhu now claimable 5x/day (once per prayer session). Backend claims scoped by session, GET returns sessionsClaimed[]. Kid Mode default view = 'session'. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
@@ -3282,3 +3282,156 @@ agent_communication:
       All test data cleaned up successfully.
       
       NO ISSUES FOUND. The session field implementation is production-ready for Kid Mode prayer-time grouping.
+
+#====================================================================================================
+# Per-Prayer Recurring Habits — 5x/day claim scoping (2026-01-19)
+#====================================================================================================
+backend:
+  - task: "Per-prayer recurring habits — recurring field + session-scoped claims"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/prayerSession.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Extended habit schema with `recurring: 'daily' | 'perPrayer'` field. For `perPrayer` habits like Wudhu (template id `ib-10`), each of the 5 prayer sessions (subuh, zohor, asar, maghrib, isyak) can be claimed independently — so anak dapat 5x mata sehari.
+
+          Key changes in `/app/app/api/[[...path]]/route.js`:
+          1. Added `import { TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'` + helper `isPerPrayerHabit(habit)` that checks explicit field OR template default
+          2. POST `/api/children/:id/habits` — accepts `recurring` in body, stores it (default 'daily')
+          3. PATCH `/api/habits/:id` — `recurring` added to allowed update fields
+          4. POST `/api/habits/:id/claim` — accepts `session` in body. For perPrayer habits, `session` is REQUIRED (returns 400 if omitted). Claim record uses `{habitId, dateStr, session}` as composite key. For daily habits, session is null.
+          5. DELETE `/api/habits/:id/claim` — accepts `?session=<id>` query param, same composite key logic
+          6. GET `/api/children/:id/habits` — for perPrayer habits, returns:
+             - `sessionsClaimed: ['subuh', 'zohor']` — array of sessions already claimed today
+             - `perPrayerClaims: { subuh: {...}, zohor: {...} }` — full claim detail per session
+             - `todayStatus: 'claimed'` if any session claimed, else 'pending'
+             - `pointsAwarded: <sum of verified points>` across all sessions
+          7. Legacy habits (created before this change with `templateId='ib-10'` but no `recurring` field) are treated as perPrayer via the templateId inference
+
+          BUG FIXED during testing:
+          - Line 544: Removed `$setOnInsert: { session: claimSession }` from upsert operation as it conflicted with `session` already in `$set: claimData`. Now uses only `{ $set: claimData }`.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL PER-PRAYER RECURRING HABITS TESTS PASSED (10/10)
+          
+          Comprehensive test suite executed successfully. Created /app/backend_test_perprayer.py with automated tests covering all 10 scenarios from the review request:
+          
+          ✅ TEST 1: Create wudhu habit from template (ib-10) with recurring='perPrayer'
+             - POST /api/children/:id/habits with recurring='perPrayer' works correctly
+             - Response includes recurring='perPrayer' and templateId='ib-10'
+          
+          ✅ TEST 2: Claim wudhu for Subuh session (child mode flow)
+             - POST /api/habits/:id/claim with session='subuh' creates claim successfully
+             - Claim record has session='subuh' in DB
+             - GET habits returns sessionsClaimed=['subuh'], todayStatus='claimed'
+          
+          ✅ TEST 3: Claim wudhu for SECOND session (Zohor) — critical test
+             - POST /api/habits/:id/claim with session='zohor' creates ANOTHER claim (not overwrite)
+             - TWO separate claim records exist in DB with same habitId+dateStr but different session values
+             - GET habits returns sessionsClaimed=['subuh', 'zohor'] (both present)
+          
+          ✅ TEST 4: Attempt claim without session for perPrayer habit
+             - POST /api/habits/:id/claim without session field returns 400 "Session required for per-prayer habits"
+          
+          ✅ TEST 5: Undo one session but keep the other
+             - DELETE /api/habits/:id/claim?session=subuh removes only Subuh claim
+             - Zohor claim remains intact in DB
+             - GET habits returns sessionsClaimed=['zohor'] only
+          
+          ✅ TEST 6: Claim all 5 sessions
+             - Claimed subuh, zohor, asar, maghrib, isyak → 5 separate claim records in DB
+             - GET habits returns sessionsClaimed with all 5 sessions
+          
+          ✅ TEST 7: Parent verify with rubric per-session
+             - POST /api/habits/:id/claim with rubric='ihsan' and session='subuh' verifies only that session
+             - Only Subuh claim updated to status='verified', rubric='ihsan', pointsAwarded=15 (1.5x)
+             - Other sessions' claims remain in 'claimed' state
+          
+          ✅ TEST 8: Regression — daily habits still work
+             - Created daily habit (solat subuh ib-01, recurring='daily')
+             - POST claim without session succeeds with session=null in DB
+             - GET habits returns todayStatus='claimed', NO sessionsClaimed array
+             - Second claim without session UPDATES (upsert) not duplicate — only 1 claim record exists
+          
+          ✅ TEST 9: Legacy wudhu habit (templateId=ib-10 but no recurring field in DB)
+             - Manually inserted habit with templateId='ib-10' but no recurring field
+             - GET habits returns recurring='perPrayer' (backend forces this via isPerPrayerHabit())
+             - Claim with session='subuh' works (treated as perPrayer)
+          
+          ✅ TEST 10: Mata (points) delta correctness
+             - Created wudhu (10 points, perPrayer)
+             - Parent verifies subuh as 'sah' → child gets +10 points (mataBina increased)
+             - Parent verifies zohor as 'ihsan' → child gets +15 points (1.5x, mataBina increased by 15 more)
+             - Total: 25 points from wudhu alone (across 2 sessions)
+             - Undo zohor → child loses 15 points (mataBina decreased), net 10
+          
+          BUG FOUND AND FIXED:
+          - Line 544 in route.js had MongoDB conflict: `{ $set: claimData, $setOnInsert: { session: claimSession } }`
+          - The `session` field was already in `claimData`, causing "Updating the path 'session' would create a conflict" error
+          - Fixed by removing `$setOnInsert: { session: claimSession }` — now uses only `{ $set: claimData }`
+          - After fix, all tests pass including parent verify with rubric per-session
+          
+          KEY FINDINGS:
+          - Per-prayer habits can be claimed 5x/day (once per prayer session) ✓
+          - Each session claim is independent (composite key: habitId + dateStr + session) ✓
+          - sessionsClaimed[] array correctly tracks claimed sessions ✓
+          - perPrayerClaims object provides full per-session detail ✓
+          - Session parameter REQUIRED for perPrayer habits (400 if omitted) ✓
+          - Daily habits unaffected (backward compatible, session=null) ✓
+          - Legacy habits (templateId=ib-10, no recurring field) work via inference ✓
+          - Points accumulate correctly across sessions (sah=1x, ihsan=1.5x) ✓
+          - Undo works correctly (points delta applied) ✓
+          - No regressions on daily habits (backward compat) ✓
+          
+          All test data cleaned up successfully.
+          
+          NO ISSUES FOUND. Per-prayer recurring habits feature is production-ready.
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 PER-PRAYER RECURRING HABITS BACKEND TESTING COMPLETE - ALL TESTS PASSED (10/10)
+      
+      Tested the new per-prayer recurring habits feature with `recurring: 'daily' | 'perPrayer'` field and session-scoped claims as requested.
+      
+      All 10 test scenarios from the review request passed:
+      1. ✅ Create wudhu habit from template (ib-10) with recurring='perPrayer'
+      2. ✅ Claim wudhu for Subuh session (child mode flow)
+      3. ✅ Claim wudhu for Zohor session (second claim, both coexist) — CRITICAL TEST
+      4. ✅ Attempt claim without session → 400 error "Session required for per-prayer habits"
+      5. ✅ Undo one session but keep the other
+      6. ✅ Claim all 5 prayer sessions (subuh, zohor, asar, maghrib, isyak)
+      7. ✅ Parent verify with rubric per-session (only that session updated)
+      8. ✅ Regression — daily habits still work (no session, backward compatible)
+      9. ✅ Legacy wudhu habit (templateId inference working)
+      10. ✅ Points accumulate correctly across sessions (sah=1x, ihsan=1.5x, undo works)
+      
+      BUG FOUND AND FIXED:
+      - MongoDB conflict error in POST /api/habits/:id/claim with rubric (line 544)
+      - Root cause: `$setOnInsert: { session: claimSession }` conflicted with `session` already in `$set: claimData`
+      - Fixed by removing `$setOnInsert` clause — now uses only `{ $set: claimData }`
+      - All tests pass after fix
+      
+      Created comprehensive test suite: /app/backend_test_perprayer.py
+      All test data cleaned up successfully.
+      
+      SUCCESS CRITERIA MET:
+      - All 10 scenarios pass ✓
+      - No regressions on daily habits (backward compat) ✓
+      - Claim records properly scoped by session for perPrayer ✓
+      - Points accumulate correctly across sessions ✓
+      - Legacy habits (without recurring field) work via templateId inference ✓
+      
+      NO ISSUES FOUND. Per-prayer recurring habits feature is production-ready.

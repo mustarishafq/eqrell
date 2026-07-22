@@ -136,16 +136,18 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [showRewards, setShowRewards] = useState(false)
   const [proposeOpen, setProposeOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
-  const [viewMode, setViewMode] = useState('category')  // 'category' | 'session'
+  const [viewMode, setViewMode] = useState('session')  // default 'session' (By Time) — 'category' also available
   const [expandedSession, setExpandedSession] = useState(null)  // which session accordion is open
 
-  // Load saved viewMode preference (per child)
+  // Load saved viewMode preference (per child) — falls back to 'session' default
   useEffect(() => {
     if (!childId) return
     try {
       const saved = localStorage.getItem(`eqrel-viewmode-${childId}`)
       if (saved === 'session' || saved === 'category') setViewMode(saved)
     } catch { /* ignore storage errors */ }
+    // Auto-open current session on first mount (session mode default)
+    setExpandedSession(prev => prev || currentSessionFromClock())
   }, [childId])
 
   // Persist viewMode changes + auto-open current session on first switch
@@ -203,19 +205,28 @@ function KidHomeActive({ router, childId, t, lang }) {
       showToast('locked', t.kid_locked_msg)
       return
     }
-    setBusyHabit(habit.id)
+    // For per-prayer habits, session comes from the rendered instance (_sessionInstance)
+    const sessionForClaim = habit._isPerPrayer ? habit._sessionInstance : null
+    // Busy key includes session to allow parallel taps across different sessions
+    const busyKey = sessionForClaim ? `${habit.id}::${sessionForClaim}` : habit.id
+    setBusyHabit(busyKey)
     try {
       if (habit.todayStatus === 'claimed') {
         // Undo (allowed because still pending review)
-        await fetch(`/api/habits/${habit.id}/claim`, { method: 'DELETE', credentials: 'include' })
+        const url = sessionForClaim
+          ? `/api/habits/${habit.id}/claim?session=${encodeURIComponent(sessionForClaim)}`
+          : `/api/habits/${habit.id}/claim`
+        await fetch(url, { method: 'DELETE', credentials: 'include' })
         showToast('undo', t.kid_undo_toast)
       } else {
         // Claim
+        const body = { status: 'claimed' }
+        if (sessionForClaim) body.session = sessionForClaim
         await fetch(`/api/habits/${habit.id}/claim`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'claimed' }),
+          body: JSON.stringify(body),
         })
         showToast('success', t.kid_claim_toast)
       }
@@ -1006,6 +1017,14 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
           <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cat.color }}>{catLabel}</span>
           <span className="text-[10px] text-eq-ink/40">·</span>
           <span className="text-[10px] text-amber-600 font-extrabold">+{habit.points} {t.habits_points_word}</span>
+          {habit._isPerPrayer && (
+            <>
+              <span className="text-[10px] text-eq-ink/40">·</span>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                🔁 {lang === 'ar' ? 'كل صلاة' : lang === 'en' ? 'Each prayer' : lang === 'id' ? 'Tiap salat' : 'Tiap solat'}
+              </span>
+            </>
+          )}
         </div>
         <div className={`font-bold text-sm text-eq-ink leading-tight ${isVerified ? 'line-through opacity-60' : ''}`}>
           {title}
@@ -1268,16 +1287,21 @@ const SessionCard = ({ group, expanded, canCollapse, busyHabit, onTap, onToggle,
             className="overflow-hidden"
           >
             <div className="space-y-2 px-2.5 pb-2.5 pt-1">
-              {group.habits.map(habit => (
-                <KidHabitCard
-                  key={habit.id}
-                  habit={habit}
-                  busy={busyHabit === habit.id}
-                  onTap={() => onTap(habit)}
-                  t={t}
-                  lang={lang}
-                />
-              ))}
+              {group.habits.map(habit => {
+                // For perPrayer habits, use composite key (habitId + session) so all 5 instances render distinctly
+                const key = habit._isPerPrayer ? `${habit.id}::${habit._sessionInstance}` : habit.id
+                const busyKey = habit._isPerPrayer ? `${habit.id}::${habit._sessionInstance}` : habit.id
+                return (
+                  <KidHabitCard
+                    key={key}
+                    habit={habit}
+                    busy={busyHabit === busyKey}
+                    onTap={() => onTap(habit)}
+                    t={t}
+                    lang={lang}
+                  />
+                )
+              })}
             </div>
           </motion.div>
         )}
