@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Fixed 2 bugs found during frontend UI testing: (1) HabitsSheet modal backdrop was blocking clicks via z-index stacking — added explicit style.zIndex 0/10 to backdrop/sheet. (2) Delete used window.confirm() which Playwright dismisses — replaced with beautiful custom in-app confirmation dialog (Cancel + red Delete buttons, i18n MS/EN/ID/AR). Also added aria-label to Close X button. Verified all flows work: Custom perPrayer creation, Edit habit with pre-fill, Delete with confirmation, Language toggle BM+AR RTL. (2026-01-19)"
+  update_note: "Pre-emptive polish — applied consistent pointer-events pattern (outer wrapper pointer-events-none, backdrop absolute pointer-events-auto zIndex 0, sheet relative pointer-events-auto zIndex 10) to 8 modals: HabitsSheet (main + rubric picker + delete dialog), VerifySheet, RewardShopSheet (main + custom add + proposal), ChildSheet, DeviceSettingsSheet, PinModal, Tutorial, InstallPrompt. Verified via manual screenshots + DOM element count assertions that all modals now open, close via X button, and close via backdrop click without needing force=True in Playwright. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
