@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Parent Habit form (Add Custom) now supports Session picker (7 options with icons) + Recurring toggle (Sekali sehari / Tiap solat) — parents can now create custom habits that recur 5x per prayer, not just built-in Wudhu. (2026-01-19)"
+  update_note: "BUG FIX — HabitsSheet modal backdrop was intercepting pointer events preventing clicks on Edit/Delete buttons in Playwright & possibly in slower browsers. Restructured modal: outer container pointer-events-none, backdrop absolute pointer-events-auto (still closes on outside click), inner sheet pointer-events-auto. Also added seed_test_family.py + cleanup_test_family.py scripts for reliable frontend testing. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
