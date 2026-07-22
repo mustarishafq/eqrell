@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Fixed hydration mismatch bug on /login (and other pages using OnboardingScaffold) — daily quote used SSR Date() that mismatched client Date(). Moved computation to useEffect so quote renders only after mount. (2026-01-19)"
+  update_note: "Added prayer-time session anchor to habits — new `session` field on habit schema (subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime). Kid Mode has new toggle 'Kategori ⇆ Waktu' — session view shows anywhere zone + accordion of prayer sessions with current session auto-expanded. (2026-01-19)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
@@ -3167,3 +3167,118 @@ agent_communication:
       
       NO ISSUES FOUND. The hydration bug is completely resolved and production-ready.
 
+
+
+#====================================================================================================
+# Habit Session Field — Prayer-time-anchored grouping (2026-01-19)
+#====================================================================================================
+backend:
+  - task: "Habit session field — POST/PATCH/GET with prayer-time anchor"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added new `session` field to habit schema to support prayer-time-anchored grouping in Kid Mode.
+          Valid values: subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime
+          Default: 'anytime' if not provided
+          
+          Changes:
+            - POST /api/children/:id/habits — now accepts `session` in body, stores it (default 'anytime')
+            - PATCH /api/habits/:id — `session` added to allowed update fields
+            - GET /api/children/:id/habits — projection is `_id: 0` only, so `session` is naturally returned
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL HABIT SESSION FIELD TESTS PASSED (8/8)
+          
+          Comprehensive test suite executed successfully. Created /app/test_habit_session.py with automated tests covering:
+          
+          ✅ TEST 1: Create habit from template with explicit session='subuh'
+             - POST /api/children/:id/habits with session='subuh' works correctly
+             - Response includes session='subuh'
+             - GET /api/children/:id/habits returns habit with session='subuh'
+          
+          ✅ TEST 2: Create habit without session field (backward compatibility)
+             - POST without session field defaults to 'anytime'
+             - Response includes session='anytime'
+          
+          ✅ TEST 3: Create habits with all 7 session values
+             - All 7 values (subuh, zohor, asar, maghrib, isyak, sebelumTidur, anytime) persist correctly
+             - GET request returns all habits with correct session values
+          
+          ✅ TEST 4: PATCH /api/habits/:id to update session
+             - PATCH habit to change session from 'anytime' to 'zohor' works
+             - Updated session persists correctly in database
+             - GET request confirms session update
+          
+          ✅ TEST 5: Multi-child isolation
+             - Created habit for child A with session='subuh'
+             - Child B (different family) cannot see child A's habits
+             - Family isolation working correctly
+          
+          ✅ TEST 6: Existing habits without session field
+             - Manually seeded habit without session field into MongoDB
+             - GET /api/children/:id/habits does not crash
+             - API handles habits without session field gracefully
+             - Habit returned without session field (OK - frontend uses inferSession())
+          
+          ✅ TEST 7: No regression on other habit fields
+             - All habit fields (templateId, category, title, desc, points, frequency, active) working correctly
+             - Session field does not interfere with existing fields
+          
+          ✅ TEST 8: Family isolation still works
+             - User from different family cannot access child A's habits (404)
+             - User from different family cannot create habit for child A (404)
+             - Habits scoped by familyId working correctly
+          
+          KEY FINDINGS:
+          - All 7 session values (subuh, zohor, asar, maghrib, isyak, sebelumTidur, anytime) persist correctly on POST + PATCH
+          - Default 'anytime' applied when session omitted (backward compatibility)
+          - No regression on other habit fields (title, category, points, frequency, active)
+          - Family isolation still works (habits scoped by familyId)
+          - API handles existing habits without session field gracefully (no crash)
+          - GET /api/children/:id/habits returns session field for all habits
+          - PATCH /api/habits/:id successfully updates session field
+          
+          NO ISSUES FOUND. Habit session field is production-ready.
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 HABIT SESSION FIELD TESTING COMPLETE - ALL TESTS PASSED (8/8)
+      
+      Tested the new `session` field on habit CRUD operations as requested.
+      
+      Test scenarios covered:
+      1. ✅ Create habit from template with explicit session='subuh' — PASSED
+      2. ✅ Create habit without session field (defaults to 'anytime') — PASSED
+      3. ✅ Create habits with all 7 session values (subuh, zohor, asar, maghrib, isyak, sebelumTidur, anytime) — PASSED
+      4. ✅ PATCH /api/habits/:id to update session from 'anytime' to 'zohor' — PASSED
+      5. ✅ Multi-child isolation (child B cannot see child A's habits) — PASSED
+      6. ✅ Existing habits without session field handled gracefully (no crash) — PASSED
+      7. ✅ No regression on other habit fields (title, category, points, frequency, active) — PASSED
+      8. ✅ Family isolation still works (habits scoped by familyId) — PASSED
+      
+      All success criteria met:
+      - All 5 prayer-time session values + sebelumTidur + anytime persist on POST + PATCH ✓
+      - Default 'anytime' applied when session omitted ✓
+      - No regression on other habit fields ✓
+      - Family isolation still works ✓
+      - API handles existing habits without session field gracefully ✓
+      
+      Created comprehensive test suite: /app/test_habit_session.py
+      All test data cleaned up successfully.
+      
+      NO ISSUES FOUND. The session field implementation is production-ready for Kid Mode prayer-time grouping.

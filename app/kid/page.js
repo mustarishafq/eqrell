@@ -7,6 +7,7 @@ import { Sparkles, Check, LogOut, Star, Plus, X, HelpCircle } from 'lucide-react
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
+import { SESSIONS, SESSION_BY_ID, getSessionLabel, groupHabitsBySession, currentSessionFromClock } from '@/lib/prayerSession'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
 import { PinModal } from '@/components/eqrel/PinModal'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -135,6 +136,26 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [showRewards, setShowRewards] = useState(false)
   const [proposeOpen, setProposeOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('all')  // 'all' | 'ibadah' | 'akhlak' | ...
+  const [viewMode, setViewMode] = useState('category')  // 'category' | 'session'
+  const [expandedSession, setExpandedSession] = useState(null)  // which session accordion is open
+
+  // Load saved viewMode preference (per child)
+  useEffect(() => {
+    if (!childId) return
+    try {
+      const saved = localStorage.getItem(`eqrel-viewmode-${childId}`)
+      if (saved === 'session' || saved === 'category') setViewMode(saved)
+    } catch { /* ignore storage errors */ }
+  }, [childId])
+
+  // Persist viewMode changes + auto-open current session on first switch
+  const changeViewMode = (mode) => {
+    setViewMode(mode)
+    try { localStorage.setItem(`eqrel-viewmode-${childId}`, mode) } catch { /* ignore storage errors */ }
+    if (mode === 'session' && !expandedSession) {
+      setExpandedSession(currentSessionFromClock())
+    }
+  }
   const [quizOpen, setQuizOpen] = useState(false)
   const [quizStatus, setQuizStatus] = useState({ doneToday: false, correctCount: 0, total: 0 })
   const [zikirOpen, setZikirOpen] = useState(false)
@@ -576,7 +597,25 @@ function KidHomeActive({ router, childId, t, lang }) {
           </div>
         )}
 
-        {/* Habit list — grouped by category */}
+        {/* View mode toggle: Category ⇆ Session */}
+        {!loading && habits.length > 0 && (
+          <div className="mt-3 flex items-center gap-1.5 bg-white/70 backdrop-blur rounded-full p-1 border border-eq-cream w-fit mx-auto">
+            <button
+              onClick={() => changeViewMode('category')}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-black transition-all flex items-center gap-1 ${viewMode === 'category' ? 'bg-emerald-500 text-white shadow' : 'text-emerald-800/70 hover:text-emerald-800'}`}
+            >
+              🏷️ {t.kid_view_category || (lang === 'ar' ? 'حسب الفئة' : lang === 'en' ? 'By Category' : lang === 'id' ? 'Kategori' : 'Kategori')}
+            </button>
+            <button
+              onClick={() => changeViewMode('session')}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-black transition-all flex items-center gap-1 ${viewMode === 'session' ? 'bg-emerald-500 text-white shadow' : 'text-emerald-800/70 hover:text-emerald-800'}`}
+            >
+              🕰️ {t.kid_view_session || (lang === 'ar' ? 'حسب الوقت' : lang === 'en' ? 'By Time' : lang === 'id' ? 'Waktu' : 'Waktu')}
+            </button>
+          </div>
+        )}
+
+        {/* Habit list — grouped by category or session */}
         <div className="mt-4 space-y-3">
           {loading ? (
             <div className="text-center text-emerald-900/50 py-10">{t.loading}</div>
@@ -585,6 +624,16 @@ function KidHomeActive({ router, childId, t, lang }) {
               <div className="text-5xl mb-2">🌱</div>
               <p className="text-emerald-900/70 text-sm">{t.kid_empty}</p>
             </div>
+          ) : viewMode === 'session' ? (
+            <SessionView
+              habits={habits}
+              expandedSession={expandedSession}
+              setExpandedSession={setExpandedSession}
+              busyHabit={busyHabit}
+              onTap={claimHabit}
+              t={t}
+              lang={lang}
+            />
           ) : (() => {
             // ── Build category groups once (used by chips + list) ──
             const groups = {}
@@ -1107,3 +1156,133 @@ const CategoryGroup = ({ catId, habitsInCat, done, total, allDone, busyHabit, on
     </motion.div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────
+// SessionView — habits grouped by prayer-time anchor (Selepas Subuh, Zohor, etc.)
+// Renders "Sepanjang Hari" section on top (always expanded) then chronological
+// prayer sessions as accordion (current session auto-expanded).
+
+const SessionView = ({ habits, expandedSession, setExpandedSession, busyHabit, onTap, t, lang }) => {
+  const groups = groupHabitsBySession(habits)
+  if (groups.length === 0) return null
+
+  // Split: anywhere = always expanded, others = accordion
+  const anywhere = groups.find(g => g.sessionId === 'anytime')
+  const timed = groups.filter(g => g.sessionId !== 'anytime')
+
+  return (
+    <div className="space-y-3">
+      {/* Anywhere zone — always visible, no accordion */}
+      {anywhere && (
+        <SessionCard
+          group={anywhere}
+          expanded={true}
+          canCollapse={false}
+          busyHabit={busyHabit}
+          onTap={onTap}
+          onToggle={() => {}}
+          t={t}
+          lang={lang}
+        />
+      )}
+
+      {/* Timed sessions — accordion */}
+      {timed.map(g => {
+        const isOpen = expandedSession === g.sessionId
+        return (
+          <SessionCard
+            key={g.sessionId}
+            group={g}
+            expanded={isOpen}
+            canCollapse={true}
+            busyHabit={busyHabit}
+            onTap={onTap}
+            onToggle={() => setExpandedSession(isOpen ? null : g.sessionId)}
+            t={t}
+            lang={lang}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+const SessionCard = ({ group, expanded, canCollapse, busyHabit, onTap, onToggle, t, lang }) => {
+  const meta = SESSION_BY_ID[group.sessionId] || SESSION_BY_ID.anytime
+  const label = getSessionLabel(group.sessionId, lang)
+  const pct = group.total > 0 ? Math.round((group.done / group.total) * 100) : 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className={`rounded-3xl border-2 transition-all overflow-hidden ${
+        group.allDone ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300' : 'bg-white/70 backdrop-blur border-white/90'
+      }`}
+      style={!group.allDone ? { boxShadow: `0 0 0 1px ${meta.color}22` } : undefined}
+    >
+      {/* Session header (clickable if canCollapse) */}
+      <button
+        onClick={canCollapse ? onToggle : undefined}
+        disabled={!canCollapse}
+        className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left ${canCollapse ? 'active:scale-[0.99]' : ''}`}
+      >
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl flex-shrink-0"
+          style={{ background: group.allDone ? `${meta.color}33` : `${meta.color}22` }}
+        >
+          {group.allDone ? '✅' : meta.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="text-sm font-extrabold uppercase tracking-wide" style={{ color: meta.color }}>
+              {label}
+            </div>
+            <div className="text-xs font-bold text-eq-ink/60">
+              {group.done}/{group.total}
+            </div>
+          </div>
+          <div className="mt-1 h-2 rounded-full bg-eq-cream/70 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="h-full rounded-full"
+              style={{ background: `linear-gradient(90deg, ${meta.color}, ${meta.color}dd)` }}
+            />
+          </div>
+        </div>
+        {canCollapse && (
+          <div className="text-emerald-800/50 text-xs font-black flex-shrink-0">
+            {expanded ? '▲' : '▼'}
+          </div>
+        )}
+      </button>
+
+      {/* Habits list (collapsible for timed sessions) */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 px-2.5 pb-2.5 pt-1">
+              {group.habits.map(habit => (
+                <KidHabitCard
+                  key={habit.id}
+                  habit={habit}
+                  busy={busyHabit === habit.id}
+                  onTap={() => onTap(habit)}
+                  t={t}
+                  lang={lang}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+

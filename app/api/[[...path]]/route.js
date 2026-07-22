@@ -379,6 +379,7 @@ async function handleRoute(request, { params }) {
         childId,
         templateId: body.templateId || null,   // if from template, keep reference
         category: body.category || 'ibadah',
+        session: body.session || 'anytime',    // prayer-time anchor: subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime
         title: body.title.trim(),
         desc: body.desc || '',
         points: body.points ?? 10,
@@ -403,7 +404,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
 
-      const allowed = ['title', 'desc', 'category', 'points', 'frequency', 'active']
+      const allowed = ['title', 'desc', 'category', 'session', 'points', 'frequency', 'active']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
 
