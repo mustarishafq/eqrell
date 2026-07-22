@@ -397,7 +397,11 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   </button>
                 </>
               )}
-              <button onClick={onClose} className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0">
+              <button
+                onClick={onClose}
+                className="w-9 h-9 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"
+                aria-label={lang === 'ar' ? 'إغلاق' : lang === 'en' ? 'Close' : 'Tutup'}
+              >
                 <X className="w-5 h-5 text-eq-ink/60" />
               </button>
             </div>
