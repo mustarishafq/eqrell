@@ -176,7 +176,10 @@ habits = [
 ]
 db.habits.insert_many(habits)
 
-# 6. Sign JWT
+# 6. Sign JWT (must include iat and exp for jose (JS) to accept)
+import time
+now_epoch = int(time.time())
+exp_epoch = now_epoch + 30 * 24 * 60 * 60  # 30 days
 payload = {
     'sid': SESSION_ID,
     'userId': USER_ID,
@@ -184,6 +187,8 @@ payload = {
     'name': 'Test Parent',
     'familyId': FAMILY_ID,
     'role': 'parent',
+    'iat': now_epoch,
+    'exp': exp_epoch,
 }
 token = jwt.encode(payload, AUTH_SECRET, algorithm='HS256')
 
