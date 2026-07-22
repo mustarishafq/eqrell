@@ -15,25 +15,6 @@ export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' 
   const L = TR[lang] || TR.ms
   const isRTL = dir === 'rtl'
 
-  // Dynamic host — use current origin for preview/staging, production uses eqrel.app
-  const [host, setHost] = useState('eqrel.app')
-  const [tvUrl, setTvUrl] = useState('{{TV_URL}}')
-  const [displayUrl, setDisplayUrl] = useState('eqrel.app/display')
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const h = window.location.host
-      setHost(h)
-      setTvUrl(`${h}/tv`)
-      setDisplayUrl(`${h}/display`)
-    } catch { /* ignore */ }
-  }, [])
-
-  const isPreview = host && !host.includes('eqrel.app')
-  const qrTvUrl = typeof window !== 'undefined'
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(`https://${host}/tv`)}`
-    : ''
-
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
@@ -52,14 +33,6 @@ export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' 
     { id: 'cast', label: L.tab_cast, sub: L.tab_cast_sub, icon: Cast },
     { id: 'pwa', label: L.tab_pwa, sub: L.tab_pwa_sub, icon: Download },
   ]
-
-  // Preview banner content (i18n)
-  const previewBanner = isPreview && ({
-    ms: 'Preview mode aktif — cara paling mudah untuk cuba di TV: gunakan Chrome Cast dari phone/laptop (lihat tab "Cast Phone") atau imbas QR code di bawah.',
-    en: 'Preview mode active — easiest way to test on TV: use Chrome Cast from your phone/laptop (see "Cast Phone" tab) or scan the QR code below.',
-    id: 'Mode Preview aktif — cara termudah tes di TV: gunakan Chrome Cast dari HP/laptop (lihat tab "Cast HP") atau pindai QR di bawah.',
-    ar: 'وضع المعاينة نشط — أسهل طريقة للتجربة على التلفاز: استخدم Chrome Cast من الهاتف أو الحاسوب (انظر تبويب "بث الهاتف") أو امسح رمز QR أدناه.',
-  }[lang] || 'Preview mode — use Chrome Cast or scan QR below')
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -80,28 +53,6 @@ export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' 
           </button>
         </div>
 
-        {/* Preview mode QR banner — only shown on preview/staging domains */}
-        {isPreview && (
-          <div className="px-4 pt-3 pb-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200/60">
-            <div className="flex items-start gap-3">
-              <img
-                src={qrTvUrl}
-                alt="QR Code"
-                className="w-20 h-20 rounded-lg border border-amber-300 bg-white flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-[10px] font-black uppercase tracking-wider text-amber-800 mb-0.5">
-                  🧪 {lang === 'ar' ? 'وضع المعاينة' : lang === 'en' ? 'Preview Mode' : lang === 'id' ? 'Mode Preview' : 'Mode Preview'}
-                </div>
-                <p className="text-[11px] text-amber-900 leading-tight mb-1">{previewBanner}</p>
-                <div className="font-mono text-[9px] bg-white/70 border border-amber-200 rounded px-1.5 py-0.5 inline-block break-all leading-tight">
-                  https://{tvUrl}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Tabs */}
         <div className="flex border-b border-emerald-100 bg-emerald-50/60 flex-shrink-0">
           {tabs.map((t) => {
@@ -120,9 +71,9 @@ export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' 
 
         {/* Content */}
         <div className="p-5 overflow-y-auto flex-1">
-          {tab === 'browser' && <BrowserTab L={L} tvUrl={tvUrl} />}
-          {tab === 'cast' && <CastTab L={L} displayUrl={displayUrl} />}
-          {tab === 'pwa' && <PWATab L={L} tvUrl={tvUrl} />}
+          {tab === 'browser' && <BrowserTab L={L} />}
+          {tab === 'cast' && <CastTab L={L} />}
+          {tab === 'pwa' && <PWATab L={L} />}
         </div>
 
         {/* Footer */}
@@ -138,7 +89,7 @@ export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' 
 }
 
 /* ————————————————————— Tab 1: Smart TV Browser ————————————————————— */
-const BrowserTab = ({ L, tvUrl = '{{TV_URL}}' }) => (
+const BrowserTab = ({ L }) => (
   <div>
     <div className="rounded-2xl bg-emerald-50 border-2 border-emerald-200 p-3 mb-4">
       <p className="text-xs text-emerald-900 font-bold flex items-start gap-2">
@@ -151,7 +102,7 @@ const BrowserTab = ({ L, tvUrl = '{{TV_URL}}' }) => (
       steps={[
         { icon: Wifi, title: L.b_step1_t, desc: L.b_step1_d },
         { icon: Globe, title: L.b_step2_t, desc: L.b_step2_d },
-        { icon: KeyRound, title: L.b_step3_t, desc: null, highlight: tvUrl },
+        { icon: KeyRound, title: L.b_step3_t, desc: null, highlight: 'eqrel.app/tv' },
         { icon: Smartphone, title: L.b_step4_t, desc: L.b_step4_d },
         { icon: CheckCircle2, title: L.b_step5_t, desc: L.b_step5_d },
       ]}
@@ -164,7 +115,7 @@ const BrowserTab = ({ L, tvUrl = '{{TV_URL}}' }) => (
 )
 
 /* ————————————————————— Tab 2: Cast dari Phone ————————————————————— */
-const CastTab = ({ L, displayUrl = 'eqrel.app/display' }) => (
+const CastTab = ({ L }) => (
   <div>
     <div className="rounded-2xl bg-blue-50 border-2 border-blue-200 p-3 mb-4">
       <p className="text-xs text-blue-900 font-bold flex items-start gap-2">
@@ -177,7 +128,7 @@ const CastTab = ({ L, displayUrl = 'eqrel.app/display' }) => (
       steps={[
         { icon: Wifi, title: L.c_step1_t, desc: L.c_step1_d },
         { icon: Chrome, title: L.c_step2_t, desc: L.c_step2_d },
-        { icon: Globe, title: L.c_step3_t, desc: L.c_step3_d, highlight: displayUrl },
+        { icon: Globe, title: L.c_step3_t, desc: L.c_step3_d, highlight: 'eqrel.app/display' },
         { icon: Cast, title: L.c_step4_t, desc: L.c_step4_d },
         { icon: CheckCircle2, title: L.c_step5_t, desc: L.c_step5_d },
       ]}
@@ -190,7 +141,7 @@ const CastTab = ({ L, displayUrl = 'eqrel.app/display' }) => (
 )
 
 /* ————————————————————— Tab 3: Install PWA ————————————————————— */
-const PWATab = ({ L, tvUrl = '{{TV_URL}}' }) => (
+const PWATab = ({ L }) => (
   <div>
     <div className="rounded-2xl bg-purple-50 border-2 border-purple-200 p-3 mb-4">
       <p className="text-xs text-purple-900 font-bold flex items-start gap-2">
@@ -200,9 +151,9 @@ const PWATab = ({ L, tvUrl = '{{TV_URL}}' }) => (
     </div>
 
     <div className="space-y-3">
-      <BrandCard emoji="📺" color="emerald" title="Android TV / Google TV / Chromecast" sub={L.pwa_android_sub} items={L.pwa_android_steps.map(s => s.replace(/\{\{TV_URL\}\}/g, tvUrl))} />
-      <BrandCard emoji="📱" color="blue" title="Samsung Smart TV (Tizen)" sub={L.pwa_samsung_sub} items={L.pwa_samsung_steps.map(s => s.replace(/\{\{TV_URL\}\}/g, tvUrl))} />
-      <BrandCard emoji="🖥️" color="pink" title="LG Smart TV (WebOS)" sub={L.pwa_lg_sub} items={L.pwa_lg_steps.map(s => s.replace(/\{\{TV_URL\}\}/g, tvUrl))} />
+      <BrandCard emoji="📺" color="emerald" title="Android TV / Google TV / Chromecast" sub={L.pwa_android_sub} items={L.pwa_android_steps} />
+      <BrandCard emoji="📱" color="blue" title="Samsung Smart TV (Tizen)" sub={L.pwa_samsung_sub} items={L.pwa_samsung_steps} />
+      <BrandCard emoji="🖥️" color="pink" title="LG Smart TV (WebOS)" sub={L.pwa_lg_sub} items={L.pwa_lg_steps} />
       <BrandCard emoji="📺" color="amber" title={L.pwa_fallback_title} sub={L.pwa_fallback_sub} paragraph={L.pwa_fallback_body} />
     </div>
 
@@ -317,19 +268,19 @@ const TR = {
     pwa_intro: 'Simpan EQrel sebagai <b>shortcut</b> di home screen TV supaya boleh buka terus tanpa taip URL setiap kali.',
     pwa_android_sub: 'Ada Chrome browser',
     pwa_android_steps: [
-      'Buka <b>Chrome</b> di TV → Lawat `{{TV_URL}}`',
+      'Buka <b>Chrome</b> di TV → Lawat `eqrel.app/tv`',
       'Tekan menu <b>⋮</b> (3-titik) di penjuru → <b>Add to Home screen</b> atau <b>Install</b>',
       'Shortcut EQrel akan muncul di home TV — klik untuk buka full-screen',
     ],
     pwa_samsung_sub: 'Internet Browser app',
     pwa_samsung_steps: [
-      'Buka <b>Internet</b> app dari Apps → Lawat `{{TV_URL}}`',
+      'Buka <b>Internet</b> app dari Apps → Lawat `eqrel.app/tv`',
       'Tekan <b>Bookmark ★</b> di menu browser → tandakan sebagai favourite',
       'Bookmark akan muncul di halaman utama browser TV setiap kali buka',
     ],
     pwa_lg_sub: 'Web Browser',
     pwa_lg_steps: [
-      'Buka <b>Web Browser</b> dari Launcher → Lawat `{{TV_URL}}`',
+      'Buka <b>Web Browser</b> dari Launcher → Lawat `eqrel.app/tv`',
       'Tekan <b>★ Bookmark</b> untuk simpan',
       'Pilihannya: <b>Pin to Home</b> untuk letak shortcut terus di menu utama TV',
     ],
@@ -380,19 +331,19 @@ const TR = {
     pwa_intro: 'Save EQrel as a <b>shortcut</b> on your TV home screen so you can open it directly without typing the URL every time.',
     pwa_android_sub: 'Has Chrome browser',
     pwa_android_steps: [
-      'Open <b>Chrome</b> on TV → Visit `{{TV_URL}}`',
+      'Open <b>Chrome</b> on TV → Visit `eqrel.app/tv`',
       'Tap the <b>⋮</b> (3-dot) menu → <b>Add to Home screen</b> or <b>Install</b>',
       'The EQrel shortcut will appear on the TV home — tap to open full-screen',
     ],
     pwa_samsung_sub: 'Internet Browser app',
     pwa_samsung_steps: [
-      'Open <b>Internet</b> app from Apps → Visit `{{TV_URL}}`',
+      'Open <b>Internet</b> app from Apps → Visit `eqrel.app/tv`',
       'Tap <b>Bookmark ★</b> in the browser menu → mark as favourite',
       'The bookmark will appear on the browser home page every time you open it',
     ],
     pwa_lg_sub: 'Web Browser',
     pwa_lg_steps: [
-      'Open <b>Web Browser</b> from Launcher → Visit `{{TV_URL}}`',
+      'Open <b>Web Browser</b> from Launcher → Visit `eqrel.app/tv`',
       'Tap <b>★ Bookmark</b> to save',
       'Optionally: <b>Pin to Home</b> to place the shortcut on the main TV menu',
     ],
@@ -443,19 +394,19 @@ const TR = {
     pwa_intro: 'Simpan EQrel sebagai <b>shortcut</b> di layar utama TV supaya bisa buka langsung tanpa ketik URL setiap kali.',
     pwa_android_sub: 'Ada Chrome browser',
     pwa_android_steps: [
-      'Buka <b>Chrome</b> di TV → Buka `{{TV_URL}}`',
+      'Buka <b>Chrome</b> di TV → Buka `eqrel.app/tv`',
       'Tekan menu <b>⋮</b> (3-titik) di pojok → <b>Add to Home screen</b> atau <b>Install</b>',
       'Shortcut EQrel akan muncul di layar utama TV — klik untuk buka full-screen',
     ],
     pwa_samsung_sub: 'Internet Browser app',
     pwa_samsung_steps: [
-      'Buka aplikasi <b>Internet</b> dari Apps → Buka `{{TV_URL}}`',
+      'Buka aplikasi <b>Internet</b> dari Apps → Buka `eqrel.app/tv`',
       'Tekan <b>Bookmark ★</b> di menu browser → tandai sebagai favorit',
       'Bookmark akan muncul di halaman utama browser TV setiap kali buka',
     ],
     pwa_lg_sub: 'Web Browser',
     pwa_lg_steps: [
-      'Buka <b>Web Browser</b> dari Launcher → Buka `{{TV_URL}}`',
+      'Buka <b>Web Browser</b> dari Launcher → Buka `eqrel.app/tv`',
       'Tekan <b>★ Bookmark</b> untuk simpan',
       'Opsional: <b>Pin to Home</b> untuk menaruh shortcut di menu utama TV',
     ],
@@ -506,19 +457,19 @@ const TR = {
     pwa_intro: 'احفظ EQrel كـ <b>اختصار</b> على الشاشة الرئيسية للتلفاز لتفتحه مباشرة دون كتابة العنوان في كل مرة.',
     pwa_android_sub: 'به متصفح Chrome',
     pwa_android_steps: [
-      'افتح <b>Chrome</b> على التلفاز → اذهب إلى `{{TV_URL}}`',
+      'افتح <b>Chrome</b> على التلفاز → اذهب إلى `eqrel.app/tv`',
       'اضغط قائمة <b>⋮</b> (٣ نقاط) → <b>Add to Home screen</b> أو <b>Install</b>',
       'سيظهر اختصار EQrel على الشاشة الرئيسية — اضغطه ليفتح ملء الشاشة',
     ],
     pwa_samsung_sub: 'تطبيق Internet Browser',
     pwa_samsung_steps: [
-      'افتح تطبيق <b>Internet</b> من التطبيقات → اذهب إلى `{{TV_URL}}`',
+      'افتح تطبيق <b>Internet</b> من التطبيقات → اذهب إلى `eqrel.app/tv`',
       'اضغط <b>Bookmark ★</b> في قائمة المتصفح → أضفه للمفضلة',
       'سيظهر الإشارة المرجعية في الصفحة الرئيسية للمتصفح كل مرة',
     ],
     pwa_lg_sub: 'Web Browser',
     pwa_lg_steps: [
-      'افتح <b>Web Browser</b> من Launcher → اذهب إلى `{{TV_URL}}`',
+      'افتح <b>Web Browser</b> من Launcher → اذهب إلى `eqrel.app/tv`',
       'اضغط <b>★ Bookmark</b> للحفظ',
       'اختياري: <b>Pin to Home</b> لوضع الاختصار في القائمة الرئيسية للتلفاز',
     ],
