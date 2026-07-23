@@ -82,10 +82,15 @@ function DirectAudioPlayer({ url, playlist, enabled, volume, audioUnlocked, onRe
   const audioRef = useRef(null)
   const wasPlayingRef = useRef(false)
   const hasPlaylist = Array.isArray(playlist) && playlist.length > 0
+  // ═══ Stable playlist identity: join URLs into a string key ═══
+  // Prevents useEffect from re-firing on every parent re-render (which happens every
+  // 15s due to clock update + every 60s due to config refresh). Only actual URL changes
+  // trigger re-init, so playlistIdx isn't reset while user is on surah 2, 3, ...
+  const playlistKey = hasPlaylist ? playlist.map(p => p.url).join('|') : ''
   const [playlistIdx, setPlaylistIdx] = useState(0)
   const [currentUrl, setCurrentUrl] = useState(hasPlaylist ? playlist[0].url : url)
 
-  // Sync currentUrl when parent URL or playlist changes
+  // Only reset when the actual URL content changes — NOT array reference
   useEffect(() => {
     if (hasPlaylist) {
       setPlaylistIdx(0)
@@ -93,7 +98,7 @@ function DirectAudioPlayer({ url, playlist, enabled, volume, audioUnlocked, onRe
     } else {
       setCurrentUrl(url)
     }
-  }, [url, hasPlaylist, playlist])
+  }, [url, playlistKey])
 
   // Auto-next handler — supports both playlist mode AND MP3Quran auto-next-surah
   const handleEnded = () => {
