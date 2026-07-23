@@ -72,7 +72,13 @@ export default function DisplayPage() {
   const playedTodayRef = useRef(new Set())
   const preChimedTodayRef = useRef(new Set())
 
-  useEffect(() => { const tt = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(tt) }, [])
+  // ═══ CLOCK TIMER — 15s refresh instead of 1s ═══
+  // Clock display shows HH:MM (no seconds), so 15s cadence is imperceptible.
+  // Reduces re-renders 15× on weak TV browsers → less CPU spikes → less YouTube stream drop
+  useEffect(() => {
+    const tt = setInterval(() => setNow(new Date()), 15_000)
+    return () => clearInterval(tt)
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -216,7 +222,8 @@ export default function DisplayPage() {
       const target = new Date(now); target.setHours(h, m, 0, 0)
       const diff = nowMs - target.getTime()
       const marker = `${dateKey}_${k}`
-      if (diff >= 0 && diff < 2000 && !playedTodayRef.current.has(marker)) {
+      // 20s tolerance window (matches 15s clock cadence). playedTodayRef guarantees single-play per day.
+      if (diff >= 0 && diff < 20_000 && !playedTodayRef.current.has(marker)) {
         playedTodayRef.current.add(marker)
         playAzan(k)
       }
@@ -224,7 +231,7 @@ export default function DisplayPage() {
         const preTarget = target.getTime() - config.preAzanMin * 60 * 1000
         const preDiff = nowMs - preTarget
         const preMarker = `${dateKey}_${k}_pre`
-        if (preDiff >= 0 && preDiff < 2000 && !preChimedTodayRef.current.has(preMarker)) {
+        if (preDiff >= 0 && preDiff < 20_000 && !preChimedTodayRef.current.has(preMarker)) {
           preChimedTodayRef.current.add(preMarker)
           playChime()
           setPreAzanNotice({ key: k, minutes: config.preAzanMin })

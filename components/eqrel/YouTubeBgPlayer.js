@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { parseYouTubeUrl, buildYouTubeEmbedUrl } from '@/lib/youtube'
 
 /**
@@ -44,7 +44,7 @@ function loadYouTubeApi() {
   return ytApiPromise
 }
 
-export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan = false }) {
+export default memo(function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan = false }) {
   const directAudio = isDirectAudio(url)
   if (directAudio) {
     return (
@@ -68,7 +68,7 @@ export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, o
       duckForAzan={duckForAzan}
     />
   )
-}
+})
 
 // ═══════════ MODE A: Direct MP3/audio (lightweight — best for weak TV browsers) ═══════════
 function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan }) {

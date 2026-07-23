@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BRAND } from '@/lib/brand'
 
@@ -14,7 +14,7 @@ import { BRAND } from '@/lib/brand'
  *   lang?: 'ms'|'en'|'id'|'ar'
  *   size?: number  (mascot px, default 220)
  */
-export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', size = 220 }) {
+export default memo(function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', size = 220 }) {
   const isRTL = lang === 'ar'
   const mascotUrl = BRAND.mascot.default
 
@@ -160,4 +160,4 @@ export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', s
       </div>
     </div>
   )
-}
+})

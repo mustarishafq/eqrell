@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { memo, useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import {
@@ -86,7 +86,7 @@ function AutoFitText({ text, maxPx = 32, minPx = 12, className, style }) {
   )
 }
 
-export default function HabitBoard({ kids, lang = 'ms', title }) {
+export default memo(function HabitBoard({ kids, lang = 'ms', title }) {
   const safeKids = kids || []
   const count = safeKids.length
   const currentSession = currentSessionFromClock()
@@ -144,7 +144,7 @@ export default function HabitBoard({ kids, lang = 'ms', title }) {
       </div>
     </div>
   )
-}
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // KidSoloView — one child in spotlight (big name, big number, big %, habits)
