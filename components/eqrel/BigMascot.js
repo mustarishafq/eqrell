@@ -48,9 +48,9 @@ export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', s
   const meta = bubble ? (variantMeta[bubble.variant] || variantMeta.hadith) : null
 
   return (
-    <div className="w-full flex items-center justify-between gap-3 pointer-events-none px-3 py-2" dir="ltr">
-      {/* Speech bubble on LEFT — fills remaining space */}
-      <div className="flex-1 min-w-0 flex justify-end">
+    <div className="w-full flex items-center justify-end gap-3 pointer-events-none px-3 py-2" dir="ltr">
+      {/* Speech bubble on LEFT of mascot — constrained to ~half screen */}
+      <div className="min-w-0 flex justify-end" style={{ maxWidth: 'min(50vw, 780px)' }}>
         <AnimatePresence mode="wait">
           {bubble && (
             <motion.div
@@ -59,7 +59,7 @@ export default function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', s
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 12, scale: 0.95 }}
               transition={{ duration: 0.5, type: 'spring', stiffness: 220, damping: 22 }}
-              className={`relative max-w-3xl bg-white/95 backdrop-blur px-5 py-3.5 rounded-3xl shadow-2xl ring-4 ${meta.ring}`}
+              className={`relative bg-white/95 backdrop-blur px-5 py-3.5 rounded-3xl shadow-2xl ring-4 ${meta.ring}`}
             >
               {/* Speech tail — pointing right toward mascot */}
               <div className={`absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 bg-white/95 rotate-45 ring-4 ${meta.ring}`}

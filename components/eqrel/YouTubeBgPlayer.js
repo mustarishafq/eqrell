@@ -28,9 +28,10 @@ function loadYouTubeApi() {
   return ytApiPromise
 }
 
-export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, onReady }) {
+export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan = false }) {
   const [playerId] = useState(() => `yt-bg-${Math.random().toString(36).slice(2, 9)}`)
   const playerRef = useRef(null)
+  const wasPlayingRef = useRef(false)
   const parsed = parseYouTubeUrl(url)
   const embedUrl = buildYouTubeEmbedUrl(parsed)
 
@@ -47,6 +48,7 @@ export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, o
           onReady: (e) => {
             e.target.setVolume(volume)
             e.target.playVideo()
+            wasPlayingRef.current = true
             if (onReady) onReady()
           },
           onStateChange: (e) => {
@@ -67,6 +69,19 @@ export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, o
       try { playerRef.current.setVolume(volume) } catch (e) { /* ignore */ }
     }
   }, [volume])
+
+  // ═══ Azan priority: pause YouTube when azan plays, resume after ═══
+  useEffect(() => {
+    const p = playerRef.current
+    if (!p || typeof p.pauseVideo !== 'function') return
+    try {
+      if (duckForAzan) {
+        p.pauseVideo()
+      } else if (wasPlayingRef.current) {
+        p.playVideo()
+      }
+    } catch (e) { /* ignore */ }
+  }, [duckForAzan])
 
   if (!enabled || !embedUrl || !audioUnlocked) return null
 

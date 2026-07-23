@@ -326,12 +326,14 @@ export default function DisplayPage() {
         }
       }
     }
-    // Priority 5: Default rotation — Hadith → Doa → Greet
+    // Priority 5: Default rotation — Hadith → Doa → Sirah → Greet
     const enableHadith = config?.showHadith !== false
     const enableDoa = config?.showDoa !== false
+    const hasSirah = !!(todayEvent || monthContext)
     const options = []
     if (enableHadith) options.push('hadith')
     if (enableDoa) options.push('doa')
+    if (hasSirah) options.push('sirah')
     options.push('greet')
     const pick = options[bubbleIdx % options.length]
     if (pick === 'hadith') {
@@ -358,6 +360,36 @@ export default function DisplayPage() {
         }
       }
     }
+    if (pick === 'sirah') {
+      // Today's Islamic event takes priority over monthly context
+      if (todayEvent) {
+        const intro = lang === 'ar' ? 'اليوم في التاريخ' : lang === 'en' ? 'Today in History' : lang === 'id' ? 'Hari ini dalam Sejarah' : 'Hari Ini dalam Sirah'
+        const title = todayEvent.title[lang] || todayEvent.title.ms
+        const desc = todayEvent.desc[lang] || todayEvent.desc.ms
+        return {
+          mascotMood: 'idle',
+          bubble: {
+            keyId: `sirah-day-${bubbleIdx}`,
+            variant: 'hadith',
+            intro: `✨ ${intro}`,
+            message: `${title} — ${desc}`,
+          }
+        }
+      }
+      if (monthContext) {
+        const intro = lang === 'ar' ? 'هذا الشهر' : lang === 'en' ? 'This Month' : lang === 'id' ? 'Bulan ini' : 'Bulan Ini'
+        const msg = monthContext[lang] || monthContext.ms
+        return {
+          mascotMood: 'idle',
+          bubble: {
+            keyId: `sirah-mo-${bubbleIdx}`,
+            variant: 'hadith',
+            intro: `✨ ${intro}`,
+            message: msg,
+          }
+        }
+      }
+    }
     // Greeting fallback
     const greetings = {
       ms: 'Semoga hari yang penuh berkat!',
@@ -374,7 +406,7 @@ export default function DisplayPage() {
         message: greetings[lang] || greetings.ms,
       }
     }
-  }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t])
+  }, [azanPlaying, preAzanNotice, celebrateBoost, display?.ihsanStar, config, bubbleIdx, isNightHour, lang, t, todayEvent, monthContext])
 
   // ═══ Portrait phone: render as scaled TV preview instead of broken layout ═══
   if (isPortrait) {
@@ -438,6 +470,7 @@ export default function DisplayPage() {
           enabled={config.bgAudioEnabled}
           volume={config.bgAudioVolume ?? 25}
           audioUnlocked={audioUnlocked}
+          duckForAzan={!!azanPlaying || !!preAzanNotice}
         />
       )}
       {/* ═══ AMBIENT BACKGROUND — EQrel brand emerald/teal ═══ */}
@@ -536,11 +569,10 @@ export default function DisplayPage() {
       {/* ═══ MAIN 3-COLUMN GRID — flex-1, no scroll ═══ */}
       <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
-        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Sirah + Kids */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-y-auto pb-2 scrollbar-none"
-          style={{ scrollbarWidth: 'none' }}>
-          <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-4 text-center flex-shrink-0">
-            <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2.5rem, 5.5vw, 6rem)', color: '#FFF8E7' }}>{timeStr}</div>
+        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Kids + Zikir */}
+        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden pb-2">
+          <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center flex-shrink-0">
+            <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)', color: '#FFF8E7' }}>{timeStr}</div>
             <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
             <div className="mt-0.5 text-xs md:text-sm text-white/70">{dateStr}</div>
             {hijriStr && (
@@ -562,32 +594,7 @@ export default function DisplayPage() {
             )}
           </div>
 
-          {/* Islamic event / Sirah card */}
-          {(todayEvent || monthContext) && (
-            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3.5 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, rgba(255,183,3,0.15), rgba(255,183,3,0.05))', borderColor: 'rgba(255,183,3,0.3)' }}>
-              <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#FFB703' }}>
-                <span className="text-base">✨</span>
-                {todayEvent
-                  ? (lang === 'ar' ? 'اليوم في التاريخ' : lang === 'en' ? 'Today in History' : lang === 'id' ? 'Hari ini dalam Sejarah' : 'Hari Ini dalam Sirah')
-                  : (lang === 'ar' ? 'هذا الشهر' : lang === 'en' ? 'This Month' : lang === 'id' ? 'Bulan ini' : 'Bulan Ini')}
-              </div>
-              {todayEvent ? (
-                <>
-                  <div className="text-sm md:text-base font-black leading-tight" style={{ color: '#FFF8E7' }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-                    {todayEvent.title[lang] || todayEvent.title.ms}
-                  </div>
-                  <div className="mt-1.5 text-[11px] leading-snug" style={{ color: '#FFF8E7', opacity: 0.75 }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-                    {todayEvent.desc[lang] || todayEvent.desc.ms}
-                  </div>
-                </>
-              ) : monthContext && (
-                <div className="text-[11px] leading-snug italic" style={{ color: '#FFF8E7', opacity: 0.85 }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-                  {monthContext[lang] || monthContext.ms}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Sirah/Islamic event now shown inside mascot dialog rotation — no standalone card */}
 
           {/* Kids progress rings */}
           {display?.children && display.children.length > 0 && (
