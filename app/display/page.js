@@ -11,6 +11,7 @@ import { getAzan, PRE_AZAN_CHIME_URL } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import BigMascot from '@/components/eqrel/BigMascot'
 import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
+import { useWakeLock } from '@/lib/useWakeLock'
 import TVPreview from '@/components/eqrel/TVPreview'
 import HabitBoard from '@/components/eqrel/HabitBoard'
 import { formatHijri, getHijri } from '@/lib/hijri'
@@ -53,6 +54,9 @@ export default function DisplayPage() {
 
   const [now, setNow] = useState(new Date())
   const [config, setConfig] = useState(null)
+
+  // Prevent TV screensaver — keep screen awake while /display is mounted
+  useWakeLock(true)
   const [location, setLocation] = useState(null)
   const [prayers, setPrayers] = useState(null)
   const [display, setDisplay] = useState(null)
@@ -92,13 +96,27 @@ export default function DisplayPage() {
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
 
   // Photo slideshow rotation
-  const photos = config?.photos || []
+  const rawPhotos = config?.photos || []
+  // Cloudinary auto-optimize: f_auto (WebP/AVIF), q_auto, w_1920 max, c_limit — fixes lag issues
+  const photos = rawPhotos.map(url =>
+    typeof url === 'string' && url.includes('/upload/') && !url.includes('/upload/f_')
+      ? url.replace('/upload/', '/upload/f_auto,q_auto,w_1920,c_limit/')
+      : url
+  )
   const slideshowSec = config?.slideshowSec || 10
   useEffect(() => {
     if (photos.length < 2) return
     const tt = setInterval(() => setPhotoIdx(i => (i + 1) % photos.length), slideshowSec * 1000)
     return () => clearInterval(tt)
   }, [photos.length, slideshowSec])
+
+  // Preload next photo for smoother transitions
+  useEffect(() => {
+    if (photos.length < 2) return
+    const nextIdx = (photoIdx + 1) % photos.length
+    const preloadImg = new Image()
+    preloadImg.src = photos[nextIdx]
+  }, [photoIdx, photos])
 
   // Mascot bubble rotation (every 15s)
   useEffect(() => {
@@ -477,15 +495,27 @@ export default function DisplayPage() {
             title={dimActive ? 'Terangkan' : 'Redupkan'}>
             {dimActive ? <Sun className="w-4 h-4" style={{ color: '#FFB703' }} /> : <Moon className="w-4 h-4" />}
           </button>
-          {config?.azanEnabled && !audioUnlocked && (
+          {(config?.azanEnabled || config?.bgAudioEnabled) && !audioUnlocked && (
             <button onClick={unlockAudio}
               className="px-2.5 h-11 rounded-2xl text-slate-900 flex items-center gap-1 text-[11px] font-extrabold animate-pulse shadow-lg"
               style={{ backgroundColor: '#FFB703' }}>
-              <Volume2 className="w-3.5 h-3.5" /> {(t.display_enable_audio || '').replace('🔊', '').trim()}
+              <Volume2 className="w-3.5 h-3.5" /> {(t.display_enable_audio || 'Enable audio').replace('🔊', '').trim()}
             </button>
           )}
         </div>
       </header>
+
+      {/* Full-screen audio unlock overlay — one-tap on TV to unlock YouTube + Azan */}
+      {(config?.azanEnabled || config?.bgAudioEnabled) && !audioUnlocked && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <button onClick={unlockAudio}
+            className="rounded-full shadow-2xl border-2 border-white/30 px-6 py-3 flex items-center gap-3 text-slate-900 font-black text-base animate-pulse"
+            style={{ backgroundColor: '#FFB703' }}>
+            <Volume2 className="w-5 h-5" />
+            <span>{lang === 'ar' ? 'اضغط لتفعيل الصوت' : lang === 'en' ? 'Tap to enable audio' : lang === 'id' ? 'Sentuh untuk aktifkan suara' : 'Tekan untuk bunyi audio'}</span>
+          </button>
+        </div>
+      )}
 
       {/* ═══ AZAN PLAYING BANNER (overlay) ═══ */}
       {azanPlaying && (
@@ -507,7 +537,8 @@ export default function DisplayPage() {
       <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
         {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Sirah + Kids */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden">
+        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-y-auto pb-2 scrollbar-none"
+          style={{ scrollbarWidth: 'none' }}>
           <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-4 text-center flex-shrink-0">
             <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2.5rem, 5.5vw, 6rem)', color: '#FFF8E7' }}>{timeStr}</div>
             <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
