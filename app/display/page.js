@@ -542,24 +542,26 @@ export default function DisplayPage() {
             title={dimActive ? 'Terangkan' : 'Redupkan'}>
             {dimActive ? <Sun className="w-4 h-4" style={{ color: '#FFB703' }} /> : <Moon className="w-4 h-4" />}
           </button>
-          {(config?.azanEnabled || config?.bgAudioEnabled) && !audioUnlocked && (
-            <button onClick={unlockAudio}
-              className="px-2.5 h-11 rounded-2xl text-slate-900 flex items-center gap-1 text-[11px] font-extrabold animate-pulse shadow-lg"
-              style={{ backgroundColor: '#FFB703' }}>
-              <Volume2 className="w-3.5 h-3.5" /> {(t.display_enable_audio || 'Enable audio').replace('🔊', '').trim()}
-            </button>
-          )}
+          {/* Small header audio button removed — big centered overlay is the primary unlock CTA */}
         </div>
       </header>
 
-      {/* Full-screen audio unlock overlay — one-tap on TV to unlock YouTube + Azan */}
+      {/* Full-screen audio unlock overlay — BIG centered button on family photo (visible & easy tap) */}
       {(config?.azanEnabled || config?.bgAudioEnabled) && !audioUnlocked && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
           <button onClick={unlockAudio}
-            className="rounded-full shadow-2xl border-2 border-white/30 px-6 py-3 flex items-center gap-3 text-slate-900 font-black text-base animate-pulse"
-            style={{ backgroundColor: '#FFB703' }}>
-            <Volume2 className="w-5 h-5" />
-            <span>{lang === 'ar' ? 'اضغط لتفعيل الصوت' : lang === 'en' ? 'Tap to enable audio' : lang === 'id' ? 'Sentuh untuk aktifkan suara' : 'Tekan untuk bunyi audio'}</span>
+            className="pointer-events-auto rounded-3xl shadow-2xl border-4 border-white/40 px-10 py-8 flex flex-col items-center gap-3 text-slate-900 font-black animate-pulse hover:scale-105 transition-transform"
+            style={{ backgroundColor: '#FFB703', minWidth: 320 }}>
+            <Volume2 className="w-14 h-14" />
+            <div className="text-2xl font-black">
+              {lang === 'ar' ? 'اضغط لتفعيل الصوت' : lang === 'en' ? 'Tap to enable audio' : lang === 'id' ? 'Sentuh untuk aktifkan suara' : 'Tekan untuk bunyi audio'}
+            </div>
+            <div className="text-[11px] font-bold opacity-70 max-w-xs text-center leading-tight">
+              {lang === 'ar' ? 'مطلوب مرة واحدة لتشغيل الأذان وتلاوة القرآن (سياسة المتصفح)' :
+               lang === 'en' ? 'Required once to play Azan & Quran recitation (browser policy)' :
+               lang === 'id' ? 'Diperlukan sekali untuk memutar Azan & bacaan Al-Quran (kebijakan browser)' :
+               'Perlu tekan sekali untuk main Azan & bacaan Al-Quran (polisi browser)'}
+            </div>
           </button>
         </div>
       )}
