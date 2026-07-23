@@ -484,9 +484,9 @@ export default function DisplayPage() {
 
       {/* ═══ TOP HEADER: EQrel branded logo + prayer strip + nav ═══ */}
       <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3 flex-shrink-0">
-        {/* EQrel full logo — solid white card to emphasize the branded artwork */}
-        <div className="flex items-center rounded-2xl bg-white border border-white/60 px-3 h-14 shadow-lg">
-          <img src="/eqrel-logo-full.png" alt="EQrel — Build Habits. Grow Iman." className="h-10 w-auto object-contain drop-shadow-sm" />
+        {/* EQrel full logo — pure solid white, no effects */}
+        <div className="flex items-center rounded-2xl bg-white px-3 h-14">
+          <img src="/eqrel-logo-full.png" alt="EQrel — Build Habits. Grow Iman." className="h-10 w-auto object-contain" />
         </div>
 
         {/* Prayer strip — no emojis, no countdown chip */}
