@@ -45,6 +45,67 @@ const PRAYER_ORDER = ['subuh', 'zohor', 'asar', 'maghrib', 'isyak', 'sebelumTidu
 const ROTATE_MS = 8_000  // Rotate to next kid every 8 seconds
 
 // ═══════════════════════════════════════════════════════════════════════════
+// pickSuggestion — choose ONE habit for the child to focus on right now
+// Scoring priority:
+//   +100 pending habit in the CURRENT prayer session (highest urgency)
+//   +80  perPrayer habit whose CURRENT session isn't claimed yet
+//   +50  anytime pending habit (always doable)
+//   +20  pending habit in the NEXT upcoming session (plan-ahead)
+//   +  points * 0.05  (mild bias toward higher-point tasks)
+// Returns the top-scored habit object, or null if nothing pending.
+// ═══════════════════════════════════════════════════════════════════════════
+const pickSuggestion = (habits, currentSession) => {
+  if (!Array.isArray(habits) || habits.length === 0) return null
+
+  // Find current session index for "next session" scoring
+  const curIdx = PRAYER_ORDER.indexOf(currentSession)
+  const nextSession = curIdx >= 0 && curIdx < PRAYER_ORDER.length - 1
+    ? PRAYER_ORDER[curIdx + 1]
+    : null
+
+  const scored = []
+  for (const h of habits) {
+    const recurring = inferRecurring(h)
+    const isPerPrayer = recurring === 'perPrayer'
+    const habitSession = inferSession(h)
+    const sessionsClaimed = Array.isArray(h.sessionsClaimed) ? h.sessionsClaimed : []
+
+    // Skip if fully done (daily habit already done, or perPrayer current session claimed)
+    if (isPerPrayer) {
+      // Only suggest perPrayer if current session isn't already claimed
+      if (currentSession && sessionsClaimed.includes(currentSession)) continue
+      // If we're outside prayer sessions (anytime), skip perPrayer for now
+      if (!currentSession || currentSession === 'anytime') continue
+    } else {
+      // Daily habit — skip if done/ihsan
+      if (h.status !== 'pending') continue
+    }
+
+    let score = 0
+    if (isPerPrayer) {
+      score += 80  // Priority 2: perPrayer needing current session
+    } else if (habitSession === currentSession && currentSession) {
+      score += 100 // Priority 1: current session daily habit
+    } else if (habitSession === 'anytime' || !habitSession) {
+      score += 50  // Priority 3: anytime
+    } else if (habitSession === nextSession) {
+      score += 20  // Priority 4: next session preview
+    } else {
+      score += 5   // Any other pending habit (bottom priority)
+    }
+
+    // Mild points bias
+    score += (Number(h.points) || 0) * 0.05
+
+    scored.push({ habit: h, score })
+  }
+
+  if (scored.length === 0) return null
+  scored.sort((a, b) => b.score - a.score)
+  return scored[0].habit
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AutoFitText — single-line text that auto-shrinks font-size to fit container width
 // (Prevents nickname from wrapping to 2 lines; kecil font kalau tak muat)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -165,6 +226,10 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
     bySession[sid].push(h)
   })
 
+  // Suggestion — the ONE habit the child should focus on right now
+  const suggestion = pickSuggestion(habits, currentSession)
+  const suggestionId = suggestion?.id || null
+
   const total = habits.length
   const doneCount = habits.filter(h => h.status !== 'pending').length
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
@@ -238,6 +303,16 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
         </div>
       </div>
 
+      {/* ═══ SUGGESTION CARD — ONE focus habit for this child right now ═══ */}
+      <SuggestionCard
+        suggestion={suggestion}
+        allDone={total > 0 && doneCount === total}
+        habitCount={total}
+        currentSession={currentSession}
+        kidColor={kidColor}
+        lang={lang}
+      />
+
       {/* ═══ HABITS LIST — Prayer sessions FIRST, anytime LAST ═══ */}
       <div className="flex-1 min-h-0 overflow-hidden pt-1 space-y-2">
         {orderedSessions.map(sid => {
@@ -270,7 +345,7 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
               </div>
               {/* Habits list */}
               <div className="space-y-1 pl-3 border-l-2" style={{ borderColor: `${meta.color}44` }}>
-                {list.map(h => <HabitRow key={h.id} habit={h} lang={lang} />)}
+                {list.map(h => <HabitRow key={h.id} habit={h} lang={lang} isSuggested={h.id === suggestionId} />)}
               </div>
             </div>
           )
@@ -289,7 +364,7 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
               </span>
             </div>
             <div className="space-y-1 pl-3 border-l-2" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>
-              {anytime.map(h => <HabitRow key={h.id} habit={h} lang={lang} />)}
+              {anytime.map(h => <HabitRow key={h.id} habit={h} lang={lang} isSuggested={h.id === suggestionId} />)}
             </div>
           </div>
         )}
@@ -306,26 +381,191 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SuggestionCard — the "focus this one" prompt at the top of each kid card.
+// Big, pulsing, glowing card that tells the child which habit to tackle now.
+// Auto-updates whenever the suggestion changes (habit completed → new one).
+// ═══════════════════════════════════════════════════════════════════════════
+const SuggestionCard = ({ suggestion, allDone, habitCount, currentSession, kidColor, lang }) => {
+  // No habits assigned yet
+  if (habitCount === 0) return null
+
+  // All done — celebration state
+  if (allDone) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex-shrink-0 rounded-xl border-2 px-3 py-2 flex items-center gap-2.5"
+        style={{
+          background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(255,183,3,0.20))',
+          borderColor: 'rgba(0,184,148,0.55)',
+        }}>
+        <span className="text-2xl leading-none">🌟</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[9px] uppercase tracking-widest font-black" style={{ color: '#FFF8E7', opacity: 0.75 }}>
+            {lang === 'ar' ? 'الحمد لله' : lang === 'en' ? 'Alhamdulillah' : lang === 'id' ? 'Alhamdulillah' : 'Alhamdulillah'}
+          </div>
+          <div className="font-black leading-tight" style={{ color: '#FFF8E7', fontSize: 'clamp(0.9rem, 1.2vw, 1.15rem)' }}>
+            {lang === 'ar' ? 'كل المهام مكتملة!' : lang === 'en' ? 'All tasks done today!' : lang === 'id' ? 'Semua tugas selesai!' : 'Semua tugas siap hari ini!'}
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Nothing suggested (e.g. all current-window habits done, only future ones remain)
+  if (!suggestion) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex-shrink-0 rounded-xl border px-3 py-2 flex items-center gap-2.5"
+        style={{
+          background: 'rgba(255,255,255,0.06)',
+          borderColor: 'rgba(255,255,255,0.18)',
+        }}>
+        <span className="text-xl leading-none opacity-70">☕</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[9px] uppercase tracking-widest font-black" style={{ color: '#FFF8E7', opacity: 0.6 }}>
+            {lang === 'ar' ? 'استرخِ الآن' : lang === 'en' ? 'Rest a while' : lang === 'id' ? 'Istirahat dulu' : 'Rehat sekejap'}
+          </div>
+          <div className="font-black leading-tight" style={{ color: '#FFF8E7', opacity: 0.8, fontSize: 'clamp(0.8rem, 1vw, 1rem)' }}>
+            {lang === 'ar' ? 'لا مهام الآن' : lang === 'en' ? 'No task right now' : lang === 'id' ? 'Tidak ada tugas sekarang' : 'Tiada tugas sekarang'}
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Active suggestion card
+  const categoryColor = CATEGORY_DOTS[suggestion.category] || CATEGORY_DOTS.default
+  const title = suggestion.i18n?.[lang]?.title || suggestion.title
+  const isPerPrayer = inferRecurring(suggestion) === 'perPrayer'
+  const habitSession = inferSession(suggestion)
+  const sessMeta = habitSession && habitSession !== 'anytime' ? SESSION_BY_ID[habitSession] : null
+  const sessionLabel = sessMeta ? getSessionLabel(habitSession, lang) : null
+
+  const focusLabel = lang === 'ar' ? 'ركّز على هذا' :
+                     lang === 'en' ? 'Focus on this' :
+                     lang === 'id' ? 'Fokus ini' :
+                     'Fokus ini dulu'
+
+  return (
+    <motion.div
+      key={suggestion.id}
+      initial={{ opacity: 0, x: 24, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: -24 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className="flex-shrink-0 relative rounded-2xl border-2 overflow-hidden"
+      style={{
+        background: `linear-gradient(135deg, ${kidColor}30, ${kidColor}10 55%, rgba(0,0,0,0.15))`,
+        borderColor: `${kidColor}88`,
+        boxShadow: `0 0 24px ${kidColor}55, inset 0 0 0 1px ${kidColor}22`,
+      }}
+    >
+      {/* Soft pulsing glow layer — gentle, doesn't hammer paint */}
+      <motion.div
+        className="absolute inset-0 rounded-2xl pointer-events-none"
+        style={{ background: `radial-gradient(circle at 30% 40%, ${kidColor}22, transparent 60%)` }}
+        animate={{ opacity: [0.5, 1, 0.5] }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      <div className="relative flex items-center gap-3 px-3 py-2.5">
+        {/* Big habit icon in circle */}
+        <div
+          className="flex-shrink-0 rounded-2xl flex items-center justify-center"
+          style={{
+            width: 'clamp(48px, 5vw, 68px)',
+            height: 'clamp(48px, 5vw, 68px)',
+            background: `${categoryColor}33`,
+            border: `2px solid ${categoryColor}77`,
+            fontSize: 'clamp(1.5rem, 2.2vw, 2.2rem)',
+          }}
+        >
+          {suggestion.icon || '⭐'}
+        </div>
+
+        {/* Text block */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-[9px] uppercase tracking-widest font-black" style={{ color: kidColor }}>
+              🎯 {focusLabel}
+            </span>
+            {isPerPrayer && (
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-sm"
+                style={{ background: 'rgba(99,102,241,0.35)', color: '#C7D2FE' }}>
+                5×
+              </span>
+            )}
+          </div>
+          <div className="font-black leading-tight truncate" style={{ color: '#FFF8E7', fontSize: 'clamp(1rem, 1.5vw, 1.5rem)' }}>
+            {title}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-[10px] font-black" style={{ color: 'rgba(255,248,231,0.75)' }}>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ background: categoryColor }} />
+              <span>{(suggestion.category || 'ibadah').toUpperCase()}</span>
+            </span>
+            {sessionLabel && (
+              <>
+                <span className="opacity-40">·</span>
+                <span style={{ color: sessMeta?.color }}>
+                  {sessMeta?.icon} {sessionLabel.replace('Selepas ', '').replace('After ', '').replace('Setelah ', '')}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Points badge — big */}
+        <div className="flex-shrink-0 rounded-xl border-2 flex flex-col items-center justify-center px-2.5 py-1.5"
+          style={{
+            background: 'rgba(255,183,3,0.18)',
+            borderColor: 'rgba(255,183,3,0.55)',
+            minWidth: 'clamp(48px, 5vw, 66px)',
+          }}>
+          <span className="font-black leading-none tabular-nums" style={{ color: '#FFB703', fontSize: 'clamp(1.1rem, 1.6vw, 1.6rem)' }}>
+            +{suggestion.points || 0}
+          </span>
+          <span className="text-[7px] font-black uppercase tracking-widest mt-0.5" style={{ color: '#FFB703', opacity: 0.85 }}>
+            {lang === 'ar' ? 'نقطة' : lang === 'en' ? 'pts' : 'mata'}
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HabitRow — single habit line item
 // ═══════════════════════════════════════════════════════════════════════════
-const HabitRow = ({ habit, lang }) => {
+const HabitRow = ({ habit, lang, isSuggested }) => {
   const meta = STATUS_META[habit.status] || STATUS_META.pending
   const categoryColor = CATEGORY_DOTS[habit.category] || CATEGORY_DOTS.default
   const titleText = habit.i18n?.[lang]?.title || habit.title
   return (
     <motion.div
       initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3 }}
+      animate={isSuggested
+        ? { opacity: 1, x: 0, boxShadow: ['0 0 0px rgba(255,183,3,0)', '0 0 12px rgba(255,183,3,0.55)', '0 0 0px rgba(255,183,3,0)'] }
+        : { opacity: 1, x: 0 }}
+      transition={isSuggested
+        ? { duration: 2.4, repeat: Infinity, ease: 'easeInOut', x: { duration: 0.3 }, opacity: { duration: 0.3 } }
+        : { duration: 0.3 }}
       className="rounded-lg flex items-center gap-1.5 px-1.5 py-1 border"
-      style={{ background: meta.bg, borderColor: meta.ring }}
+      style={{
+        background: isSuggested ? 'rgba(255,183,3,0.14)' : meta.bg,
+        borderColor: isSuggested ? 'rgba(255,183,3,0.55)' : meta.ring,
+      }}
     >
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
-      <span className="text-[11px] font-black tabular-nums w-3.5 text-center flex-shrink-0" style={{ color: meta.text }}>
-        {meta.icon}
+      <span className="text-[11px] font-black tabular-nums w-3.5 text-center flex-shrink-0" style={{ color: isSuggested ? '#FFB703' : meta.text }}>
+        {isSuggested ? '🎯' : meta.icon}
       </span>
       <span className="text-xs flex-shrink-0">{habit.icon}</span>
-      <span className={`text-[11px] flex-1 truncate ${habit.status === 'pending' ? '' : 'line-through opacity-60'}`}
+      <span className={`text-[11px] flex-1 truncate ${habit.status === 'pending' ? '' : 'line-through opacity-60'} ${isSuggested ? 'font-black' : ''}`}
         style={{ color: '#FFF8E7' }}>
         {titleText}
       </span>

@@ -957,6 +957,20 @@ async function handleRoute(request, { params }) {
         .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1 }).toArray()
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
 
+      // Also build sessionsClaimed map for perPrayer habits (needed by TV display Suggestion Card)
+      const perPrayerClaimsForDisplay = await db.collection('habit_claims').find({
+        childId: { $in: childIds }, dateStr,
+        status: { $in: ['claimed', 'verified'] },
+        session: { $exists: true, $ne: null },
+      }).project({ _id: 0, habitId: 1, session: 1 }).toArray()
+      const sessionsClaimedByHabit = {}
+      perPrayerClaimsForDisplay.forEach(c => {
+        if (!sessionsClaimedByHabit[c.habitId]) sessionsClaimedByHabit[c.habitId] = []
+        if (!sessionsClaimedByHabit[c.habitId].includes(c.session)) {
+          sessionsClaimedByHabit[c.habitId].push(c.session)
+        }
+      })
+
       // Group habits per child with status (for Skylight-style board)
       const habitsByChildDetail = {}
       for (const h of allHabits) {
@@ -968,9 +982,11 @@ async function handleRoute(request, { params }) {
         habitsByChildDetail[h.childId].push({
           id: h.id, title: h.title, icon: h.icon || '⭐',
           category: h.category, i18n: h.i18n, status,
+          points: Number(h.points) || 0,
           session: h.session || null,
           recurring: h.recurring || (h.templateId === 'ib-10' ? 'perPrayer' : 'daily'),
           templateId: h.templateId || null,
+          sessionsClaimed: sessionsClaimedByHabit[h.id] || [],
         })
       }
       // Sort each child's habits: pending first, then done, then ihsan at top
