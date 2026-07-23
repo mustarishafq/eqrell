@@ -47,9 +47,16 @@ export default function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, o
         events: {
           onReady: (e) => {
             e.target.setVolume(volume)
+            // Force LOW video quality — this is background audio only, no need HD decode.
+            // Huge bandwidth + CPU saving for weak TV browsers (Android China etc).
+            try { e.target.setPlaybackQuality('small') } catch (_) { /* ignore */ }
             e.target.playVideo()
             wasPlayingRef.current = true
             if (onReady) onReady()
+          },
+          onPlaybackQualityChange: (e) => {
+            // YouTube auto-bumps quality — force back to small
+            try { if (e.data !== 'small') e.target.setPlaybackQuality('small') } catch (_) { /* ignore */ }
           },
           onStateChange: (e) => {
             // If ended (single video without loop), replay

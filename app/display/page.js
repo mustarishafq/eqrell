@@ -97,10 +97,12 @@ export default function DisplayPage() {
 
   // Photo slideshow rotation
   const rawPhotos = config?.photos || []
-  // Cloudinary auto-optimize: f_auto (WebP/AVIF), q_auto, w_1920 max, c_limit — fixes lag issues
+  // Cloudinary auto-optimize for weak TV browsers (Android China etc):
+  //   f_auto → WebP/AVIF, q_auto → adaptive quality, w_1280 → 720p max width,
+  //   c_limit → don't upscale small images. Big perf win vs w_1920 originals.
   const photos = rawPhotos.map(url =>
     typeof url === 'string' && url.includes('/upload/') && !url.includes('/upload/f_')
-      ? url.replace('/upload/', '/upload/f_auto,q_auto,w_1920,c_limit/')
+      ? url.replace('/upload/', '/upload/f_auto,q_auto:eco,w_1280,c_limit/')
       : url
   )
   const slideshowSec = config?.slideshowSec || 10
@@ -110,12 +112,15 @@ export default function DisplayPage() {
     return () => clearInterval(tt)
   }, [photos.length, slideshowSec])
 
-  // Preload next photo for smoother transitions
+  // Preload NEXT + AFTER-NEXT photos for smoother transitions (TV browsers need extra buffer)
   useEffect(() => {
     if (photos.length < 2) return
-    const nextIdx = (photoIdx + 1) % photos.length
-    const preloadImg = new Image()
-    preloadImg.src = photos[nextIdx]
+    for (let offset = 1; offset <= 2; offset++) {
+      const nextIdx = (photoIdx + offset) % photos.length
+      const preloadImg = new Image()
+      preloadImg.decoding = 'async'
+      preloadImg.src = photos[nextIdx]
+    }
   }, [photoIdx, photos])
 
   // Mascot bubble rotation (every 15s)
@@ -670,11 +675,14 @@ export default function DisplayPage() {
                   key={photoIdx}
                   src={photos[photoIdx]}
                   alt=""
-                  initial={{ opacity: 0, scale: 1.05 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.02 }}
-                  transition={{ duration: 1.4 }}
+                  loading="eager"
+                  decoding="async"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.8, ease: 'easeInOut' }}
                   className="absolute inset-0 w-full h-full object-cover"
+                  style={{ willChange: 'opacity' }}
                 />
               </AnimatePresence>
             ) : (
