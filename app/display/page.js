@@ -576,9 +576,10 @@ export default function DisplayPage() {
       {/* ═══ MAIN 3-COLUMN GRID — flex-1, no scroll ═══ */}
       <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
-        {/* LEFT COLUMN — Only Time+Hijri+NextPrayer (Zikir moved to floating fixed chip) */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden pb-2">
-          <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center flex-shrink-0">
+        {/* LEFT COLUMN — FLEX: Time card shrinks if space tight, Zikir NEVER shrinks (flex-shrink-0 protected) */}
+        <aside
+          className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden pb-2">
+          <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center min-h-0 overflow-hidden" style={{ flexShrink: 1 }}>
             <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)', color: '#FFF8E7' }}>{timeStr}</div>
             <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
             <div className="mt-0.5 text-xs md:text-sm text-white/70">{dateStr}</div>
@@ -604,31 +605,33 @@ export default function DisplayPage() {
           {/* Sirah/Islamic event now shown inside mascot dialog rotation — no standalone card */}
           {/* Kids progress card removed — already shown in Family Habit Board on the right */}
 
-          {/* Zikir counter — SAMA LEBAR dengan card Time, duduk terus di bawah */}
+          {/* Zikir — compact card, flex-shrink-0 (NEVER shrinks — always fully visible) */}
           {display?.zikir && (
-            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center flex-shrink-0">
+            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl px-3 py-2 text-center flex-shrink-0">
               <div className="text-[10px] uppercase tracking-widest font-black flex items-center justify-center gap-1.5" style={{ color: '#00B894' }}>
                 <motion.span
-                  className="text-base leading-none"
+                  className="text-sm leading-none"
                   animate={{ rotate: [0, -6, 6, 0] }}
                   transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>📿</motion.span>
                 {t.display_zikir_title}
               </div>
-              <motion.div
-                key={display.zikir.today}
-                initial={{ scale: 1.25 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="mt-1 font-black tabular-nums drop-shadow tracking-tight leading-none"
-                style={{ fontSize: 'clamp(2rem, 3.5vw, 4rem)', color: '#FFF8E7' }}>
-                {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
-              </motion.div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>
-                {t.display_zikir_sub_today}
+              <div className="mt-1 flex items-baseline justify-center gap-2 leading-none">
+                <motion.span
+                  key={display.zikir.today}
+                  initial={{ scale: 1.25 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.4 }}
+                  className="font-black tabular-nums drop-shadow tracking-tight"
+                  style={{ fontSize: 'clamp(1.75rem, 3vw, 3rem)', color: '#FFF8E7' }}>
+                  {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
+                </motion.span>
+                <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.75 }}>
+                  {t.display_zikir_sub_today}
+                </span>
               </div>
               {display.zikir.total > (display.zikir.today || 0) && (
-                <div className="mt-2 pt-2 border-t border-emerald-400/20 text-[10px]" style={{ color: '#FFF8E7', opacity: 0.65 }}>
-                  {t.display_zikir_sub_total}: <span className="font-bold" style={{ color: '#00B894' }}>
+                <div className="mt-0.5 text-[9px]" style={{ color: '#FFF8E7', opacity: 0.55 }}>
+                  {t.display_zikir_sub_total}: <span className="font-bold tabular-nums" style={{ color: '#00B894' }}>
                     {display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
                   </span>
                 </div>
