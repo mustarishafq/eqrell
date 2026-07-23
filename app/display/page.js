@@ -116,16 +116,17 @@ export default function DisplayPage() {
   }, [])
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
 
-  // Photo slideshow rotation
-  const rawPhotos = config?.photos || []
+  // Photo slideshow rotation — supports both legacy string[] and new {url, focalX, focalY, title}[]
+  const rawPhotos = (config?.photos || []).map(p => typeof p === 'string' ? { url: p, focalX: 50, focalY: 50, title: '' } : p).filter(p => p?.url)
   // Cloudinary auto-optimize for weak TV browsers (Android China etc):
   //   f_auto → WebP/AVIF, q_auto → adaptive quality, w_1280 → 720p max width,
   //   c_limit → don't upscale small images. Big perf win vs w_1920 originals.
-  const photos = rawPhotos.map(url =>
-    typeof url === 'string' && url.includes('/upload/') && !url.includes('/upload/f_')
-      ? url.replace('/upload/', '/upload/f_auto,q_auto:eco,w_1280,c_limit/')
-      : url
-  )
+  const photos = rawPhotos.map(p => ({
+    ...p,
+    url: typeof p.url === 'string' && p.url.includes('/upload/') && !p.url.includes('/upload/f_')
+      ? p.url.replace('/upload/', '/upload/f_auto,q_auto:eco,w_1280,c_limit/')
+      : p.url
+  }))
   const slideshowSec = config?.slideshowSec || 10
   useEffect(() => {
     if (photos.length < 2) return
@@ -140,7 +141,7 @@ export default function DisplayPage() {
       const nextIdx = (photoIdx + offset) % photos.length
       const preloadImg = new Image()
       preloadImg.decoding = 'async'
-      preloadImg.src = photos[nextIdx]
+      preloadImg.src = photos[nextIdx].url
     }
   }, [photoIdx, photos])
 
@@ -676,7 +677,7 @@ export default function DisplayPage() {
               <AnimatePresence mode="wait">
                 <motion.img
                   key={photoIdx}
-                  src={photos[photoIdx]}
+                  src={photos[photoIdx].url}
                   alt=""
                   loading="eager"
                   decoding="async"
@@ -685,7 +686,10 @@ export default function DisplayPage() {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.8, ease: 'easeInOut' }}
                   className="absolute inset-0 w-full h-full object-cover"
-                  style={{ willChange: 'opacity' }}
+                  style={{
+                    willChange: 'opacity',
+                    objectPosition: `${photos[photoIdx].focalX ?? 50}% ${photos[photoIdx].focalY ?? 50}%`,
+                  }}
                 />
               </AnimatePresence>
             ) : (
@@ -703,16 +707,20 @@ export default function DisplayPage() {
               </div>
             )}
 
-            {/* Photo overlay: family motto at bottom */}
-            {config?.familyMotto && (
-              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 pt-14">
+            {/* Photo caption/title overlay — replaces Family Motto */}
+            {hasPhotos && photos[photoIdx]?.title && (
+              <motion.div
+                key={`title-${photoIdx}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-5 pt-14">
                 <div className="text-center">
-                  <div className="text-[10px] uppercase tracking-widest font-black" style={{ color: '#FFB703' }}>✨ {lang === 'ar' ? 'شعار العائلة' : lang === 'en' ? 'Family Motto' : lang === 'id' ? 'Motto Keluarga' : 'Motto Keluarga'}</div>
-                  <div className="mt-1 text-lg md:text-xl italic font-bold drop-shadow-lg" style={{ color: '#FFF8E7' }}>
-                    “{config.familyMotto}”
+                  <div className="text-2xl md:text-3xl font-black drop-shadow-lg" style={{ color: '#FFF8E7', textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
+                    {photos[photoIdx].title}
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
           </div>
         </section>

@@ -7,6 +7,7 @@ import { useLang } from '@/lib/i18n/LangProvider'
 import { AZAN_BANK, AZAN_FAJR_BANK, getAzan } from '@/lib/azanBank'
 import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
+import PhotoEditor from '@/components/eqrel/PhotoEditor'
 import TVPreview from '@/components/eqrel/TVPreview'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
 import LocationPicker from '@/components/eqrel/LocationPicker'
@@ -16,6 +17,7 @@ export default function DisplaySetupPage() {
   const router = useRouter()
   const { t, lang } = useLang()
   const [photos, setPhotos] = useState([])
+  const [editingPhotoIdx, setEditingPhotoIdx] = useState(null)  // null | number
   const [photoInput, setPhotoInput] = useState('')
   const [slideshowSec, setSlideshowSec] = useState(10)
   const [showHabits, setShowHabits] = useState(true)
@@ -59,7 +61,8 @@ export default function DisplaySetupPage() {
         const lData = await lRes.json()
         const c = cData.config
         if (c) {
-          setPhotos(c.photos || [])
+        // Normalize photos to {url, focalX, focalY, title} objects (backward compat with legacy string[])
+        setPhotos(Array.isArray(c.photos) ? c.photos.map(p => typeof p === 'string' ? { url: p, focalX: 50, focalY: 50, title: '' } : { url: p.url, focalX: p.focalX ?? 50, focalY: p.focalY ?? 50, title: p.title || '' }).filter(p => p.url) : [])
           setSlideshowSec(c.slideshowSec || 10)
           setShowHabits(!!c.showHabits)
           setShowHadith(c.showHadith !== false)
@@ -90,7 +93,7 @@ export default function DisplaySetupPage() {
     const url = photoInput.trim()
     if (!url) return
     if (!url.startsWith('http')) { return }
-    setPhotos([...photos, url])
+    setPhotos([...photos, { url, focalX: 50, focalY: 50, title: '' }])
     setPhotoInput('')
   }
   const removePhoto = (i) => setPhotos(photos.filter((_, idx) => idx !== i))
@@ -208,7 +211,15 @@ export default function DisplaySetupPage() {
               tooLarge: t.setup_photo_toolarge,
               remove: t.setup_photo_remove,
             }}
-            onUploaded={(urls) => setPhotos(prev => [...prev, ...urls].slice(0, 20))}
+            onUploaded={(urls) => {
+              const newItems = urls.map(u => ({ url: u, focalX: 50, focalY: 50, title: '' }))
+              setPhotos(prev => {
+                const next = [...prev, ...newItems].slice(0, 20)
+                // Auto-open editor for the first newly uploaded photo
+                setTimeout(() => setEditingPhotoIdx(Math.min(prev.length, next.length - 1)), 300)
+                return next
+              })
+            }}
           />
           <div className="mt-2 grid grid-cols-1 gap-0.5 text-[10px] text-emerald-800/60">
             <div>{t.setup_photo_helper_ios}</div>
@@ -231,19 +242,32 @@ export default function DisplaySetupPage() {
             </div>
           </details>
 
-          {/* Photos grid */}
+          {/* Photos grid — each thumbnail is clickable to edit position & title */}
           {photos.length > 0 ? (
             <div className="grid grid-cols-3 gap-1.5 mt-3">
-              {photos.map((url, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-eq-cream/50 group">
-                  <img src={url} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.opacity = 0.3 }} />
-                  <button onClick={() => removePhoto(i)}
+              {photos.map((p, i) => (
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-eq-cream/50 group cursor-pointer"
+                  onClick={() => setEditingPhotoIdx(i)}>
+                  <img src={p.url} alt="" className="w-full h-full object-cover"
+                    style={{ objectPosition: `${p.focalX ?? 50}% ${p.focalY ?? 50}%` }}
+                    onError={(e) => { e.target.style.opacity = 0.3 }} />
+                  {/* Focal point indicator dot */}
+                  <div className="absolute w-3 h-3 -ml-1.5 -mt-1.5 rounded-full border-2 border-white shadow-lg pointer-events-none"
+                    style={{ left: `${p.focalX ?? 50}%`, top: `${p.focalY ?? 50}%`, background: '#00B894', boxShadow: '0 0 0 2px rgba(0,0,0,0.5)' }} />
+                  <button onClick={(e) => { e.stopPropagation(); removePhoto(i) }}
                     className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/90 text-white flex items-center justify-center shadow-md active:scale-90">
                     <Trash2 className="w-3 h-3" />
                   </button>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 py-1 text-[9px] text-white/90 font-bold">
-                    {i + 1}/{photos.length}
-                  </div>
+                  {p.title && (
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 text-[9px] font-black text-white truncate">
+                      {p.title}
+                    </div>
+                  )}
+                  {!p.title && (
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 py-1 text-[9px] text-white/70 font-bold">
+                      {i + 1}/{photos.length} · ✏️
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -429,14 +453,7 @@ export default function DisplaySetupPage() {
           )}
         </section>
 
-        {/* Family motto */}
-        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
-          <h2 className="font-extrabold text-emerald-900 text-sm mb-1">✨ {t.setup_motto_title}</h2>
-          <p className="text-[11px] text-emerald-800/60 mb-2">{t.setup_motto_sub}</p>
-          <input value={familyMotto} onChange={e => setFamilyMotto(e.target.value)} maxLength={140}
-            placeholder={t.setup_motto_placeholder}
-            className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-sm" />
-        </section>
+        {/* Family motto removed — replaced by per-photo title in PhotoEditor */}
 
         {/* Save + Preview */}
         <div className="flex gap-2 pb-6">
@@ -454,7 +471,7 @@ export default function DisplaySetupPage() {
       {/* TV Tutorial modal */}
       <TVTutorialModal open={showTVTutorial} onClose={() => setShowTVTutorial(false)} />
 
-      {/* Location Picker modal — reopenable to change city/country/method */}
+      {/* Location Picker modal */}
       <LocationPicker
         open={locationPickerOpen}
         onClose={() => setLocationPickerOpen(false)}
@@ -463,6 +480,17 @@ export default function DisplaySetupPage() {
         onSaved={(newLoc) => {
           setCurrentLocation(newLoc)
           setPrayerLocationSet(true)
+        }}
+      />
+
+      {/* Photo Editor modal — set focal point + title per photo */}
+      <PhotoEditor
+        open={editingPhotoIdx !== null}
+        photo={editingPhotoIdx !== null ? photos[editingPhotoIdx] : null}
+        onClose={() => setEditingPhotoIdx(null)}
+        lang={lang}
+        onSave={(updated) => {
+          setPhotos(prev => prev.map((p, i) => i === editingPhotoIdx ? updated : p))
         }}
       />
     </div>

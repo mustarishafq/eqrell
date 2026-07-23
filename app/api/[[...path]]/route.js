@@ -752,7 +752,22 @@ async function handleRoute(request, { params }) {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
       const body = await request.json().catch(() => ({}))
-      const photos = Array.isArray(body.photos) ? body.photos.filter(u => typeof u === 'string' && u.length < 800).slice(0, 20) : []
+      // Photos — array of {url, focalX%, focalY%, title} objects (with legacy string support)
+      const photosRaw = Array.isArray(body.photos) ? body.photos.slice(0, 20) : []
+      const photos = photosRaw
+        .map(p => {
+          if (typeof p === 'string' && p.trim() && p.length < 800) return { url: p.trim(), focalX: 50, focalY: 50, title: '' }
+          if (p && typeof p === 'object' && typeof p.url === 'string' && p.url.length < 800) {
+            return {
+              url: p.url.trim(),
+              focalX: typeof p.focalX === 'number' ? Math.max(0, Math.min(100, p.focalX)) : 50,
+              focalY: typeof p.focalY === 'number' ? Math.max(0, Math.min(100, p.focalY)) : 50,
+              title: typeof p.title === 'string' ? p.title.slice(0, 60) : '',
+            }
+          }
+          return null
+        })
+        .filter(x => x && x.url)
       const slideshowSec = Math.min(60, Math.max(3, Number(body.slideshowSec) || 10))
       const showHabits = !!body.showHabits
       const showHadith = body.showHadith !== false
