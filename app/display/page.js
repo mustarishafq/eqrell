@@ -574,8 +574,8 @@ export default function DisplayPage() {
       {/* ═══ MAIN 3-COLUMN GRID — flex-1, no scroll ═══ */}
       <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
-        {/* LEFT COLUMN — Time + Date + Hijri + Next Prayer + Kids + Zikir */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden pb-2">
+        {/* LEFT COLUMN — Time+Hijri anchored TOP, Zikir anchored BOTTOM (Zikir never clipped) */}
+        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col justify-between gap-2.5 min-h-0 overflow-hidden pb-2">
           <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center flex-shrink-0">
             <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)', color: '#FFF8E7' }}>{timeStr}</div>
             <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
