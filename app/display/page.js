@@ -484,8 +484,8 @@ export default function DisplayPage() {
 
       {/* ═══ TOP HEADER: EQrel branded logo + prayer strip + nav ═══ */}
       <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3 flex-shrink-0">
-        {/* EQrel logo — image FILLS entire card edge-to-edge, no gaps, no padding, no rounding */}
-        <div className="flex items-center bg-white h-14 overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+        {/* EQrel logo — image FILLS entire card edge-to-edge with rounded corners */}
+        <div className="flex items-center bg-white h-14 rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
           <img
             src="/eqrel-logo-full.png"
             alt="EQrel — Build Habits. Grow Iman."
