@@ -14,6 +14,7 @@ import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
 import { useWakeLock } from '@/lib/useWakeLock'
 import TVPreview from '@/components/eqrel/TVPreview'
 import HabitBoard from '@/components/eqrel/HabitBoard'
+import LocationPicker from '@/components/eqrel/LocationPicker'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
@@ -58,6 +59,7 @@ export default function DisplayPage() {
   // Prevent TV screensaver — keep screen awake while /display is mounted
   useWakeLock(true)
   const [location, setLocation] = useState(null)
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [prayers, setPrayers] = useState(null)
   const [display, setDisplay] = useState(null)
   const [photoIdx, setPhotoIdx] = useState(0)
@@ -502,9 +504,11 @@ export default function DisplayPage() {
           />
         </div>
 
-        {/* Prayer strip — no emojis, no countdown chip */}
+        {/* Prayer strip — click anywhere to change location */}
         {prayers?.timings ? (
-          <div className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 px-2 h-14 flex items-center gap-1 shadow-lg">
+          <button onClick={() => setLocationPickerOpen(true)}
+            className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 transition-colors px-2 h-14 flex items-center gap-1 shadow-lg cursor-pointer"
+            title={lang === 'ar' ? 'اضغط لتغيير الموقع' : lang === 'en' ? 'Click to change location' : 'Klik untuk tukar lokasi'}>
             {PRAYER_KEYS.map(k => {
               const isNext = nextPrayer?.key === k
               const isPassed = passedPrayers.has(k) && !isNext
@@ -520,12 +524,13 @@ export default function DisplayPage() {
                 </div>
               )
             })}
-          </div>
+          </button>
         ) : (
-          <div className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 flex items-center justify-center gap-2 px-4 h-14 shadow-lg">
+          <button onClick={() => setLocationPickerOpen(true)}
+            className="flex-1 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 transition-colors flex items-center justify-center gap-2 px-4 h-14 shadow-lg cursor-pointer animate-pulse">
             <MapPin className="w-4 h-4" style={{ color: '#FFB703' }} />
             <span className="text-sm font-bold text-white/85">{t.display_setup_cta || 'Set location'}</span>
-          </div>
+          </button>
         )}
 
         {/* Nav buttons */}
@@ -765,6 +770,22 @@ export default function DisplayPage() {
           </div>
         </div>
       )}
+
+      {/* Location Picker Modal — can be reopened multiple times */}
+      <LocationPicker
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        currentLocation={location}
+        lang={lang}
+        onSaved={async (newLoc) => {
+          setLocation(newLoc)
+          // Re-fetch prayer times with new location
+          try {
+            const pRes = await fetch('/api/family/prayer-times', { credentials: 'include' })
+            if (pRes.ok) setPrayers(await pRes.json())
+          } catch (_) { /* ignore */ }
+        }}
+      />
     </div>
   )
 }

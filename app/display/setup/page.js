@@ -9,6 +9,7 @@ import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
 import TVPreview from '@/components/eqrel/TVPreview'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
+import LocationPicker from '@/components/eqrel/LocationPicker'
 import { QURAN_RECITERS, SURAH_LIST, ISLAMIC_PLAYLISTS, buildQuranUrl, buildIslamicPlaylist, resolveCustomPlaylist } from '@/lib/audioLibrary'
 
 export default function DisplaySetupPage() {
@@ -22,6 +23,8 @@ export default function DisplaySetupPage() {
   const [showDoa, setShowDoa] = useState(true)
   const [familyMotto, setFamilyMotto] = useState('')
   const [prayerLocationSet, setPrayerLocationSet] = useState(false)
+  const [currentLocation, setCurrentLocation] = useState(null)
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   // Azan
@@ -78,6 +81,7 @@ export default function DisplaySetupPage() {
           setBgAudioVolume(typeof c.bgAudioVolume === 'number' ? c.bgAudioVolume : 25)
         }
         setPrayerLocationSet(!!lData.location)
+        setCurrentLocation(lData.location || null)
       } finally { setLoading(false) }
     })()
   }, [])
@@ -173,13 +177,17 @@ export default function DisplaySetupPage() {
           </div>
         )}
 
-        {/* Prayer location shortcut */}
-        <button onClick={() => router.push('/display')}
-          className={`w-full mb-4 rounded-2xl border-2 p-3 flex items-center gap-3 ${prayerLocationSet ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-300'}`}>
+        {/* Prayer location — opens picker modal (can change multiple times) */}
+        <button onClick={() => setLocationPickerOpen(true)}
+          className={`w-full mb-4 rounded-2xl border-2 p-3 flex items-center gap-3 ${prayerLocationSet ? 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' : 'bg-amber-50 border-amber-300 hover:bg-amber-100 animate-pulse'} transition-colors`}>
           <MapPin className="w-5 h-5 text-emerald-700 flex-shrink-0" />
           <div className="flex-1 text-left">
             <div className="font-extrabold text-sm text-emerald-900">{t.setup_prayer_loc}</div>
-            <div className="text-[11px] text-emerald-800/70">{prayerLocationSet ? t.setup_prayer_set : t.setup_prayer_notset}</div>
+            <div className="text-[11px] text-emerald-800/70">
+              {prayerLocationSet
+                ? `✓ ${currentLocation?.city || ''}, ${currentLocation?.country || ''} — ${lang === 'ar' ? 'اضغط للتغيير' : lang === 'en' ? 'tap to change' : 'ketuk untuk tukar'}`
+                : t.setup_prayer_notset}
+            </div>
           </div>
           <span className="text-emerald-700">→</span>
         </button>
@@ -445,6 +453,18 @@ export default function DisplaySetupPage() {
 
       {/* TV Tutorial modal */}
       <TVTutorialModal open={showTVTutorial} onClose={() => setShowTVTutorial(false)} />
+
+      {/* Location Picker modal — reopenable to change city/country/method */}
+      <LocationPicker
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        currentLocation={currentLocation}
+        lang={lang}
+        onSaved={(newLoc) => {
+          setCurrentLocation(newLoc)
+          setPrayerLocationSet(true)
+        }}
+      />
     </div>
   )
 }
