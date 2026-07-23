@@ -71,22 +71,43 @@ export default memo(function YouTubeBgPlayer({ url, enabled, volume, audioUnlock
 })
 
 // ═══════════ MODE A: Direct MP3/audio (lightweight — best for weak TV browsers) ═══════════
+// Supports auto-next-surah for MP3Quran URLs (e.g. .../sds/001.mp3 → 002.mp3 → ... → 114.mp3 → 001.mp3)
+const MP3QURAN_RE = /(https?:\/\/[^\s]*mp3quran\.net\/[^/]+\/)(\d{3})\.mp3/i
+
 function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan }) {
   const audioRef = useRef(null)
   const wasPlayingRef = useRef(false)
+  const [currentUrl, setCurrentUrl] = useState(url)
+
+  // Sync currentUrl when parent URL changes
+  useEffect(() => { setCurrentUrl(url) }, [url])
+
+  // Auto-next-surah when Quran track ends (MP3Quran URL detected)
+  const handleEnded = () => {
+    const m = currentUrl?.match(MP3QURAN_RE)
+    if (m) {
+      const base = m[1]
+      const cur = parseInt(m[2], 10)
+      const next = cur >= 114 ? 1 : cur + 1
+      const nextUrl = `${base}${String(next).padStart(3, '0')}.mp3`
+      setCurrentUrl(nextUrl)
+    }
+    // For non-Quran URLs, HTML5 loop attribute handles repeat.
+  }
 
   useEffect(() => {
-    if (!enabled || !audioUnlocked || !url) return
+    if (!enabled || !audioUnlocked || !currentUrl) return
     const a = audioRef.current
     if (!a) return
     a.volume = (volume ?? 25) / 100
-    a.loop = true
+    // Only loop for non-Quran (single-track) URLs; Quran uses auto-next instead
+    a.loop = !MP3QURAN_RE.test(currentUrl)
     a.play().then(() => {
       wasPlayingRef.current = true
       if (onReady) onReady()
     }).catch(() => { /* autoplay blocked — user must unlock */ })
     return () => { try { a.pause() } catch (_) { /* ignore */ } }
-  }, [enabled, audioUnlocked, url])
+  }, [enabled, audioUnlocked, currentUrl])
 
   // Volume changes
   useEffect(() => {
@@ -100,16 +121,17 @@ function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckF
     if (!a) return
     try {
       if (duckForAzan) { a.pause() }
-      else if (wasPlayingRef.current) { a.play().catch(() => {}) }
+      else if (wasPlayingRef.current) { a.play().catch(() => { /* ignore */ }) }
     } catch (_) { /* ignore */ }
   }, [duckForAzan])
 
-  if (!enabled || !audioUnlocked || !url) return null
+  if (!enabled || !audioUnlocked || !currentUrl) return null
 
   return (
     <audio
       ref={audioRef}
-      src={url}
+      src={currentUrl}
+      onEnded={handleEnded}
       preload="auto"
       style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', bottom: 0, right: 0 }}
     />

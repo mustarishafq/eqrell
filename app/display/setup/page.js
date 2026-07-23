@@ -9,6 +9,7 @@ import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
 import TVPreview from '@/components/eqrel/TVPreview'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
+import { QURAN_RECITERS, SURAH_LIST, SELAWAT_LIBRARY, buildQuranUrl, buildFullQuranPlaylist } from '@/lib/audioLibrary'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -310,39 +311,18 @@ export default function DisplaySetupPage() {
           )}
         </section>
 
-        {/* Background Audio (YouTube) */}
+        {/* Background Audio — Quran + Selawat + Custom URL */}
         <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
           <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
-            <span>🎵</span> {t.setup_bg_audio_title}
+            <span>🎵</span> {lang === 'ar' ? 'الصوت الخلفي' : lang === 'en' ? 'Background Audio' : 'Audio Latar Belakang'}
           </h2>
-          <p className="text-[11px] text-emerald-800/60 mb-3">{t.setup_bg_audio_sub}</p>
+          <p className="text-[11px] text-emerald-800/60 mb-3">
+            {lang === 'ar' ? 'Al-Quran / صلوات — بث مباشر بدون تخزين مؤقت' :
+             lang === 'en' ? 'Al-Quran / Selawat — direct MP3 stream, zero buffering' :
+             'Al-Quran / Selawat — direct MP3, tiada buffering'}
+          </p>
           <ToggleRow label={t.setup_bg_audio_enable} desc="" value={bgAudioEnabled} onChange={setBgAudioEnabled} />
-          {bgAudioEnabled && (
-            <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
-                  {t.setup_bg_audio_url}
-                </label>
-                <input value={bgAudioUrl} onChange={e => setBgAudioUrl(e.target.value)}
-                  placeholder="MP3 URL (best for TV) or YouTube URL"
-                  className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
-                <p className="text-[10px] text-emerald-800/60 mt-1 italic">
-                  💡 {t.setup_bg_audio_helper}
-                </p>
-                <p className="text-[10px] text-amber-700 mt-1 leading-snug">
-                  📺 <b>Untuk TV lemah / Android China:</b> guna direct MP3 URL (.mp3, .ogg) — 90% lebih ringan dari YouTube. YouTube kerap buffering pada TV browser.
-                </p>
-              </div>
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
-                  {t.setup_bg_audio_volume}: <span className="text-emerald-700">{bgAudioVolume}%</span>
-                </label>
-                <input type="range" min={0} max={100} value={bgAudioVolume}
-                  onChange={e => setBgAudioVolume(Number(e.target.value))}
-                  className="w-full accent-emerald-500 mt-1" />
-              </div>
-            </div>
-          )}
+          {bgAudioEnabled && <BgAudioPicker url={bgAudioUrl} setUrl={setBgAudioUrl} volume={bgAudioVolume} setVolume={setBgAudioVolume} lang={lang} />}
         </section>
 
         {/* Toggles */}
@@ -541,3 +521,184 @@ const ToggleRow = ({ label, desc, value, onChange }) => (
     </button>
   </div>
 )
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BgAudioPicker — Tabbed picker for Quran / Selawat / Custom URL
+// Direct MP3 sources, zero YouTube overhead
+// ═══════════════════════════════════════════════════════════════════════════
+const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
+  const [tab, setTab] = useState(() => {
+    // Auto-detect current tab from url
+    if (!url) return 'quran'
+    if (url.includes('mp3quran.net')) return 'quran'
+    if (SELAWAT_LIBRARY.some(s => s.url === url)) return 'selawat'
+    return 'url'
+  })
+  const [reciterId, setReciterId] = useState('sudais')
+  const [surahMode, setSurahMode] = useState('full')  // 'full' | 'single'
+  const [surahNumber, setSurahNumber] = useState(36)   // default Yasin
+  const [selawatId, setSelawatId] = useState('selawat_nabi')
+  const [customUrl, setCustomUrl] = useState('')
+  const previewAudioRef = useRef(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  // Apply picker → build final URL & propagate to parent
+  const apply = () => {
+    let finalUrl = ''
+    if (tab === 'quran') {
+      finalUrl = surahMode === 'single' ? buildQuranUrl(reciterId, surahNumber) : buildQuranUrl(reciterId, 1)
+    } else if (tab === 'selawat') {
+      const s = SELAWAT_LIBRARY.find(x => x.id === selawatId)
+      finalUrl = s?.url || ''
+    } else {
+      finalUrl = customUrl
+    }
+    if (finalUrl) setUrl(finalUrl)
+  }
+
+  useEffect(() => { apply() }, [tab, reciterId, surahMode, surahNumber, selawatId, customUrl])
+
+  const preview = async () => {
+    if (!url) return
+    try {
+      if (previewing && previewAudioRef.current) {
+        previewAudioRef.current.pause()
+        setPreviewing(false)
+        return
+      }
+      const a = new Audio(url)
+      a.volume = 0.6
+      previewAudioRef.current = a
+      await a.play()
+      setPreviewing(true)
+      a.onended = () => setPreviewing(false)
+    } catch (e) { console.error('Preview error', e) }
+  }
+
+  // Group reciters
+  const haramList = QURAN_RECITERS.filter(r => r.masjid === 'haram')
+  const nabawiList = QURAN_RECITERS.filter(r => r.masjid === 'nabawi')
+  const otherList = QURAN_RECITERS.filter(r => !r.masjid)
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
+      {/* Tab bar */}
+      <div className="flex gap-1 bg-eq-cream/40 rounded-lg p-1">
+        {[
+          { k: 'quran', label: '🎙 ' + (lang === 'ar' ? 'القرآن' : lang === 'en' ? 'Al-Quran' : 'Al-Quran'), sub: '' },
+          { k: 'selawat', label: '🕌 ' + (lang === 'ar' ? 'صلوات' : 'Selawat / Zikir'), sub: '' },
+          { k: 'url', label: '🔗 ' + (lang === 'ar' ? 'رابط' : lang === 'en' ? 'Custom URL' : 'URL'), sub: '' },
+        ].map(x => (
+          <button key={x.k} onClick={() => setTab(x.k)}
+            className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${tab === x.k ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-800/60'}`}>
+            {x.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {tab === 'quran' && (
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+            {lang === 'ar' ? 'القارئ' : lang === 'en' ? 'Reciter' : 'Qari'}
+          </label>
+          <select value={reciterId} onChange={e => setReciterId(e.target.value)}
+            className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white">
+            <optgroup label={lang === 'ar' ? '🕋 أئمة الحرم المكي' : '🕋 Imam Masjid Al-Haram (Makkah)'}>
+              {haramList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </optgroup>
+            <optgroup label={lang === 'ar' ? '🕌 أئمة المسجد النبوي' : '🕌 Imam Masjid An-Nabawi (Madinah)'}>
+              {nabawiList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </optgroup>
+            <optgroup label={lang === 'ar' ? '⭐ قراء مشهورون' : '⭐ Popular Reciters'}>
+              {otherList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </optgroup>
+          </select>
+
+          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 block mt-3">
+            {lang === 'ar' ? 'الوضع' : lang === 'en' ? 'Mode' : 'Mod'}
+          </label>
+          <div className="flex gap-2 text-xs">
+            <label className="flex-1 flex items-center gap-2 p-2 border-2 border-eq-cream rounded-lg cursor-pointer hover:bg-eq-cream/30">
+              <input type="radio" checked={surahMode === 'full'} onChange={() => setSurahMode('full')} className="accent-emerald-500" />
+              <div>
+                <div className="font-bold text-emerald-900">{lang === 'ar' ? 'القرآن الكامل' : lang === 'en' ? 'Full Quran' : 'Al-Quran Penuh'}</div>
+                <div className="text-[10px] text-emerald-800/60">{lang === 'ar' ? 'من الفاتحة إلى الناس' : 'Auto-play surah 1 → 114'}</div>
+              </div>
+            </label>
+            <label className="flex-1 flex items-center gap-2 p-2 border-2 border-eq-cream rounded-lg cursor-pointer hover:bg-eq-cream/30">
+              <input type="radio" checked={surahMode === 'single'} onChange={() => setSurahMode('single')} className="accent-emerald-500" />
+              <div>
+                <div className="font-bold text-emerald-900">{lang === 'ar' ? 'سورة واحدة' : lang === 'en' ? 'Single Surah' : 'Satu Surah'}</div>
+                <div className="text-[10px] text-emerald-800/60">{lang === 'ar' ? 'يعاد تشغيلها' : 'Loop on repeat'}</div>
+              </div>
+            </label>
+          </div>
+          {surahMode === 'single' && (
+            <select value={surahNumber} onChange={e => setSurahNumber(Number(e.target.value))}
+              className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white mt-1">
+              {SURAH_LIST.map(s => (
+                <option key={s.n} value={s.n}>
+                  {String(s.n).padStart(3, '0')}. {lang === 'ar' ? s.ar : lang === 'en' ? s.en : s.ms}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {tab === 'selawat' && (
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+            {lang === 'ar' ? 'اختر' : lang === 'en' ? 'Choose' : 'Pilih'}
+          </label>
+          <select value={selawatId} onChange={e => setSelawatId(e.target.value)}
+            className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white">
+            {SELAWAT_LIBRARY.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.title[lang] || s.title.ms} — {s.reciter}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {tab === 'url' && (
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
+            {lang === 'ar' ? 'رابط MP3' : 'MP3 URL'}
+          </label>
+          <input value={customUrl} onChange={e => setCustomUrl(e.target.value)}
+            placeholder="https://.../file.mp3"
+            className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
+          <p className="text-[10px] text-emerald-800/60 mt-1 italic">
+            {lang === 'ar' ? 'روابط MP3 مباشرة فقط (.mp3, .ogg, .m4a)' :
+             lang === 'en' ? 'Direct MP3 URLs only (.mp3, .ogg, .m4a) — no YouTube' :
+             'Direct MP3 URL sahaja (.mp3, .ogg, .m4a) — bukan YouTube'}
+          </p>
+        </div>
+      )}
+
+      {/* Preview + Volume */}
+      <div className="flex items-center gap-2 pt-2 border-t border-eq-cream">
+        <button type="button" onClick={preview}
+          className={`px-3 py-2 rounded-lg text-xs font-bold shadow transition-all ${previewing ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}>
+          {previewing ? '⏸ ' + (lang === 'ar' ? 'إيقاف' : 'Stop') : '▶️ ' + (lang === 'ar' ? 'معاينة' : 'Preview')}
+        </button>
+        <div className="flex-1">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/70">
+            🔊 {volume}%
+          </label>
+          <input type="range" min={0} max={100} value={volume}
+            onChange={e => setVolume(Number(e.target.value))}
+            className="w-full accent-emerald-500" />
+        </div>
+      </div>
+      {url && (
+        <div className="text-[9px] text-emerald-800/50 font-mono break-all">
+          🔗 {url}
+        </div>
+      )}
+    </div>
+  )
+}
