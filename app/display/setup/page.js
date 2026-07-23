@@ -9,7 +9,7 @@ import { BRAND } from '@/lib/brand'
 import PhotoUploader from '@/components/eqrel/PhotoUploader'
 import TVPreview from '@/components/eqrel/TVPreview'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
-import { QURAN_RECITERS, SURAH_LIST, SELAWAT_LIBRARY, buildQuranUrl, buildFullQuranPlaylist } from '@/lib/audioLibrary'
+import { QURAN_RECITERS, SURAH_LIST, ISLAMIC_PLAYLISTS, buildQuranUrl, buildIslamicPlaylist, resolveCustomPlaylist } from '@/lib/audioLibrary'
 
 export default function DisplaySetupPage() {
   const router = useRouter()
@@ -39,6 +39,7 @@ export default function DisplaySetupPage() {
   // Background audio
   const [bgAudioEnabled, setBgAudioEnabled] = useState(false)
   const [bgAudioUrl, setBgAudioUrl] = useState('')
+  const [bgAudioPlaylist, setBgAudioPlaylist] = useState([])  // array of resolved {url, title, ...} items
   const [bgAudioVolume, setBgAudioVolume] = useState(25)
   const [previewingId, setPreviewingId] = useState(null)
   const [showTVTutorial, setShowTVTutorial] = useState(false)
@@ -73,6 +74,7 @@ export default function DisplaySetupPage() {
           setDimLevel(typeof c.dimLevel === 'number' ? c.dimLevel : 30)
           setBgAudioEnabled(!!c.bgAudioEnabled)
           setBgAudioUrl(c.bgAudioUrl || '')
+          setBgAudioPlaylist(Array.isArray(c.bgAudioPlaylist) ? c.bgAudioPlaylist : [])
           setBgAudioVolume(typeof c.bgAudioVolume === 'number' ? c.bgAudioVolume : 25)
         }
         setPrayerLocationSet(!!lData.location)
@@ -100,7 +102,7 @@ export default function DisplaySetupPage() {
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
         dimEnabled, dimStartHour, dimEndHour, dimLevel,
-        bgAudioEnabled, bgAudioUrl, bgAudioVolume,
+        bgAudioEnabled, bgAudioUrl, bgAudioPlaylist, bgAudioVolume,
       }),
     })
     if (r.ok) {
@@ -322,7 +324,7 @@ export default function DisplaySetupPage() {
              'Al-Quran / Selawat — direct MP3, tiada buffering'}
           </p>
           <ToggleRow label={t.setup_bg_audio_enable} desc="" value={bgAudioEnabled} onChange={setBgAudioEnabled} />
-          {bgAudioEnabled && <BgAudioPicker url={bgAudioUrl} setUrl={setBgAudioUrl} volume={bgAudioVolume} setVolume={setBgAudioVolume} lang={lang} />}
+          {bgAudioEnabled && <BgAudioPicker url={bgAudioUrl} setUrl={setBgAudioUrl} playlist={bgAudioPlaylist} setPlaylist={setBgAudioPlaylist} volume={bgAudioVolume} setVolume={setBgAudioVolume} lang={lang} />}
         </section>
 
         {/* Toggles */}
@@ -523,40 +525,54 @@ const ToggleRow = ({ label, desc, value, onChange }) => (
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BgAudioPicker — Tabbed picker for Quran / Selawat / Custom URL
+// BgAudioPicker — 4-tab picker: Quran / Preset / Custom Playlist / URL
 // Direct MP3 sources, zero YouTube overhead
+// Emits: url (single) + playlist (array of {url, title, surah?, reciter?})
 // ═══════════════════════════════════════════════════════════════════════════
-const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
+const BgAudioPicker = ({ url, setUrl, playlist, setPlaylist, volume, setVolume, lang }) => {
   const [tab, setTab] = useState(() => {
-    // Auto-detect current tab from url
+    if (Array.isArray(playlist) && playlist.length > 1) return 'playlist'
+    if (url?.includes('mp3quran.net')) return 'quran'
     if (!url) return 'quran'
-    if (url.includes('mp3quran.net')) return 'quran'
-    if (SELAWAT_LIBRARY.some(s => s.url === url)) return 'selawat'
     return 'url'
   })
+  // Quran tab state
   const [reciterId, setReciterId] = useState('sudais')
   const [surahMode, setSurahMode] = useState('full')  // 'full' | 'single'
-  const [surahNumber, setSurahNumber] = useState(36)   // default Yasin
-  const [selawatId, setSelawatId] = useState('selawat_nabi')
-  const [customUrl, setCustomUrl] = useState('')
+  const [surahNumber, setSurahNumber] = useState(36)
+  // Preset tab state
+  const [presetId, setPresetId] = useState('jumaat')
+  const [presetReciter, setPresetReciter] = useState('')  // '' = use recommended
+  // Custom playlist tab state — array of items
+  const [customItems, setCustomItems] = useState(() => Array.isArray(playlist) ? playlist.map(p => ({ ...p })) : [])
+  const [pickerReciter, setPickerReciter] = useState('sudais')
+  const [pickerSurah, setPickerSurah] = useState(1)
+  // URL tab state
+  const [customUrl, setCustomUrl] = useState(url && !url.includes('mp3quran.net') ? url : '')
   const previewAudioRef = useRef(null)
   const [previewing, setPreviewing] = useState(false)
 
-  // Apply picker → build final URL & propagate to parent
-  const apply = () => {
+  // Apply picker → build final URL + playlist
+  useEffect(() => {
     let finalUrl = ''
+    let finalPlaylist = []
     if (tab === 'quran') {
-      finalUrl = surahMode === 'single' ? buildQuranUrl(reciterId, surahNumber) : buildQuranUrl(reciterId, 1)
-    } else if (tab === 'selawat') {
-      const s = SELAWAT_LIBRARY.find(x => x.id === selawatId)
-      finalUrl = s?.url || ''
-    } else {
+      const u = buildQuranUrl(reciterId, surahMode === 'single' ? surahNumber : 1)
+      finalUrl = u || ''
+      finalPlaylist = surahMode === 'full' && u ? [] : []  // full uses auto-next in player (MP3Quran regex)
+    } else if (tab === 'preset') {
+      const rid = presetReciter || ISLAMIC_PLAYLISTS.find(x => x.id === presetId)?.recommendedReciter
+      finalPlaylist = buildIslamicPlaylist(presetId, rid)
+      finalUrl = finalPlaylist[0]?.url || ''
+    } else if (tab === 'playlist') {
+      finalPlaylist = resolveCustomPlaylist(customItems)
+      finalUrl = finalPlaylist[0]?.url || ''
+    } else if (tab === 'url') {
       finalUrl = customUrl
     }
-    if (finalUrl) setUrl(finalUrl)
-  }
-
-  useEffect(() => { apply() }, [tab, reciterId, surahMode, surahNumber, selawatId, customUrl])
+    setUrl(finalUrl)
+    setPlaylist(finalPlaylist)
+  }, [tab, reciterId, surahMode, surahNumber, presetId, presetReciter, customItems, customUrl])
 
   const preview = async () => {
     if (!url) return
@@ -575,28 +591,49 @@ const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
     } catch (e) { console.error('Preview error', e) }
   }
 
-  // Group reciters
+  // Custom playlist actions
+  const addCustomItem = () => {
+    const item = { type: 'surah', reciterId: pickerReciter, surahNumber: pickerSurah, title: SURAH_LIST.find(s => s.n === pickerSurah)?.ms + ' — ' + QURAN_RECITERS.find(r => r.id === pickerReciter)?.name }
+    setCustomItems(prev => [...prev, item])
+  }
+  const removeCustomItem = (idx) => setCustomItems(prev => prev.filter((_, i) => i !== idx))
+  const moveCustomItem = (idx, dir) => {
+    setCustomItems(prev => {
+      const arr = [...prev]
+      const newIdx = idx + dir
+      if (newIdx < 0 || newIdx >= arr.length) return arr
+      ;[arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]]
+      return arr
+    })
+  }
+  const addPresetToCustom = () => {
+    setCustomItems(prev => [...prev, { type: 'preset', playlistId: presetId, reciterId: presetReciter || undefined, title: ISLAMIC_PLAYLISTS.find(p => p.id === presetId)?.title.ms }])
+  }
+
   const haramList = QURAN_RECITERS.filter(r => r.masjid === 'haram')
   const nabawiList = QURAN_RECITERS.filter(r => r.masjid === 'nabawi')
   const otherList = QURAN_RECITERS.filter(r => !r.masjid)
 
+  const l = (o) => o[lang] || o.ms
+
   return (
     <div className="mt-3 space-y-3 border-t border-eq-cream pt-3">
       {/* Tab bar */}
-      <div className="flex gap-1 bg-eq-cream/40 rounded-lg p-1">
+      <div className="flex flex-wrap gap-1 bg-eq-cream/40 rounded-lg p-1">
         {[
-          { k: 'quran', label: '🎙 ' + (lang === 'ar' ? 'القرآن' : lang === 'en' ? 'Al-Quran' : 'Al-Quran'), sub: '' },
-          { k: 'selawat', label: '🕌 ' + (lang === 'ar' ? 'صلوات' : 'Selawat / Zikir'), sub: '' },
-          { k: 'url', label: '🔗 ' + (lang === 'ar' ? 'رابط' : lang === 'en' ? 'Custom URL' : 'URL'), sub: '' },
+          { k: 'quran',    label: '🎙 ' + (lang === 'ar' ? 'قرآن' : 'Al-Quran') },
+          { k: 'preset',   label: '📚 ' + (lang === 'ar' ? 'مجموعات' : lang === 'en' ? 'Presets' : 'Preset') },
+          { k: 'playlist', label: '🎧 ' + (lang === 'ar' ? 'قائمتي' : lang === 'en' ? 'My Playlist' : 'Playlist Saya') },
+          { k: 'url',      label: '🔗 ' + (lang === 'ar' ? 'رابط' : 'URL') },
         ].map(x => (
           <button key={x.k} onClick={() => setTab(x.k)}
-            className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${tab === x.k ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-800/60'}`}>
+            className={`flex-1 min-w-[80px] py-1.5 rounded-md text-[11px] font-bold transition-all ${tab === x.k ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-800/60'}`}>
             {x.label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* ═══ QURAN TAB ═══ */}
       {tab === 'quran' && (
         <div className="space-y-2">
           <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
@@ -604,39 +641,35 @@ const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
           </label>
           <select value={reciterId} onChange={e => setReciterId(e.target.value)}
             className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white">
-            <optgroup label={lang === 'ar' ? '🕋 أئمة الحرم المكي' : '🕋 Imam Masjid Al-Haram (Makkah)'}>
+            <optgroup label={lang === 'ar' ? '🕋 أئمة الحرم المكي' : '🕋 Imam Masjid Al-Haram'}>
               {haramList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </optgroup>
-            <optgroup label={lang === 'ar' ? '🕌 أئمة المسجد النبوي' : '🕌 Imam Masjid An-Nabawi (Madinah)'}>
+            <optgroup label={lang === 'ar' ? '🕌 أئمة المسجد النبوي' : '🕌 Imam Masjid An-Nabawi'}>
               {nabawiList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </optgroup>
             <optgroup label={lang === 'ar' ? '⭐ قراء مشهورون' : '⭐ Popular Reciters'}>
               {otherList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </optgroup>
           </select>
-
-          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 block mt-3">
-            {lang === 'ar' ? 'الوضع' : lang === 'en' ? 'Mode' : 'Mod'}
-          </label>
-          <div className="flex gap-2 text-xs">
+          <div className="flex gap-2 text-xs mt-2">
             <label className="flex-1 flex items-center gap-2 p-2 border-2 border-eq-cream rounded-lg cursor-pointer hover:bg-eq-cream/30">
               <input type="radio" checked={surahMode === 'full'} onChange={() => setSurahMode('full')} className="accent-emerald-500" />
               <div>
                 <div className="font-bold text-emerald-900">{lang === 'ar' ? 'القرآن الكامل' : lang === 'en' ? 'Full Quran' : 'Al-Quran Penuh'}</div>
-                <div className="text-[10px] text-emerald-800/60">{lang === 'ar' ? 'من الفاتحة إلى الناس' : 'Auto-play surah 1 → 114'}</div>
+                <div className="text-[10px] text-emerald-800/60">1 → 114 auto</div>
               </div>
             </label>
             <label className="flex-1 flex items-center gap-2 p-2 border-2 border-eq-cream rounded-lg cursor-pointer hover:bg-eq-cream/30">
               <input type="radio" checked={surahMode === 'single'} onChange={() => setSurahMode('single')} className="accent-emerald-500" />
               <div>
                 <div className="font-bold text-emerald-900">{lang === 'ar' ? 'سورة واحدة' : lang === 'en' ? 'Single Surah' : 'Satu Surah'}</div>
-                <div className="text-[10px] text-emerald-800/60">{lang === 'ar' ? 'يعاد تشغيلها' : 'Loop on repeat'}</div>
+                <div className="text-[10px] text-emerald-800/60">Loop repeat</div>
               </div>
             </label>
           </div>
           {surahMode === 'single' && (
             <select value={surahNumber} onChange={e => setSurahNumber(Number(e.target.value))}
-              className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white mt-1">
+              className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white">
               {SURAH_LIST.map(s => (
                 <option key={s.n} value={s.n}>
                   {String(s.n).padStart(3, '0')}. {lang === 'ar' ? s.ar : lang === 'en' ? s.en : s.ms}
@@ -647,22 +680,103 @@ const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
         </div>
       )}
 
-      {tab === 'selawat' && (
+      {/* ═══ PRESET PLAYLIST TAB ═══ */}
+      {tab === 'preset' && (
         <div className="space-y-2">
           <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
-            {lang === 'ar' ? 'اختر' : lang === 'en' ? 'Choose' : 'Pilih'}
+            {lang === 'ar' ? 'اختر المناسبة' : lang === 'en' ? 'Choose Occasion' : 'Pilih Kegunaan'}
           </label>
-          <select value={selawatId} onChange={e => setSelawatId(e.target.value)}
-            className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs bg-white">
-            {SELAWAT_LIBRARY.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.title[lang] || s.title.ms} — {s.reciter}
-              </option>
+          <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto">
+            {ISLAMIC_PLAYLISTS.map(p => (
+              <button key={p.id} onClick={() => setPresetId(p.id)}
+                className={`text-left p-2 rounded-lg border-2 transition-all ${presetId === p.id ? 'border-emerald-500 bg-emerald-50' : 'border-eq-cream bg-white hover:bg-emerald-50/50'}`}>
+                <div className="flex items-start gap-1.5">
+                  <span className="text-base flex-shrink-0">{p.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-black text-emerald-900 leading-tight">{l(p.title)}</div>
+                    <div className="text-[9px] text-emerald-800/60 leading-tight line-clamp-2">{l(p.desc)}</div>
+                    <div className="text-[8px] text-emerald-700/80 mt-0.5">{p.surahs.length} {lang === 'ar' ? 'سور' : 'surah'}</div>
+                  </div>
+                </div>
+              </button>
             ))}
-          </select>
+          </div>
+          <div className="mt-2">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/70 block mb-1">
+              {lang === 'ar' ? 'تغيير القارئ' : lang === 'en' ? 'Override Reciter (optional)' : 'Tukar Qari (opsyenal)'}
+            </label>
+            <select value={presetReciter} onChange={e => setPresetReciter(e.target.value)}
+              className="w-full rounded-xl border-2 border-eq-cream px-3 py-1.5 text-xs bg-white">
+              <option value="">{lang === 'ar' ? 'مقترح' : lang === 'en' ? 'Recommended' : 'Guna cadangan'}</option>
+              {QURAN_RECITERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
+      {/* ═══ CUSTOM PLAYLIST BUILDER TAB ═══ */}
+      {tab === 'playlist' && (
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">
+            {lang === 'ar' ? 'أضف سورة' : lang === 'en' ? 'Add Surah to Playlist' : 'Tambah Surah ke Playlist'}
+          </label>
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5">
+            <select value={pickerReciter} onChange={e => setPickerReciter(e.target.value)}
+              className="rounded-xl border-2 border-eq-cream px-2 py-1.5 text-[11px] bg-white">
+              {QURAN_RECITERS.map(r => <option key={r.id} value={r.id}>{r.name.replace('Sheikh ', '').substring(0, 22)}</option>)}
+            </select>
+            <select value={pickerSurah} onChange={e => setPickerSurah(Number(e.target.value))}
+              className="rounded-xl border-2 border-eq-cream px-2 py-1.5 text-[11px] bg-white">
+              {SURAH_LIST.map(s => (
+                <option key={s.n} value={s.n}>{String(s.n).padStart(3, '0')}. {lang === 'ar' ? s.ar : s.ms}</option>
+              ))}
+            </select>
+            <button type="button" onClick={addCustomItem}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm shadow">
+              +
+            </button>
+          </div>
+
+          {/* Quick add: preset playlist */}
+          <div className="flex gap-1.5 items-center pt-1 border-t border-eq-cream/50">
+            <select value={presetId} onChange={e => setPresetId(e.target.value)}
+              className="flex-1 rounded-xl border-2 border-eq-cream px-2 py-1.5 text-[11px] bg-white">
+              {ISLAMIC_PLAYLISTS.map(p => <option key={p.id} value={p.id}>{p.icon} {l(p.title)}</option>)}
+            </select>
+            <button type="button" onClick={addPresetToCustom}
+              className="px-2 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] shadow">
+              + {lang === 'ar' ? 'مجموعة' : 'Preset'}
+            </button>
+          </div>
+
+          {/* Current playlist items */}
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1">
+              📝 {customItems.length} {lang === 'ar' ? 'عنصر' : lang === 'en' ? 'items' : 'item'} — {resolveCustomPlaylist(customItems).length} {lang === 'ar' ? 'مسار' : 'tracks'}
+            </div>
+            {customItems.length === 0 && (
+              <div className="text-[10px] italic text-emerald-800/40 text-center py-3">
+                {lang === 'ar' ? 'قائمة فارغة — أضف سورة أو مجموعة أعلاه' : lang === 'en' ? 'Empty — add surahs or presets above' : 'Kosong — tambah surah atau preset di atas'}
+              </div>
+            )}
+            {customItems.map((it, i) => (
+              <div key={i} className="flex items-center gap-1 p-1.5 bg-white border border-eq-cream rounded-lg">
+                <span className="text-[9px] text-emerald-800/50 w-5 tabular-nums">{i + 1}.</span>
+                <span className="text-xs">{it.type === 'preset' ? (ISLAMIC_PLAYLISTS.find(p => p.id === it.playlistId)?.icon || '📚') : '📖'}</span>
+                <span className="flex-1 text-[10px] font-bold text-emerald-900 truncate">{it.title || (it.type === 'preset' ? 'Preset' : `Surah ${it.surahNumber}`)}</span>
+                <button type="button" onClick={() => moveCustomItem(i, -1)} disabled={i === 0}
+                  className="p-1 text-[10px] disabled:opacity-30 hover:bg-eq-cream rounded">↑</button>
+                <button type="button" onClick={() => moveCustomItem(i, 1)} disabled={i === customItems.length - 1}
+                  className="p-1 text-[10px] disabled:opacity-30 hover:bg-eq-cream rounded">↓</button>
+                <button type="button" onClick={() => removeCustomItem(i)}
+                  className="p-1 text-red-500 hover:bg-red-50 rounded text-xs">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ URL TAB ═══ */}
       {tab === 'url' && (
         <div>
           <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70 mb-1 block">
@@ -672,9 +786,9 @@ const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
             placeholder="https://.../file.mp3"
             className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
           <p className="text-[10px] text-emerald-800/60 mt-1 italic">
-            {lang === 'ar' ? 'روابط MP3 مباشرة فقط (.mp3, .ogg, .m4a)' :
-             lang === 'en' ? 'Direct MP3 URLs only (.mp3, .ogg, .m4a) — no YouTube' :
-             'Direct MP3 URL sahaja (.mp3, .ogg, .m4a) — bukan YouTube'}
+            {lang === 'ar' ? 'MP3 مباشر فقط (.mp3, .ogg, .m4a)' :
+             lang === 'en' ? 'Direct MP3 only (.mp3, .ogg, .m4a) — no YouTube' :
+             'Direct MP3 sahaja (.mp3, .ogg, .m4a) — bukan YouTube'}
           </p>
         </div>
       )}
@@ -696,7 +810,7 @@ const BgAudioPicker = ({ url, setUrl, volume, setVolume, lang }) => {
       </div>
       {url && (
         <div className="text-[9px] text-emerald-800/50 font-mono break-all">
-          🔗 {url}
+          🔗 {url.substring(0, 80)}{url.length > 80 ? '...' : ''}
         </div>
       )}
     </div>

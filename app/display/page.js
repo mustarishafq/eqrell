@@ -476,9 +476,10 @@ export default function DisplayPage() {
   return (
     <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c', fontSize: 'clamp(14px, 1.4vmin + 0.4vw, 30px)', filter: `brightness(${dimBrightness})`, transition: 'filter 0.8s ease-in-out' }}>
       {/* ═══ YouTube background audio (hidden, skipped in preview) ═══ */}
-      {!isPreview && config?.bgAudioEnabled && config?.bgAudioUrl && (
+      {!isPreview && config?.bgAudioEnabled && (config?.bgAudioUrl || (Array.isArray(config?.bgAudioPlaylist) && config.bgAudioPlaylist.length > 0)) && (
         <YouTubeBgPlayer
           url={config.bgAudioUrl}
+          playlist={config.bgAudioPlaylist}
           enabled={config.bgAudioEnabled}
           volume={config.bgAudioVolume ?? 25}
           audioUnlocked={audioUnlocked}

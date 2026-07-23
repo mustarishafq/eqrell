@@ -44,12 +44,16 @@ function loadYouTubeApi() {
   return ytApiPromise
 }
 
-export default memo(function YouTubeBgPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan = false }) {
-  const directAudio = isDirectAudio(url)
+export default memo(function YouTubeBgPlayer({ url, playlist, enabled, volume, audioUnlocked, onReady, duckForAzan = false }) {
+  // Use playlist if provided (array of {url, ...}), else fall back to single url
+  const hasPlaylist = Array.isArray(playlist) && playlist.length > 0
+  const primaryUrl = hasPlaylist ? playlist[0].url : url
+  const directAudio = isDirectAudio(primaryUrl) || hasPlaylist  // playlist items are always direct MP3
   if (directAudio) {
     return (
       <DirectAudioPlayer
-        url={url}
+        url={primaryUrl}
+        playlist={hasPlaylist ? playlist : null}
         enabled={enabled}
         volume={volume}
         audioUnlocked={audioUnlocked}
@@ -74,16 +78,33 @@ export default memo(function YouTubeBgPlayer({ url, enabled, volume, audioUnlock
 // Supports auto-next-surah for MP3Quran URLs (e.g. .../sds/001.mp3 → 002.mp3 → ... → 114.mp3 → 001.mp3)
 const MP3QURAN_RE = /(https?:\/\/[^\s]*mp3quran\.net\/[^/]+\/)(\d{3})\.mp3/i
 
-function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckForAzan }) {
+function DirectAudioPlayer({ url, playlist, enabled, volume, audioUnlocked, onReady, duckForAzan }) {
   const audioRef = useRef(null)
   const wasPlayingRef = useRef(false)
-  const [currentUrl, setCurrentUrl] = useState(url)
+  const hasPlaylist = Array.isArray(playlist) && playlist.length > 0
+  const [playlistIdx, setPlaylistIdx] = useState(0)
+  const [currentUrl, setCurrentUrl] = useState(hasPlaylist ? playlist[0].url : url)
 
-  // Sync currentUrl when parent URL changes
-  useEffect(() => { setCurrentUrl(url) }, [url])
+  // Sync currentUrl when parent URL or playlist changes
+  useEffect(() => {
+    if (hasPlaylist) {
+      setPlaylistIdx(0)
+      setCurrentUrl(playlist[0].url)
+    } else {
+      setCurrentUrl(url)
+    }
+  }, [url, hasPlaylist, playlist])
 
-  // Auto-next-surah when Quran track ends (MP3Quran URL detected)
+  // Auto-next handler — supports both playlist mode AND MP3Quran auto-next-surah
   const handleEnded = () => {
+    if (hasPlaylist) {
+      // Advance to next playlist item; wrap around at end
+      const next = (playlistIdx + 1) % playlist.length
+      setPlaylistIdx(next)
+      setCurrentUrl(playlist[next].url)
+      return
+    }
+    // Fallback: MP3Quran URL pattern auto-next-surah (single reciter, 1→114)
     const m = currentUrl?.match(MP3QURAN_RE)
     if (m) {
       const base = m[1]
@@ -92,7 +113,7 @@ function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckF
       const nextUrl = `${base}${String(next).padStart(3, '0')}.mp3`
       setCurrentUrl(nextUrl)
     }
-    // For non-Quran URLs, HTML5 loop attribute handles repeat.
+    // For non-Quran single URLs, HTML5 loop attribute handles repeat.
   }
 
   useEffect(() => {
@@ -100,14 +121,14 @@ function DirectAudioPlayer({ url, enabled, volume, audioUnlocked, onReady, duckF
     const a = audioRef.current
     if (!a) return
     a.volume = (volume ?? 25) / 100
-    // Only loop for non-Quran (single-track) URLs; Quran uses auto-next instead
-    a.loop = !MP3QURAN_RE.test(currentUrl)
+    // Loop for single non-Quran URL; use auto-next for playlist OR MP3Quran
+    a.loop = !hasPlaylist && !MP3QURAN_RE.test(currentUrl)
     a.play().then(() => {
       wasPlayingRef.current = true
       if (onReady) onReady()
     }).catch(() => { /* autoplay blocked — user must unlock */ })
     return () => { try { a.pause() } catch (_) { /* ignore */ } }
-  }, [enabled, audioUnlocked, currentUrl])
+  }, [enabled, audioUnlocked, currentUrl, hasPlaylist])
 
   // Volume changes
   useEffect(() => {

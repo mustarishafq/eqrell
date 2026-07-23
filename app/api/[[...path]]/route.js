@@ -770,15 +770,27 @@ async function handleRoute(request, { params }) {
       const dimStartHour = Math.min(23, Math.max(0, Number(body.dimStartHour ?? 22)))
       const dimEndHour = Math.min(23, Math.max(0, Number(body.dimEndHour ?? 6)))
       const dimLevel = Math.min(100, Math.max(10, Number(body.dimLevel ?? 30)))
-      // Background audio (YouTube URL)
+      // Background audio (MP3Quran / direct MP3 URL or playlist array)
       const bgAudioEnabled = !!body.bgAudioEnabled
       const bgAudioUrl = String(body.bgAudioUrl || '').trim().slice(0, 500)
       const bgAudioVolume = Math.min(100, Math.max(0, Number(body.bgAudioVolume ?? 25)))
+      // Playlist: array of { url, title, surah?, reciter? } — max 150 items (full quran + extras)
+      const bgAudioPlaylist = Array.isArray(body.bgAudioPlaylist)
+        ? body.bgAudioPlaylist
+            .filter(x => x && typeof x.url === 'string' && x.url.length < 500)
+            .slice(0, 150)
+            .map(x => ({
+              url: String(x.url).trim(),
+              title: String(x.title || '').slice(0, 100),
+              surah: typeof x.surah === 'number' ? x.surah : undefined,
+              reciter: typeof x.reciter === 'string' ? x.reciter.slice(0, 30) : undefined,
+            }))
+        : []
       const config = {
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
         dimEnabled, dimStartHour, dimEndHour, dimLevel,
-        bgAudioEnabled, bgAudioUrl, bgAudioVolume,
+        bgAudioEnabled, bgAudioUrl, bgAudioPlaylist, bgAudioVolume,
         updatedAt: new Date(),
       }
       const db = await getDb()
