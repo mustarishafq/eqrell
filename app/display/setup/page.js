@@ -781,22 +781,29 @@ const BgAudioPicker = ({ url, setUrl, playlist, setPlaylist, volume, setVolume, 
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-black text-emerald-900 leading-tight">{l(p.title)}</div>
                     <div className="text-[9px] text-emerald-800/60 leading-tight line-clamp-2">{l(p.desc)}</div>
-                    <div className="text-[8px] text-emerald-700/80 mt-0.5">{p.surahs.length} {lang === 'ar' ? 'سور' : 'surah'}</div>
+                    <div className="text-[8px] text-emerald-700/80 mt-0.5">
+                      {p.stream
+                        ? (lang === 'ar' ? '📻 بث مباشر' : lang === 'en' ? '📻 Live stream' : '📻 Stream langsung')
+                        : `${p.surahs.length} ${lang === 'ar' ? 'سور' : 'surah'}`}
+                    </div>
                   </div>
                 </div>
               </button>
             ))}
           </div>
-          <div className="mt-2">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/70 block mb-1">
-              {lang === 'ar' ? 'تغيير القارئ' : lang === 'en' ? 'Override Reciter (optional)' : 'Tukar Qari (opsyenal)'}
-            </label>
-            <select value={presetReciter} onChange={e => setPresetReciter(e.target.value)}
-              className="w-full rounded-xl border-2 border-eq-cream px-3 py-1.5 text-xs bg-white">
-              <option value="">{lang === 'ar' ? 'مقترح' : lang === 'en' ? 'Recommended' : 'Guna cadangan'}</option>
-              {QURAN_RECITERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
+          {/* Reciter override — only for surah-based presets (streams have their own reciter) */}
+          {!ISLAMIC_PLAYLISTS.find(p => p.id === presetId)?.stream && (
+            <div className="mt-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/70 block mb-1">
+                {lang === 'ar' ? 'تغيير القارئ' : lang === 'en' ? 'Override Reciter (optional)' : 'Tukar Qari (opsyenal)'}
+              </label>
+              <select value={presetReciter} onChange={e => setPresetReciter(e.target.value)}
+                className="w-full rounded-xl border-2 border-eq-cream px-3 py-1.5 text-xs bg-white">
+                <option value="">{lang === 'ar' ? 'مقترح' : lang === 'en' ? 'Recommended' : 'Guna cadangan'}</option>
+                {QURAN_RECITERS.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
