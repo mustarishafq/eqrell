@@ -846,21 +846,32 @@ async function handleRoute(request, { params }) {
       const loc = family?.prayerLocation
       if (!loc) return err('Prayer location not set', 404)
 
-      const now = new Date()
-      const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+      // ═══ Compute LOCAL date at the user's location (fix bug: UTC date wrong for early morning) ═══
+      // Malaysia is UTC+8; at 01:00 AM MY = 17:00 UTC previous day → UTC date is WRONG day.
+      // Estimate timezone offset from longitude (each 15° = 1 hour). Aladhan returns times in
+      // the location's local timezone, so we must request the correct LOCAL day.
+      const lonForOffset = (loc.longitude != null) ? Number(loc.longitude) : 0
+      const offsetHrs = Math.round(lonForOffset / 15)  // approx UTC offset for location
+      const localMs = Date.now() + offsetHrs * 3600 * 1000
+      const local = new Date(localMs)  // treat via getUTC* to read local components
+      const localY = local.getUTCFullYear()
+      const localM = local.getUTCMonth() + 1
+      const localD = local.getUTCDate()
+      const dateStr = `${localY}-${String(localM).padStart(2, '0')}-${String(localD).padStart(2, '0')}`
+
       // Check cache
       const cached = await db.collection('prayer_times_cache').findOne({
         familyId: user.familyId, dateStr,
       })
       if (cached) return json({ date: dateStr, timings: cached.timings, location: loc })
 
-      // Fetch from Aladhan
-      const dayParam = `${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${now.getUTCFullYear()}`
+      // Fetch from Aladhan — use LOCAL day and include tune=0 for exact Aladhan output
+      const dayParam = `${String(localD).padStart(2, '0')}-${String(localM).padStart(2, '0')}-${localY}`
       let url
       if (loc.latitude != null && loc.longitude != null) {
-        url = `https://api.aladhan.com/v1/timings/${dayParam}?latitude=${loc.latitude}&longitude=${loc.longitude}&method=${loc.method || 3}`
+        url = `https://api.aladhan.com/v1/timings/${dayParam}?latitude=${loc.latitude}&longitude=${loc.longitude}&method=${loc.method || 3}&school=0`
       } else {
-        url = `https://api.aladhan.com/v1/timingsByCity/${dayParam}?city=${encodeURIComponent(loc.city)}&country=${encodeURIComponent(loc.country)}&method=${loc.method || 3}`
+        url = `https://api.aladhan.com/v1/timingsByCity/${dayParam}?city=${encodeURIComponent(loc.city)}&country=${encodeURIComponent(loc.country)}&method=${loc.method || 3}&school=0`
       }
       try {
         const r = await fetch(url, { headers: { 'accept': 'application/json' } })
