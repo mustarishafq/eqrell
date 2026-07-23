@@ -324,9 +324,14 @@ export default function DisplaySetupPage() {
                   {t.setup_bg_audio_url}
                 </label>
                 <input value={bgAudioUrl} onChange={e => setBgAudioUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=… or /playlist?list=…"
+                  placeholder="MP3 URL (best for TV) or YouTube URL"
                   className="w-full rounded-xl border-2 border-eq-cream px-3 py-2 text-xs" />
-                <p className="text-[10px] text-emerald-800/60 mt-1 italic">{t.setup_bg_audio_helper}</p>
+                <p className="text-[10px] text-emerald-800/60 mt-1 italic">
+                  💡 {t.setup_bg_audio_helper}
+                </p>
+                <p className="text-[10px] text-amber-700 mt-1 leading-snug">
+                  📺 <b>Untuk TV lemah / Android China:</b> guna direct MP3 URL (.mp3, .ogg) — 90% lebih ringan dari YouTube. YouTube kerap buffering pada TV browser.
+                </p>
               </div>
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-800/70">

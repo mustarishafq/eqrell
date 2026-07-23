@@ -98,24 +98,36 @@ const KidBoard = ({ kid, lang, currentSession }) => {
     <div className="rounded-2xl backdrop-blur border p-2 flex flex-col min-h-0 overflow-hidden"
       style={{ background: 'rgba(0,184,148,0.08)', borderColor: 'rgba(0,184,148,0.25)' }}>
       {/* Kid header */}
-      <div className="flex items-center gap-1.5 mb-1.5 flex-shrink-0">
-        <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/10 border-2 flex-shrink-0"
+      <div className="flex items-center gap-2 mb-1.5 flex-shrink-0">
+        <div className="relative w-9 h-9 rounded-full overflow-hidden bg-white/10 border-2 flex-shrink-0"
           style={{ borderColor: kid.favColor || '#00B894' }}>
           {avatar ? <img src={avatar.src} alt="" className="w-full h-full object-cover" /> :
             <div className="w-full h-full flex items-center justify-center text-sm">🧒</div>}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-black leading-tight truncate" style={{ color: '#FFF8E7' }}>{kid.nickname}</div>
-          <div className="text-[9px] tabular-nums leading-none" style={{ color: '#FFF8E7', opacity: 0.6 }}>{doneCount}/{total}</div>
+          <div
+            className="text-sm font-black leading-tight"
+            style={{
+              color: '#FFF8E7',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              wordBreak: 'break-word',
+            }}
+          >
+            {kid.nickname}
+          </div>
+          <div className="text-[10px] tabular-nums leading-none mt-0.5" style={{ color: '#FFF8E7', opacity: 0.65 }}>{doneCount}/{total}</div>
         </div>
         {/* Progress ring */}
-        <div className="relative w-6 h-6 flex-shrink-0">
+        <div className="relative w-7 h-7 flex-shrink-0">
           <svg viewBox="0 0 24 24" className="absolute inset-0 -rotate-90">
             <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(0,184,148,0.15)" strokeWidth="3" />
             <circle cx="12" cy="12" r="10" fill="none" stroke={kid.favColor || '#00B894'} strokeWidth="3"
               strokeDasharray={`${pct * 62.83} 62.83`} strokeLinecap="round" />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-[8px] font-black tabular-nums" style={{ color: '#FFF8E7' }}>
+          <div className="absolute inset-0 flex items-center justify-center text-[9px] font-black tabular-nums" style={{ color: '#FFF8E7' }}>
             {Math.round(pct * 100)}
           </div>
         </div>

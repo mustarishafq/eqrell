@@ -601,43 +601,11 @@ export default function DisplayPage() {
 
           {/* Sirah/Islamic event now shown inside mascot dialog rotation — no standalone card */}
 
-          {/* Kids progress rings */}
-          {display?.children && display.children.length > 0 && (
-            <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 flex-shrink-0">
-              <div className="text-[10px] uppercase tracking-widest text-white/60 font-black text-center mb-2">
-                {lang === 'ar' ? 'الأبناء' : lang === 'en' ? 'Kids' : 'Anak-anak'}
-              </div>
-              <div className="flex justify-center flex-wrap gap-3">
-                {display.children.map(c => {
-                  const avatar = c.avatarId ? AVATAR_BY_ID[c.avatarId] : null
-                  const total = c.habitsTotal || 0
-                  const done = c.habitsDone || 0
-                  const pct = total > 0 ? done / total : 0
-                  return (
-                    <div key={c.id} className="flex flex-col items-center gap-1">
-                      <div className="relative w-14 h-14">
-                        <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90">
-                          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(0,184,148,0.2)" strokeWidth="5" />
-                          <circle cx="32" cy="32" r="28" fill="none" stroke={c.favColor || '#00B894'} strokeWidth="5"
-                            strokeDasharray={`${pct * 175.9} 175.9`} strokeLinecap="round" />
-                        </svg>
-                        <div className="absolute inset-1.5 rounded-full overflow-hidden bg-white/10">
-                          {avatar ? <img src={avatar.src} alt="" className="w-full h-full object-cover" /> :
-                            <div className="w-full h-full flex items-center justify-center text-lg">🧒</div>}
-                        </div>
-                      </div>
-                      <div className="text-[11px] font-black leading-none">{c.nickname}</div>
-                      <div className="text-[10px] text-white/70 tabular-nums leading-none">{done}/{total}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {/* Kids progress card removed — already shown in Family Habit Board on the right */}
 
-          {/* Zikir (moved here — family-shared with kids) */}
+          {/* Zikir (family-shared) — z-40 keeps it above mascot dialog if overlap */}
           {display?.zikir && (
-            <div className="rounded-3xl backdrop-blur border-2 shadow-2xl p-3 flex-shrink-0"
+            <div className="relative z-40 rounded-3xl backdrop-blur border-2 shadow-2xl p-3 flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(0,184,148,0.10))', borderColor: 'rgba(0,184,148,0.5)' }}>
               <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#00B894' }}>
                 <span className="text-lg">📿</span> {t.display_zikir_title}
