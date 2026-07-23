@@ -15,6 +15,7 @@ import { useWakeLock } from '@/lib/useWakeLock'
 import TVPreview from '@/components/eqrel/TVPreview'
 import HabitBoard from '@/components/eqrel/HabitBoard'
 import LocationPicker from '@/components/eqrel/LocationPicker'
+import DisplayLoadingSplash from '@/components/eqrel/DisplayLoadingSplash'
 import { strings as I18N_STRINGS } from '@/lib/i18n/strings'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
@@ -120,6 +121,21 @@ export default function DisplayPage() {
     } catch (e) { /* ignore */ }
   }, [])
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
+
+  // ═══ Boot splash — show a motivational quote until data is ready ═══
+  // Splash logic:
+  //   1. isDataReady: config AND display are non-null (family + kids loaded).
+  //   2. minSplashElapsed: guarantees splash shows for at least 2.2s so users
+  //      can read the quote. Prevents jarring flash on fast networks.
+  //   3. splashGone: after fade-out (~700ms), we can unmount for good.
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false)
+  const [splashGone, setSplashGone] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setMinSplashElapsed(true), 2200)
+    return () => clearTimeout(t)
+  }, [])
+  const isDataReady = config !== null && display !== null
+  const splashVisible = !(isDataReady && minSplashElapsed)
 
   // Photo slideshow rotation — supports both legacy string[] and new {url, focalX, focalY, title}[]
   const rawPhotos = (config?.photos || []).map(p => typeof p === 'string' ? { url: p, focalX: 50, focalY: 50, title: '' } : p).filter(p => p?.url)
@@ -496,6 +512,15 @@ export default function DisplayPage() {
 
   return (
     <div className="h-screen w-full relative overflow-hidden text-white flex flex-col" style={{ backgroundColor: '#0a1f1c', fontSize: 'clamp(14px, 1.4vmin + 0.4vw, 30px)', filter: `brightness(${dimBrightness})`, transition: 'filter 0.8s ease-in-out' }}>
+      {/* ═══ BOOT SPLASH — Motivational quote while data loads ═══ */}
+      {!splashGone && (
+        <DisplayLoadingSplash
+          lang={lang}
+          familyName={display?.family?.familyName}
+          visible={splashVisible}
+          onGone={() => setSplashGone(true)}
+        />
+      )}
       {/* ═══ YouTube background audio (hidden, skipped in preview) ═══ */}
       {!isPreview && config?.bgAudioEnabled && (config?.bgAudioUrl || (Array.isArray(config?.bgAudioPlaylist) && config.bgAudioPlaylist.length > 0)) && (
         <YouTubeBgPlayer

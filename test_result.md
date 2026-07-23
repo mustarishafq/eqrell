@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "SuggestionCard title fix — long habit names no longer truncated with ellipsis. Added AutoFitMultiText component (wraps up to 2 lines, ResizeObserver-driven font-shrink from 22px→11px until both width AND height fit). Replaced the previous `truncate` div with AutoFitMultiText for suggestion title. Verified with 58-char title 'Bantu emak kemas rumah dengan penuh semangat setiap petang' — displays fully across 2 lines, points badge stays intact. (2026-01-23)"
+  update_note: "Family Display Boot Splash — full-screen loading page shown before ambient TV mode renders. New /app/lib/familyQuotes.js (12 authenticated Islamic family quotes: Quran verses + Hadith Sahih + attribution in MS/EN/ID/AR). New /app/components/eqrel/DisplayLoadingSplash.js — emerald radial gradient background, big EQrel logo, Assalamualaikum greeting (uses familyName if available), motivational quote card with golden ornament + source attribution, 3 pulsing dots, ambient star particles. Splash logic in /app/app/display/page.js: shows while (config === null || display === null) OR minSplashElapsed < 2.2s (guarantees quote readable). Fade-out ~700ms, then splashGone flag unmounts for zero perf overhead. Verified visually 1920×1080: splash shows correctly at t=1.2s, actual display renders at t=4.7s. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
