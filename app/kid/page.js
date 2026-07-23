@@ -361,7 +361,7 @@ function KidHomeActive({ router, childId, t, lang }) {
 
   return (
     <div
-      className="h-[100dvh] w-full relative overflow-y-auto overscroll-contain"
+      className="h-[100dvh] w-full relative overflow-x-hidden overflow-y-auto overscroll-contain"
       style={{
         background: `linear-gradient(180deg, ${favColor}15 0%, ${favColor}08 50%, #FFF8E7 100%)`,
         paddingTop: 'max(env(safe-area-inset-top), 16px)',

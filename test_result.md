@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Setup — Auto-launch Family Display after Save. New checkbox toggle above Save button (default ON, persisted to localStorage as `eqrel-setup-autolaunch`). When enabled, successful save immediately calls `window.open('/display', 'eqrel_family_display')` — named target reuses existing window if already open (no tab spam on repeated saves). Runs synchronously in the save-onClick async chain so browsers don't block as popup. Multilingual toggle label (MS/EN/ID/AR). Verified: toggle visible, checkbox ticked, save → /display opens in new tab. (2026-01-23)"
+  update_note: "Kid Mode — fixed horizontal overflow / page can be scrolled sideways. Root cause: two decorative background blobs (`w-72 h-72 blur-3xl` with negative `-translate-x-1/3` and positive `translate-x-1/3`) extended ±96px beyond viewport, and the outer container only had `overflow-y-auto` without X-axis clipping. Fix: added `overflow-x-hidden` to the outer scroll container in /app/app/kid/page.js. Verified at viewport 390px: scrollWidth === viewport (no side-scroll possible), scrollLeft stays at 0 on force attempt. Decorative blobs still render but are now clipped to viewport. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
