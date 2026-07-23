@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "TV Family Habit Board — added 'Focus On This' Suggestion Card at top of each rotating kid card. New pickSuggestion(habits, currentSession) scoring: +100 pending in current session, +80 perPrayer needing current session (uses sessionsClaimed[]), +50 anytime, +20 next session, +points*0.05. Big pulsing card shows habit icon, title, category+session context, +points badge. Same habit is highlighted in list below (golden glow + 🎯 icon + bold). Empty states: 'Alhamdulillah! Semua siap' when all done, 'Rehat sekejap · Tiada tugas sekarang' when nothing suggestible. Backend /family/display-data now returns `points` and `sessionsClaimed[]` per habit. Verified visually at 1920×1080: current time 14:30 (Zohor) → correctly suggests 'Solat Zohor +20'. (2026-01-23)"
+  update_note: "TV Family Habit Board — 'Move Forward' philosophy. Past prayer sessions (e.g. Subuh at Zohor time) now hidden from KidSoloView list. Filter: `PRAYER_ORDER.filter((sid, idx) => idx >= curIdx && bySession[sid]?.length)`. pickSuggestion also skips daily habits tied to past sessions (perPrayer & anytime remain eligible). Header overall daily progress (doneCount/total) unchanged — reflects full-day achievement. Verified at 14:38: Fajr session correctly hidden, Zuhr (current) + Before Bed (future) + Anytime remain. Suggestion still picks Solat Zohor. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================

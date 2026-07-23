@@ -79,6 +79,11 @@ const pickSuggestion = (habits, currentSession) => {
     } else {
       // Daily habit — skip if done/ihsan
       if (h.status !== 'pending') continue
+      // "Move forward" — skip daily habits tied to a session that has already passed
+      if (habitSession && habitSession !== 'anytime' && curIdx >= 0) {
+        const habitIdx = PRAYER_ORDER.indexOf(habitSession)
+        if (habitIdx >= 0 && habitIdx < curIdx) continue // past session — skip
+      }
     }
 
     let score = 0
@@ -234,7 +239,16 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
   const doneCount = habits.filter(h => h.status !== 'pending').length
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
   const kidColor = kid.favColor || '#00B894'
-  const orderedSessions = PRAYER_ORDER.filter(sid => bySession[sid]?.length > 0)
+
+  // Hide past prayer sessions — "move forward" philosophy.
+  // Only render current + upcoming sessions. Past habits still tracked in
+  // parent dashboard, but the TV keeps the child looking ahead.
+  const curIdx = PRAYER_ORDER.indexOf(currentSession)
+  const orderedSessions = PRAYER_ORDER.filter((sid, idx) => {
+    if (!bySession[sid]?.length) return false
+    if (curIdx < 0) return true // Fallback if session unknown, show everything
+    return idx >= curIdx
+  })
 
   return (
     <>
