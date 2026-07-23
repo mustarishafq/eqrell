@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "TV Family Habit Board — 'Move Forward' philosophy. Past prayer sessions (e.g. Subuh at Zohor time) now hidden from KidSoloView list. Filter: `PRAYER_ORDER.filter((sid, idx) => idx >= curIdx && bySession[sid]?.length)`. pickSuggestion also skips daily habits tied to past sessions (perPrayer & anytime remain eligible). Header overall daily progress (doneCount/total) unchanged — reflects full-day achievement. Verified at 14:38: Fajr session correctly hidden, Zuhr (current) + Before Bed (future) + Anytime remain. Suggestion still picks Solat Zohor. (2026-01-23)"
+  update_note: "SuggestionCard title fix — long habit names no longer truncated with ellipsis. Added AutoFitMultiText component (wraps up to 2 lines, ResizeObserver-driven font-shrink from 22px→11px until both width AND height fit). Replaced the previous `truncate` div with AutoFitMultiText for suggestion title. Verified with 58-char title 'Bantu emak kemas rumah dengan penuh semangat setiap petang' — displays fully across 2 lines, points badge stays intact. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================

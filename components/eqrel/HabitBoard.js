@@ -152,6 +152,65 @@ function AutoFitText({ text, maxPx = 32, minPx = 12, className, style }) {
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AutoFitMultiText — allows up to `maxLines` wrapped lines, and shrinks the
+// font-size until the wrapped text fits within `maxHeightPx`. Used by
+// SuggestionCard title so long habit names stay fully visible (no ellipsis).
+// ═══════════════════════════════════════════════════════════════════════════
+function AutoFitMultiText({ text, maxPx = 24, minPx = 11, maxLines = 2, className, style }) {
+  const containerRef = useRef(null)
+  const textRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    const el = textRef.current
+    if (!container || !el) return
+
+    const fit = () => {
+      let size = maxPx
+      el.style.fontSize = `${size}px`
+      // maxLines allowed → target max height = maxLines × line-height (1.15) × size
+      const targetH = () => Math.ceil(size * 1.18 * maxLines)
+      el.style.maxHeight = `${targetH()}px`
+      let guard = 0
+      // Shrink until both width AND height fit
+      while (
+        (el.scrollWidth > container.clientWidth || el.scrollHeight > targetH()) &&
+        size > minPx &&
+        guard < 60
+      ) {
+        size -= 1
+        el.style.fontSize = `${size}px`
+        el.style.maxHeight = `${targetH()}px`
+        guard += 1
+      }
+    }
+    fit()
+
+    const ro = new ResizeObserver(fit)
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [text, maxPx, minPx, maxLines])
+
+  return (
+    <div ref={containerRef} className={className} style={{ ...style, overflow: 'hidden', width: '100%' }}>
+      <span
+        ref={textRef}
+        style={{
+          display: '-webkit-box',
+          WebkitBoxOrient: 'vertical',
+          WebkitLineClamp: maxLines,
+          overflow: 'hidden',
+          lineHeight: 1.15,
+          wordBreak: 'break-word',
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  )
+}
+
 export default memo(function HabitBoard({ kids, lang = 'ms', title }) {
   const safeKids = kids || []
   const count = safeKids.length
@@ -514,9 +573,14 @@ const SuggestionCard = ({ suggestion, allDone, habitCount, currentSession, kidCo
               </span>
             )}
           </div>
-          <div className="font-black leading-tight truncate" style={{ color: '#FFF8E7', fontSize: 'clamp(1rem, 1.5vw, 1.5rem)' }}>
-            {title}
-          </div>
+          <AutoFitMultiText
+            text={title}
+            maxPx={22}
+            minPx={11}
+            maxLines={2}
+            className="font-black"
+            style={{ color: '#FFF8E7' }}
+          />
           <div className="flex items-center gap-2 mt-0.5 text-[10px] font-black" style={{ color: 'rgba(255,248,231,0.75)' }}>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full" style={{ background: categoryColor }} />
