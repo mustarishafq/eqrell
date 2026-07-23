@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Audio library — added Zikir/Adhkar/Ruqyah radio stream presets. New entries in ISLAMIC_PLAYLISTS with `stream: url` field (bypasses surah-based playlist builder): (1) zikir_pagi/Morning Adhkar → athkar_sabah stream, (2) zikir_petang/Evening Adhkar → athkar_masa stream, (3) ayat_sakinah/Ayat as-Sakinah → sakeenah stream, (4) ruqyah/Ruqyah Syariah → roqiah stream. All served free & legal via backup.qurango.net (MP3Quran radio CDN). buildIslamicPlaylist() now branches on stream field. Setup UI: 'X surah' badge replaced with '📻 Live stream' for stream presets, Override Reciter dropdown hidden when stream selected. Verified visually — all 4 new presets render in Presets tab with 'Live stream' badge. (2026-01-23)"
+  update_note: "Setup — Auto-launch Family Display after Save. New checkbox toggle above Save button (default ON, persisted to localStorage as `eqrel-setup-autolaunch`). When enabled, successful save immediately calls `window.open('/display', 'eqrel_family_display')` — named target reuses existing window if already open (no tab spam on repeated saves). Runs synchronously in the save-onClick async chain so browsers don't block as popup. Multilingual toggle label (MS/EN/ID/AR). Verified: toggle visible, checkbox ticked, save → /display opens in new tab. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================

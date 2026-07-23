@@ -102,6 +102,17 @@ export default function DisplaySetupPage() {
 
   const [previewReloadKey, setPreviewReloadKey] = useState(0)
   const [saveToast, setSaveToast] = useState(false)
+  // Auto-launch Family Display after save. Persisted to localStorage.
+  const [autoLaunchDisplay, setAutoLaunchDisplay] = useState(true)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const v = localStorage.getItem('eqrel-setup-autolaunch')
+    if (v !== null) setAutoLaunchDisplay(v === '1')
+  }, [])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('eqrel-setup-autolaunch', autoLaunchDisplay ? '1' : '0')
+  }, [autoLaunchDisplay])
 
   const save = async () => {
     const r = await fetch('/api/family/display-config', {
@@ -121,6 +132,17 @@ export default function DisplaySetupPage() {
       setSaveToast(true); setTimeout(() => setSaveToast(false), 4000)
       // Scroll to top so parent sees updated preview
       if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+
+      // Auto-launch Family Display in a new window (or reuse existing).
+      // MUST run synchronously in the click-triggered async chain so browsers
+      // don't treat it as a popup and block it. Named target reuses the same
+      // window if already opened (won't spam tabs on repeated saves).
+      if (autoLaunchDisplay && typeof window !== 'undefined') {
+        try {
+          const w = window.open('/display', 'eqrel_family_display')
+          if (w && typeof w.focus === 'function') w.focus()
+        } catch (_) { /* popup blocked — user still has manual button */ }
+      }
     }
   }
 
@@ -494,15 +516,41 @@ export default function DisplaySetupPage() {
         </section>
 
         {/* Save + Preview */}
-        <div className="flex gap-2 pb-6">
-          <button onClick={() => router.push('/display')}
-            className="flex-1 rounded-2xl border-2 border-emerald-300 text-emerald-800 font-extrabold py-3 text-sm">
-            {t.setup_preview}
-          </button>
-          <button onClick={save}
-            className="flex-1 rounded-2xl bg-emerald-500 text-white font-extrabold py-3 text-sm flex items-center justify-center gap-1.5 active:scale-[0.99]">
-            <Save className="w-4 h-4" /> {saved ? '✓ ' + t.device_saved : t.save}
-          </button>
+        <div className="pb-6 space-y-2">
+          {/* Auto-launch toggle — controls whether Family Display opens after Save */}
+          <label className="flex items-center gap-2 cursor-pointer select-none rounded-xl bg-emerald-50/60 border border-emerald-100 px-3 py-2">
+            <input
+              type="checkbox"
+              checked={autoLaunchDisplay}
+              onChange={e => setAutoLaunchDisplay(e.target.checked)}
+              className="w-4 h-4 accent-emerald-500 flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-black text-emerald-900 leading-tight">
+                {lang === 'ar' ? 'افتح شاشة العائلة تلقائياً بعد الحفظ' :
+                 lang === 'en' ? 'Auto-open Family Display after Save' :
+                 lang === 'id' ? 'Buka Family Display otomatis setelah simpan' :
+                 'Auto-buka Family Display selepas Simpan'}
+              </div>
+              <div className="text-[9px] text-emerald-800/60 leading-tight mt-0.5">
+                {lang === 'ar' ? 'ستفتح في تبويب جديد' :
+                 lang === 'en' ? 'Opens in a new tab/window' :
+                 lang === 'id' ? 'Terbuka di tab/jendela baru' :
+                 'Buka dalam tab/tetingkap baru'}
+              </div>
+            </div>
+          </label>
+
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/display')}
+              className="flex-1 rounded-2xl border-2 border-emerald-300 text-emerald-800 font-extrabold py-3 text-sm">
+              {t.setup_preview}
+            </button>
+            <button onClick={save}
+              className="flex-1 rounded-2xl bg-emerald-500 text-white font-extrabold py-3 text-sm flex items-center justify-center gap-1.5 active:scale-[0.99]">
+              <Save className="w-4 h-4" /> {saved ? '✓ ' + t.device_saved : t.save}
+            </button>
+          </div>
         </div>
       </div>
 
