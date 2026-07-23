@@ -19,6 +19,19 @@ import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
 const PRAYER_KEYS = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
+
+// Format 24h "HH:MM" → 12h "h:MM AM/PM" for display
+const to12h = (hhmm) => {
+  if (!hhmm || typeof hhmm !== 'string') return hhmm
+  const parts = hhmm.split(':')
+  if (parts.length < 2) return hhmm
+  let h = parseInt(parts[0], 10)
+  const m = parts[1].padStart(2, '0')
+  if (isNaN(h)) return hhmm
+  const suffix = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${h}:${m} ${suffix}`
+}
 const PRAYER_LABELS = {
   ms: { Fajr: 'Subuh', Sunrise: 'Syuruk', Dhuhr: 'Zohor', Asr: 'Asar', Maghrib: 'Maghrib', Isha: 'Isyak' },
   en: { Fajr: 'Fajr',  Sunrise: 'Sunrise', Dhuhr: 'Dhuhr', Asr: 'Asr',  Maghrib: 'Maghrib', Isha: 'Isha' },
@@ -520,7 +533,7 @@ export default function DisplayPage() {
                     <span className={`text-[10px] font-black uppercase tracking-wider ${isNext ? '' : isPassed ? 'text-white/40' : 'text-white/85'}`} style={isNext ? { color: '#FFB703' } : {}}>{labelFor(k)}</span>
                     {isPassed && <span className="text-emerald-300 text-[10px]">✓</span>}
                   </div>
-                  <div className={`text-xs font-extrabold tabular-nums ${isNext ? 'text-white' : isPassed ? 'text-white/40 line-through' : 'text-white/80'}`}>{prayers.timings[k]}</div>
+                  <div className={`text-xs font-extrabold tabular-nums ${isNext ? 'text-white' : isPassed ? 'text-white/40 line-through' : 'text-white/80'}`}>{to12h(prayers.timings[k])}</div>
                 </div>
               )
             })}
@@ -611,7 +624,7 @@ export default function DisplayPage() {
                 </div>
                 <div className="mt-1 flex items-baseline justify-center gap-1.5">
                   <div className="text-base md:text-lg font-black leading-none" style={{ color: '#FFF8E7' }}>{labelFor(nextPrayer.key)}</div>
-                  <div className="text-[10px] text-white/60 tabular-nums leading-none">{nextPrayer.timeStr}</div>
+                  <div className="text-[10px] text-white/60 tabular-nums leading-none">{to12h(nextPrayer.timeStr)}</div>
                 </div>
                 <div className="mt-1 font-black tabular-nums leading-none" style={{ color: '#FFB703', fontSize: 'clamp(1.25rem, 2vw, 2rem)' }}>{countdown}</div>
               </div>
