@@ -8,6 +8,7 @@ import { AVATAR_BY_ID } from '@/lib/avatars'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
+import { haptic } from '@/lib/feedback'
 
 /**
  * VerifySheet — Parent Verify Queue with 3-level rubric.
@@ -78,6 +79,8 @@ export function VerifySheet({ open, onClose, onCountChange }) {
 
   const applyRubric = async (rubric) => {
     if (!active || busy) return
+    // Immediate tap acknowledgement
+    haptic.tap()
     setBusy(true)
     setToast(null)
     try {
@@ -90,10 +93,15 @@ export function VerifySheet({ open, onClose, onCountChange }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'verify failed')
 
-      // toast
+      // toast + tactile confirmation per rubric outcome
       if (rubric === 'belum') {
+        haptic.undo()
         setToast({ type: 'reset', text: t.verify_reset })
+      } else if (rubric === 'ihsan') {
+        haptic.ihsan()
+        setToast({ type: 'success', text: t.verify_awarded(data.points) })
       } else {
+        haptic.success()
         setToast({ type: 'success', text: t.verify_awarded(data.points) })
       }
 
@@ -109,6 +117,7 @@ export function VerifySheet({ open, onClose, onCountChange }) {
       // clear toast after 2s
       setTimeout(() => setToast(null), 2200)
     } catch (e) {
+      haptic.locked()
       setToast({ type: 'error', text: t.verify_error })
       setTimeout(() => setToast(null), 2500)
     } finally {

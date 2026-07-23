@@ -14,6 +14,7 @@ import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
 import { QuizSheet } from '@/components/eqrel/QuizSheet'
 import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
+import { haptic, showBurst } from '@/lib/feedback'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -167,9 +168,9 @@ function KidHomeActive({ router, childId, t, lang }) {
   const tutCats    = useTutorial('kid_categories', { autoOpenFirstTime: false })
   const tutRewards = useTutorial('kid_rewards',    { autoOpenFirstTime: false })
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!childId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const [cRes, hRes, rRes, catRes, pRes, qRes] = await Promise.all([
         fetch('/api/children', { credentials: 'include' }),
@@ -193,18 +194,37 @@ function KidHomeActive({ router, childId, t, lang }) {
       setMyProposals(pData.proposals || [])
       setQuizStatus(qData || { doneToday: false, correctCount: 0, total: 0 })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [childId])
 
   useEffect(() => { load() }, [load])
 
+  // Milestone haptic: fires once when the last remaining habit becomes done
+  // (transition from "some pending" → "all complete"). Guards against re-firing.
+  const [milestoneFired, setMilestoneFired] = useState(false)
+  useEffect(() => {
+    if (!habits || habits.length === 0) return
+    const done = habits.filter(h => ['claimed', 'verified'].includes(h.todayStatus)).length
+    const allDone = done === habits.length
+    if (allDone && !milestoneFired) {
+      haptic.milestone()
+      setMilestoneFired(true)
+    } else if (!allDone && milestoneFired) {
+      // Reset if a habit is somehow unclaimed again (undo path)
+      setMilestoneFired(false)
+    }
+  }, [habits, milestoneFired])
+
   const claimHabit = async (habit) => {
     // Locked if already verified/ihsan/belum by parent (child can't undo those)
     if (habit.todayStatus === 'verified' || habit.rubric) {
+      haptic.locked()
       showToast('locked', t.kid_locked_msg)
       return
     }
+    // Immediate tap acknowledgement — feels responsive even before network
+    haptic.tap()
     // For per-prayer habits, session comes from the rendered instance (_sessionInstance)
     const sessionForClaim = habit._isPerPrayer ? habit._sessionInstance : null
     // Busy key includes session to allow parallel taps across different sessions
@@ -217,6 +237,7 @@ function KidHomeActive({ router, childId, t, lang }) {
           ? `/api/habits/${habit.id}/claim?session=${encodeURIComponent(sessionForClaim)}`
           : `/api/habits/${habit.id}/claim`
         await fetch(url, { method: 'DELETE', credentials: 'include' })
+        haptic.undo()
         showToast('undo', t.kid_undo_toast)
       } else {
         // Claim
@@ -228,9 +249,17 @@ function KidHomeActive({ router, childId, t, lang }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
+        haptic.success()
+        // Floating "+points" burst on the tapped card
+        const cardEl = typeof document !== 'undefined'
+          ? document.querySelector(`[data-habit-card-id="${busyKey}"]`)
+          : null
+        if (cardEl) {
+          showBurst(cardEl, { text: `+${habit.points}`, variant: 'success' })
+        }
         showToast('success', t.kid_claim_toast)
       }
-      await load()
+      await load(true) // silent — keep habit cards mounted so burst survives
     } finally {
       setBusyHabit(null)
     }
@@ -998,12 +1027,18 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
   else if (isVerified) statusLabel = t.kid_status_verified(habit.pointsAwarded ?? habit.points)
   else if (isClaimed) statusLabel = t.kid_status_claimed
 
+  // Stable id used by the burst helper to locate this specific card
+  const cardKey = habit._isPerPrayer
+    ? `${habit.id}::${habit._sessionInstance || ''}`
+    : habit.id
+
   return (
     <motion.button
       layout
+      data-habit-card-id={cardKey}
       onClick={onTap}
       disabled={busy || isLocked}
-      className={`w-full text-left rounded-2xl p-3 border-2 flex items-center gap-3 transition-all active:scale-[0.99] ${
+      className={`relative w-full text-left rounded-2xl p-3 border-2 flex items-center gap-3 transition-all active:scale-[0.97] ${
         isIhsan   ? 'bg-amber-50 border-amber-300' :
         isVerified? 'bg-emerald-50 border-emerald-300' :
         isClaimed ? 'bg-white border-emerald-300' :

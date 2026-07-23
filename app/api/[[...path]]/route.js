@@ -801,11 +801,15 @@ async function handleRoute(request, { params }) {
               reciter: typeof x.reciter === 'string' ? x.reciter.slice(0, 30) : undefined,
             }))
         : []
+      // Display language override — force TV to render in this lang regardless of browser localStorage
+      const validLangs = ['ms', 'en', 'id', 'ar']
+      const displayLang = validLangs.includes(body.displayLang) ? body.displayLang : null
       const config = {
         photos, slideshowSec, showHabits, showHadith, showDoa, familyMotto,
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
         dimEnabled, dimStartHour, dimEndHour, dimLevel,
         bgAudioEnabled, bgAudioUrl, bgAudioPlaylist, bgAudioVolume,
+        displayLang,
         updatedAt: new Date(),
       }
       const db = await getDb()

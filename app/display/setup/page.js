@@ -17,7 +17,8 @@ export default function DisplaySetupPage() {
   const router = useRouter()
   const { t, lang } = useLang()
   const [photos, setPhotos] = useState([])
-  const [editingPhotoIdx, setEditingPhotoIdx] = useState(null)  // null | number
+  const [editingPhotoIdx, setEditingPhotoIdx] = useState(null)
+  const [displayLang, setDisplayLang] = useState(null)  // null = follow browser/user lang, else override  // null | number
   const [photoInput, setPhotoInput] = useState('')
   const [slideshowSec, setSlideshowSec] = useState(10)
   const [showHabits, setShowHabits] = useState(true)
@@ -81,6 +82,7 @@ export default function DisplaySetupPage() {
           setBgAudioEnabled(!!c.bgAudioEnabled)
           setBgAudioUrl(c.bgAudioUrl || '')
           setBgAudioPlaylist(Array.isArray(c.bgAudioPlaylist) ? c.bgAudioPlaylist : [])
+        setDisplayLang(c.displayLang || null)
           setBgAudioVolume(typeof c.bgAudioVolume === 'number' ? c.bgAudioVolume : 25)
         }
         setPrayerLocationSet(!!lData.location)
@@ -110,6 +112,7 @@ export default function DisplaySetupPage() {
         azanEnabled, azanId, azanFajrId, azanVolume, preAzanEnabled, preAzanMin,
         dimEnabled, dimStartHour, dimEndHour, dimLevel,
         bgAudioEnabled, bgAudioUrl, bgAudioPlaylist, bgAudioVolume,
+        displayLang,
       }),
     })
     if (r.ok) {
@@ -454,6 +457,41 @@ export default function DisplaySetupPage() {
         </section>
 
         {/* Family motto removed — replaced by per-photo title in PhotoEditor */}
+
+        {/* Display Language Override */}
+        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
+          <h2 className="font-extrabold text-emerald-900 text-sm mb-1 flex items-center gap-2">
+            <span>🌐</span>
+            {lang === 'ar' ? 'لغة عرض التلفزيون' : lang === 'en' ? 'TV Display Language' : lang === 'id' ? 'Bahasa Tampilan TV' : 'Bahasa Paparan TV'}
+          </h2>
+          <p className="text-[11px] text-emerald-800/60 mb-3">
+            {lang === 'ar' ? 'تجاوز اللغة التي يعرضها التلفزيون (بغض النظر عن إعدادات المتصفح)' :
+             lang === 'en' ? 'Override which language TV displays (regardless of browser settings)' :
+             lang === 'id' ? 'Override bahasa TV (terlepas dari setting browser)' :
+             'Override bahasa yang TV papar (tak kira setting browser)'}
+          </p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {[
+              { code: null, label: lang === 'ar' ? 'تلقائي' : lang === 'en' ? 'Auto' : lang === 'id' ? 'Otomatis' : 'Auto', flag: '🌐' },
+              { code: 'ms', label: 'Melayu', flag: '🇲🇾' },
+              { code: 'en', label: 'English', flag: '🇬🇧' },
+              { code: 'id', label: 'Bahasa Indonesia', flag: '🇮🇩' },
+              { code: 'ar', label: 'العربية', flag: '🇸🇦' },
+            ].map(opt => (
+              <button key={opt.code || 'auto'} onClick={() => setDisplayLang(opt.code)}
+                className={`flex flex-col items-center gap-0.5 p-2 rounded-xl border-2 transition-all ${displayLang === opt.code ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-eq-cream bg-white hover:bg-emerald-50/50'}`}>
+                <span className="text-xl leading-none">{opt.flag}</span>
+                <span className="text-[10px] font-black text-emerald-900 leading-tight">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-emerald-800/50 mt-2 italic">
+            {lang === 'ar' ? '💡 "تلقائي" يتبع إعداد المستخدم من الدخول' :
+             lang === 'en' ? '💡 "Auto" follows the user\'s login language setting' :
+             lang === 'id' ? '💡 "Otomatis" mengikuti bahasa login pengguna' :
+             '💡 "Auto" ikut setting bahasa user semasa login'}
+          </p>
+        </section>
 
         {/* Save + Preview */}
         <div className="flex gap-2 pb-6">

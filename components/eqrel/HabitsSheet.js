@@ -9,6 +9,7 @@ import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
+import { haptic, showBurst } from '@/lib/feedback'
 
 const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
 
@@ -191,12 +192,15 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   // Quick tap in self mode = classic toggle (claimed/pending)
   const toggleClaim = async (habit) => {
     const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+    // Immediate tactile ack — parents feel their tap register instantly
+    haptic.tap()
     try {
       if (isDone) {
         // Undo — allow removing today's claim regardless of mode
         await fetch(`/api/habits/${habit.id}/claim`, {
           method: 'DELETE', credentials: 'include',
         })
+        haptic.undo()
         setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
         return
       }
@@ -210,6 +214,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         })
         if (res.ok) {
           const data = await res.json().catch(() => ({}))
+          haptic.success()
+          // Floating "+points" burst on the tapped row
+          const rowEl = typeof document !== 'undefined'
+            ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
+            : null
+          if (rowEl) {
+            showBurst(rowEl, { text: `+${data.points ?? habit.points}`, variant: 'success' })
+          }
           setHabits(prev => prev.map(h => h.id === habit.id ? {
             ...h, todayStatus: 'verified', rubric: 'sah', pointsAwarded: data.points ?? h.points,
           } : h))
@@ -223,6 +235,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           body: JSON.stringify({ status: 'claimed' }),
         })
         if (res.ok) {
+          haptic.success()
           setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'claimed' } : h))
         }
       }
@@ -232,6 +245,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   // Long-press in parent-log mode → open rubric picker
   const openRubricPicker = (habit) => {
     if (!isParentLogMode) return
+    haptic.select()
     setRubricPickerHabit(habit)
   }
 
@@ -239,6 +253,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     if (!rubricPickerHabit) return
     const habit = rubricPickerHabit
     setRubricPickerHabit(null)
+    haptic.tap()
     try {
       const res = await fetch(`/api/habits/${habit.id}/claim`, {
         method: 'POST',
@@ -249,8 +264,21 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         if (rubric === 'belum') {
+          haptic.undo()
           setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
         } else {
+          if (rubric === 'ihsan') haptic.ihsan()
+          else haptic.success()
+          // Floating burst
+          const rowEl = typeof document !== 'undefined'
+            ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
+            : null
+          if (rowEl) {
+            showBurst(rowEl, {
+              text: `+${data.points ?? habit.points}`,
+              variant: rubric === 'ihsan' ? 'ihsan' : 'success',
+            })
+          }
           setHabits(prev => prev.map(h => h.id === habit.id ? {
             ...h, todayStatus: 'verified', rubric, pointsAwarded: data.points ?? h.points,
           } : h))
@@ -527,7 +555,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     const endPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
 
                     return (
-                      <div key={habit.id} className={`rounded-2xl p-3 border-2 transition-all ${
+                      <div key={habit.id} data-habitrow-id={habit.id} className={`relative rounded-2xl p-3 border-2 transition-all ${
                         isIhsan ? 'bg-amber-50 border-amber-300' :
                         isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
                       }`}>

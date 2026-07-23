@@ -15,6 +15,7 @@ import { useWakeLock } from '@/lib/useWakeLock'
 import TVPreview from '@/components/eqrel/TVPreview'
 import HabitBoard from '@/components/eqrel/HabitBoard'
 import LocationPicker from '@/components/eqrel/LocationPicker'
+import { strings as I18N_STRINGS } from '@/lib/i18n/strings'
 import { formatHijri, getHijri } from '@/lib/hijri'
 import { getEventForDate, getMonthlyContext } from '@/lib/islamicCalendar'
 
@@ -42,7 +43,11 @@ const AZAN_TRIGGER_KEYS = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 
 export default function DisplayPage() {
   const router = useRouter()
-  const { t, lang } = useLang()
+  const { t: tBase, lang: userLang } = useLang()
+  const [config, setConfig] = useState(null)
+  // Display language override — if config.displayLang set, TV uses that; else follow user's login lang
+  const lang = (config?.displayLang && ['ms', 'en', 'id', 'ar'].includes(config.displayLang)) ? config.displayLang : userLang
+  const t = I18N_STRINGS[lang] || tBase
   const searchParams = useSearchParams()
   const isPreview = searchParams?.get('preview') === '1'
   const forceTv = searchParams?.get('tv') === '1'
@@ -67,7 +72,7 @@ export default function DisplayPage() {
   }, [forceTv])
 
   const [now, setNow] = useState(new Date())
-  const [config, setConfig] = useState(null)
+  // (config state declared at top of component with lang override)
 
   // Prevent TV screensaver — keep screen awake while /display is mounted
   useWakeLock(true)

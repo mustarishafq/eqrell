@@ -1,7 +1,7 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "Family Display TV HabitBoard redesigned with session grouping — per-child card now shows Anytime zone + Prayer sessions (Fajr/Zuhr/Asr/Maghrib/Isha/Before Bed) as mini blocks with icons, progress bars, per-session count. Current session auto-highlighted with pulsing color. PerPrayer habits (Wudhu) show '5×' badge. Backend display-data projection updated to include session/recurring/templateId fields. Verified visually at 1920x1080. (2026-01-19)"
+  update_note: "Added Multi-Sensory Tactile Feedback for task completion. New /app/lib/feedback.js exports haptic (navigator.vibrate patterns: tap/success/ihsan/undo/locked/milestone) + showBurst (fixed-positioned floating '+points' badge & pulse ring anchored via getBoundingClientRect, appended to document.body so animation survives React re-render). Wired into: Kid Mode habit tap (claimHabit — instant tap ack + success pattern + floating burst + milestone haptic when all done), Parent HabitsSheet toggleClaim/applyRubricPick (parent-log auto-sah + rubric picker Ihsan gets distinct celebratory pattern), Parent VerifySheet applyRubric (per-rubric haptic: Ihsan=celebratory, Sah=success, Belum=undo, error=locked). Also removed 'Loading...' full-page flash on habit refresh by adding silent-reload mode to /app/app/kid/page.js load(silent). Sound intentionally omitted per family preference. (2026-01-23)"
 
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
