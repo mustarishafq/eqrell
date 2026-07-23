@@ -571,11 +571,53 @@ export default function DisplayPage() {
         </div>
       )}
 
+      {/* ═══ ZIKIR FLOATING CHIP — bottom-left, always visible above mascot footer ═══ */}
+      {display?.zikir && !isPreview && (
+        <div className="fixed bottom-3 left-3 z-40 pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl backdrop-blur border-2 shadow-2xl px-3 py-2"
+            style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.35), rgba(0,184,148,0.18))', borderColor: 'rgba(0,184,148,0.55)', maxWidth: 260 }}>
+            <div className="flex items-center gap-2">
+              <motion.span
+                className="text-2xl leading-none flex-shrink-0"
+                animate={{ rotate: [0, -8, 8, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>📿</motion.span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[9px] uppercase tracking-widest font-black leading-none" style={{ color: '#00B894' }}>
+                  {t.display_zikir_title}
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <motion.div
+                    key={display.zikir.today}
+                    initial={{ scale: 1.3 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.4 }}
+                    className="font-black tabular-nums leading-none"
+                    style={{ color: '#FFF8E7', fontSize: 'clamp(1.5rem, 2.4vw, 2.5rem)' }}>
+                    {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
+                  </motion.div>
+                  <div className="text-[8px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>
+                    {t.display_zikir_sub_today}
+                  </div>
+                </div>
+                {display.zikir.total > (display.zikir.today || 0) && (
+                  <div className="text-[9px] leading-tight mt-0.5" style={{ color: '#FFF8E7', opacity: 0.6 }}>
+                    {t.display_zikir_sub_total}: <span className="font-bold" style={{ opacity: 0.9 }}>{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* ═══ MAIN 3-COLUMN GRID — flex-1, no scroll ═══ */}
       <main className="relative z-10 px-3 pt-3 pb-2 grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
 
-        {/* LEFT COLUMN — Time+Hijri anchored TOP, Zikir anchored BOTTOM (Zikir never clipped) */}
-        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col justify-between gap-2.5 min-h-0 overflow-hidden pb-2">
+        {/* LEFT COLUMN — Only Time+Hijri+NextPrayer (Zikir moved to floating fixed chip) */}
+        <aside className="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-2 flex flex-col gap-2.5 min-h-0 overflow-hidden pb-2">
           <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 text-center flex-shrink-0">
             <div className="font-black tabular-nums drop-shadow tracking-tighter leading-none" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)', color: '#FFF8E7' }}>{timeStr}</div>
             <div className="mt-2 text-sm md:text-base capitalize font-bold" style={{ color: '#FFF8E7', opacity: 0.9 }}>{dayStr}</div>
@@ -600,38 +642,8 @@ export default function DisplayPage() {
           </div>
 
           {/* Sirah/Islamic event now shown inside mascot dialog rotation — no standalone card */}
-
           {/* Kids progress card removed — already shown in Family Habit Board on the right */}
-
-          {/* Zikir (family-shared) — z-40 keeps it above mascot dialog if overlap */}
-          {display?.zikir && (
-            <div className="relative z-40 rounded-3xl backdrop-blur border-2 shadow-2xl p-3 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, rgba(0,184,148,0.28), rgba(0,184,148,0.10))', borderColor: 'rgba(0,184,148,0.5)' }}>
-              <div className="text-[10px] uppercase tracking-widest font-black mb-1.5 flex items-center gap-1" style={{ color: '#00B894' }}>
-                <span className="text-lg">📿</span> {t.display_zikir_title}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <motion.div
-                  key={display.zikir.today}
-                  initial={{ scale: 1.3 }}
-                  animate={{ scale: 1 }}
-                  transition={{ duration: 0.5 }}
-                  className="font-black tabular-nums leading-none"
-                  style={{ color: '#FFF8E7', fontSize: 'clamp(2rem, 3vw, 3.5rem)' }}>
-                  {(display.zikir.today || 0).toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}
-                </motion.div>
-                <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: '#FFF8E7', opacity: 0.85 }}>{t.display_zikir_sub_today}</div>
-              </div>
-              {display.zikir.total > (display.zikir.today || 0) && (
-                <div className="mt-1 text-[10px]" style={{ color: '#FFF8E7', opacity: 0.6 }}>
-                  {t.display_zikir_sub_total}: <span className="font-bold" style={{ opacity: 0.9 }}>{display.zikir.total.toLocaleString(lang === 'ar' ? 'ar-EG' : lang)}</span>
-                </div>
-              )}
-              <div className="mt-1.5 pt-1.5 border-t italic leading-tight text-[10px]" style={{ color: '#FFF8E7', opacity: 0.65, borderColor: 'rgba(0,184,148,0.2)' }}>
-                {lang === 'ar' ? 'اضغط للذكر من هاتف كل فرد' : lang === 'en' ? 'Everyone taps zikir from their own phone' : lang === 'id' ? 'Semua tap zikir dari HP masing-masing' : 'Semua orang tap zikir dari phone masing-masing'}
-              </div>
-            </div>
-          )}
+          {/* Zikir card MOVED to floating chip at bottom-left — see below (position:fixed z-40) */}
         </aside>
 
         {/* CENTER — Family Photo Slideshow (MAIN FOCAL) */}

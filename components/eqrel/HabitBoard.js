@@ -1,6 +1,7 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import {
   SESSION_BY_ID,
@@ -43,29 +44,70 @@ const STATUS_META = {
 }
 
 const PRAYER_ORDER = ['subuh', 'zohor', 'asar', 'maghrib', 'isyak', 'sebelumTidur']
+const CAROUSEL_MAX_VISIBLE = 4       // Max kids shown at once in list layout
+const CAROUSEL_ROTATE_MS = 10_000    // Rotate every 10 seconds
 
 export default function HabitBoard({ kids, lang = 'ms', title }) {
-  if (!kids || kids.length === 0) return null
+  const safeKids = kids || []
+  const count = safeKids.length
   const currentSession = currentSessionFromClock()
-  const count = kids.length
 
-  // Layout decision
+  // Layout decision — 1/2-3/4+
   const layout = count === 1 ? 'single' : count <= 3 ? 'grid' : 'list'
+
+  // Auto-carousel for 5+ kids (list layout only) — batches of 4
+  const useCarousel = layout === 'list' && count > CAROUSEL_MAX_VISIBLE
+  const [pageIdx, setPageIdx] = useState(0)
+  const totalPages = useCarousel ? Math.ceil(count / CAROUSEL_MAX_VISIBLE) : 1
+
+  useEffect(() => {
+    if (!useCarousel) return
+    const tt = setInterval(() => {
+      setPageIdx(p => (p + 1) % totalPages)
+    }, CAROUSEL_ROTATE_MS)
+    return () => clearInterval(tt)
+  }, [useCarousel, totalPages])
+
+  // Safe early-return AFTER hooks (React rules-of-hooks compliant)
+  if (count === 0) return null
+
+  // Slice kids for current page (if carousel)
+  const visibleKids = useCarousel
+    ? safeKids.slice(pageIdx * CAROUSEL_MAX_VISIBLE, (pageIdx + 1) * CAROUSEL_MAX_VISIBLE)
+    : safeKids
 
   return (
     <div className="rounded-3xl bg-emerald-950/60 backdrop-blur border border-emerald-400/20 shadow-2xl p-3 flex-1 min-h-0 overflow-hidden flex flex-col">
       <div className="text-[10px] uppercase tracking-widest font-black mb-2 flex items-center gap-1 flex-shrink-0" style={{ color: '#FFB703' }}>
         <span className="text-base">📋</span> {title}
-        <span className="ml-auto text-[9px] font-bold opacity-60">{count} {lang === 'ar' ? 'أطفال' : lang === 'en' ? 'kids' : 'anak'}</span>
+        <span className="ml-auto text-[9px] font-bold opacity-60 flex items-center gap-1.5">
+          <span>{count} {lang === 'ar' ? 'أطفال' : lang === 'en' ? 'kids' : 'anak'}</span>
+          {useCarousel && (
+            <span className="flex gap-0.5">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <span key={i} className="w-1.5 h-1.5 rounded-full transition-all"
+                  style={{ background: i === pageIdx ? '#FFB703' : 'rgba(255,255,255,0.2)' }} />
+              ))}
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {layout === 'list' ? (
-          <div className="h-full flex flex-col gap-1.5 overflow-hidden">
-            {kids.map(kid => (
-              <KidRow key={kid.id} kid={kid} lang={lang} currentSession={currentSession} totalKids={count} />
-            ))}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pageIdx}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.5, ease: 'easeInOut' }}
+              className="h-full flex flex-col gap-1.5 overflow-hidden">
+              {visibleKids.map(kid => (
+                <KidRow key={kid.id} kid={kid} lang={lang} currentSession={currentSession} totalKids={visibleKids.length} />
+              ))}
+            </motion.div>
+          </AnimatePresence>
         ) : (
           <div className={`grid gap-2 h-full ${layout === 'single' ? 'grid-cols-1' : 'grid-cols-2'} auto-rows-fr`}>
             {kids.map(kid => (
