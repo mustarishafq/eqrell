@@ -482,15 +482,11 @@ export default function DisplayPage() {
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 via-teal-900 to-slate-900" />
       <div className="absolute inset-0 opacity-40" style={{ background: 'radial-gradient(ellipse at top left, rgba(0,184,148,0.3), transparent 60%), radial-gradient(ellipse at bottom right, rgba(255,183,3,0.15), transparent 60%)' }} />
 
-      {/* ═══ TOP HEADER: EQrel wordmark + prayer strip + nav ═══ */}
+      {/* ═══ TOP HEADER: EQrel branded logo + prayer strip + nav ═══ */}
       <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3 flex-shrink-0">
-        {/* EQrel wordmark */}
-        <div className="flex items-center gap-2 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 pl-2 pr-3 h-14 shadow-lg">
-          <img src={BRAND.mascot.default} alt="EQ" className="w-10 h-10 object-contain drop-shadow" />
-          <div className="flex flex-col leading-tight">
-            <span className="text-base font-black tracking-tight text-white">{BRAND.name}</span>
-            <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: '#FFB703' }}>{BRAND.tagline[lang] || BRAND.tagline.ms}</span>
-          </div>
+        {/* EQrel full logo — white glass card to emphasize the branded artwork */}
+        <div className="flex items-center rounded-2xl bg-white/85 backdrop-blur border border-white/60 px-3 h-14 shadow-lg">
+          <img src="/eqrel-logo-full.png" alt="EQrel — Build Habits. Grow Iman." className="h-10 w-auto object-contain drop-shadow-sm" />
         </div>
 
         {/* Prayer strip — no emojis, no countdown chip */}
