@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import {
@@ -43,6 +43,48 @@ const STATUS_META = {
 
 const PRAYER_ORDER = ['subuh', 'zohor', 'asar', 'maghrib', 'isyak', 'sebelumTidur']
 const ROTATE_MS = 8_000  // Rotate to next kid every 8 seconds
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AutoFitText — single-line text that auto-shrinks font-size to fit container width
+// (Prevents nickname from wrapping to 2 lines; kecil font kalau tak muat)
+// ═══════════════════════════════════════════════════════════════════════════
+function AutoFitText({ text, maxPx = 32, minPx = 12, className, style }) {
+  const containerRef = useRef(null)
+  const textRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    const el = textRef.current
+    if (!container || !el) return
+
+    const fit = () => {
+      let size = maxPx
+      el.style.fontSize = `${size}px`
+      // Linear shrink until fits (single-line, no wrap)
+      // Guard: max ~20 iterations for safety
+      let guard = 0
+      while (el.scrollWidth > container.clientWidth && size > minPx && guard < 40) {
+        size -= 1
+        el.style.fontSize = `${size}px`
+        guard += 1
+      }
+    }
+    fit()
+
+    // Re-fit on container resize (window resize / TV rotation / etc)
+    const ro = new ResizeObserver(fit)
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [text, maxPx, minPx])
+
+  return (
+    <div ref={containerRef} className={className} style={{ ...style, overflow: 'hidden', width: '100%' }}>
+      <span ref={textRef} style={{ whiteSpace: 'nowrap', display: 'inline-block', lineHeight: 1.1 }}>
+        {text}
+      </span>
+    </div>
+  )
+}
 
 export default function HabitBoard({ kids, lang = 'ms', title }) {
   const safeKids = kids || []
@@ -140,20 +182,15 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
             <div className="w-full h-full flex items-center justify-center text-2xl">🧒</div>}
         </div>
 
-        {/* Name + count */}
+        {/* Name (auto-fit single line — kecil font kalau nama panjang) + count */}
         <div className="flex-1 min-w-0">
-          <div className="font-black leading-tight"
-            style={{
-              color: '#FFF8E7',
-              fontSize: 'clamp(1.1rem, 1.8vw, 2rem)',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              wordBreak: 'break-word',
-            }}>
-            {kid.nickname}
-          </div>
+          <AutoFitText
+            text={kid.nickname || ''}
+            maxPx={36}
+            minPx={14}
+            className="font-black"
+            style={{ color: '#FFF8E7' }}
+          />
           {/* Big X/Y number */}
           <div className="flex items-baseline gap-1.5 mt-1">
             <motion.span
