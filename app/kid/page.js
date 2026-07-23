@@ -225,13 +225,26 @@ function KidHomeActive({ router, childId, t, lang }) {
     }
     // Immediate tap acknowledgement — feels responsive even before network
     haptic.tap()
-    // For per-prayer habits, session comes from the rendered instance (_sessionInstance)
-    const sessionForClaim = habit._isPerPrayer ? habit._sessionInstance : null
+
+    // Determine session for per-prayer habits (e.g. Wudhu 5×/day).
+    // - Session view provides `_sessionInstance` per rendered row.
+    // - Category view / aggregated views fall back to the current clock session.
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const sessionForClaim = isPerPrayer
+      ? (habit._sessionInstance || currentSessionFromClock())
+      : null
+
+    // For per-prayer, determine "done" from THIS session (not aggregate)
+    const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
+    const thisIsDone = isPerPrayer
+      ? sessionsClaimed.includes(sessionForClaim)
+      : habit.todayStatus === 'claimed'
+
     // Busy key includes session to allow parallel taps across different sessions
     const busyKey = sessionForClaim ? `${habit.id}::${sessionForClaim}` : habit.id
     setBusyHabit(busyKey)
     try {
-      if (habit.todayStatus === 'claimed') {
+      if (thisIsDone) {
         // Undo (allowed because still pending review)
         const url = sessionForClaim
           ? `/api/habits/${habit.id}/claim?session=${encodeURIComponent(sessionForClaim)}`
@@ -243,12 +256,18 @@ function KidHomeActive({ router, childId, t, lang }) {
         // Claim
         const body = { status: 'claimed' }
         if (sessionForClaim) body.session = sessionForClaim
-        await fetch(`/api/habits/${habit.id}/claim`, {
+        const res = await fetch(`/api/habits/${habit.id}/claim`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
+        if (!res.ok) {
+          // Server rejected — surface a clear message instead of silent failure
+          haptic.locked()
+          showToast('locked', t.kid_locked_msg)
+          return
+        }
         haptic.success()
         // Floating "+points" burst on the tapped card
         const cardEl = typeof document !== 'undefined'
@@ -1017,20 +1036,45 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
   const status = habit.todayStatus
   const rubric = habit.rubric
 
+  // Per-prayer aggregate rendering (Category view): compute per-session status
+  const isPerPrayerAggregate = !habit._isPerPrayer && habit.recurring === 'perPrayer'
+  const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
+  const currentSession = isPerPrayerAggregate ? currentSessionFromClock() : null
+  const currentSessionClaimed = isPerPrayerAggregate ? sessionsClaimed.includes(currentSession) : false
+
   const isVerified = status === 'verified'
   const isIhsan = rubric === 'ihsan'
-  const isClaimed = status === 'claimed'
+  // For aggregate per-prayer, "claimed look" reflects CURRENT session (not the aggregate flag)
+  const isClaimed = isPerPrayerAggregate ? currentSessionClaimed : (status === 'claimed')
   const isLocked = isVerified
 
   let statusLabel = t.kid_status_pending
   if (isIhsan) statusLabel = t.kid_status_ihsan(habit.pointsAwarded ?? habit.points)
   else if (isVerified) statusLabel = t.kid_status_verified(habit.pointsAwarded ?? habit.points)
+  else if (isPerPrayerAggregate) {
+    // Show progress "N/5 hari ini" instead of the daily-habit labels
+    const doneCount = sessionsClaimed.length
+    const sessionLabel = getSessionLabel(currentSession, t)
+    if (currentSessionClaimed) {
+      statusLabel = lang === 'ar' ? `تم ✓ (${doneCount}/5)`
+                  : lang === 'en' ? `Done for ${sessionLabel} ✓  ·  ${doneCount}/5 today`
+                  : lang === 'id' ? `Selesai untuk ${sessionLabel} ✓  ·  ${doneCount}/5 hari ini`
+                  : `Siap untuk ${sessionLabel} ✓  ·  ${doneCount}/5 hari ini`
+    } else {
+      statusLabel = lang === 'ar' ? `اضغط لـ ${sessionLabel} (${doneCount}/5)`
+                  : lang === 'en' ? `Tap for ${sessionLabel}  ·  ${doneCount}/5 today`
+                  : lang === 'id' ? `Tap untuk ${sessionLabel}  ·  ${doneCount}/5 hari ini`
+                  : `Tekan untuk ${sessionLabel}  ·  ${doneCount}/5 hari ini`
+    }
+  }
   else if (isClaimed) statusLabel = t.kid_status_claimed
 
   // Stable id used by the burst helper to locate this specific card
   const cardKey = habit._isPerPrayer
     ? `${habit.id}::${habit._sessionInstance || ''}`
-    : habit.id
+    : isPerPrayerAggregate
+      ? `${habit.id}::${currentSession}`
+      : habit.id
 
   return (
     <motion.button

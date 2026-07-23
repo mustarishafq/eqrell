@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle, Edit3 } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
-import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel } from '@/lib/prayerSession'
+import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel, currentSessionFromClock } from '@/lib/prayerSession'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -191,53 +191,104 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   // Quick tap in parent-log mode = auto-Sah (or undo if already done)
   // Quick tap in self mode = classic toggle (claimed/pending)
   const toggleClaim = async (habit) => {
-    const isDone = habit.todayStatus === 'claimed' || habit.todayStatus === 'verified'
+    // Per-prayer habits (e.g. Wudhu) require a session — derive from current clock
+    // if the caller didn't provide one (aggregate row in the Parent list view).
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const sessionForClaim = isPerPrayer
+      ? (habit._sessionInstance || currentSessionFromClock())
+      : null
+
+    // For per-prayer, "done" is per-session (based on sessionsClaimed[])
+    const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
+    const isDone = isPerPrayer
+      ? sessionsClaimed.includes(sessionForClaim)
+      : (habit.todayStatus === 'claimed' || habit.todayStatus === 'verified')
+
     // Immediate tactile ack — parents feel their tap register instantly
     haptic.tap()
     try {
       if (isDone) {
         // Undo — allow removing today's claim regardless of mode
-        await fetch(`/api/habits/${habit.id}/claim`, {
+        const url = sessionForClaim
+          ? `/api/habits/${habit.id}/claim?session=${encodeURIComponent(sessionForClaim)}`
+          : `/api/habits/${habit.id}/claim`
+        await fetch(url, {
           method: 'DELETE', credentials: 'include',
         })
         haptic.undo()
-        setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
+        // For per-prayer, remove ONLY this session from sessionsClaimed; else reset row
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habit.id) return h
+          if (isPerPrayer) {
+            const nextSessions = sessionsClaimed.filter(s => s !== sessionForClaim)
+            return {
+              ...h,
+              sessionsClaimed: nextSessions,
+              todayStatus: nextSessions.length > 0 ? 'claimed' : 'pending',
+            }
+          }
+          return { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null }
+        }))
         return
       }
       if (isParentLogMode) {
         // Quick Sah
+        const body = { rubric: 'sah' }
+        if (sessionForClaim) body.session = sessionForClaim
         const res = await fetch(`/api/habits/${habit.id}/claim`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ rubric: 'sah' }),
+          body: JSON.stringify(body),
         })
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}))
-          haptic.success()
-          // Floating "+points" burst on the tapped row
-          const rowEl = typeof document !== 'undefined'
-            ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
-            : null
-          if (rowEl) {
-            showBurst(rowEl, { text: `+${data.points ?? habit.points}`, variant: 'success' })
-          }
-          setHabits(prev => prev.map(h => h.id === habit.id ? {
-            ...h, todayStatus: 'verified', rubric: 'sah', pointsAwarded: data.points ?? h.points,
-          } : h))
+        if (!res.ok) {
+          haptic.locked()
+          return
         }
+        const data = await res.json().catch(() => ({}))
+        haptic.success()
+        // Floating "+points" burst on the tapped row
+        const rowEl = typeof document !== 'undefined'
+          ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
+          : null
+        if (rowEl) {
+          showBurst(rowEl, { text: `+${data.points ?? habit.points}`, variant: 'success' })
+        }
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habit.id) return h
+          if (isPerPrayer) {
+            const nextSessions = Array.from(new Set([...sessionsClaimed, sessionForClaim]))
+            return {
+              ...h,
+              sessionsClaimed: nextSessions,
+              todayStatus: 'claimed', // aggregate: at least one session done
+            }
+          }
+          return { ...h, todayStatus: 'verified', rubric: 'sah', pointsAwarded: data.points ?? h.points }
+        }))
       } else {
         // Self mode — legacy behavior: mark as pending claim
+        const body = { status: 'claimed' }
+        if (sessionForClaim) body.session = sessionForClaim
         const res = await fetch(`/api/habits/${habit.id}/claim`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ status: 'claimed' }),
+          body: JSON.stringify(body),
         })
-        if (res.ok) {
-          haptic.success()
-          setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'claimed' } : h))
+        if (!res.ok) {
+          haptic.locked()
+          return
         }
+        haptic.success()
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habit.id) return h
+          if (isPerPrayer) {
+            const nextSessions = Array.from(new Set([...sessionsClaimed, sessionForClaim]))
+            return { ...h, sessionsClaimed: nextSessions, todayStatus: 'claimed' }
+          }
+          return { ...h, todayStatus: 'claimed' }
+        }))
       }
     } catch (e) { console.error(e) }
   }
@@ -254,35 +305,63 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     const habit = rubricPickerHabit
     setRubricPickerHabit(null)
     haptic.tap()
+
+    // Per-prayer session derivation
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const sessionForClaim = isPerPrayer
+      ? (habit._sessionInstance || currentSessionFromClock())
+      : null
+    const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
+
     try {
+      const body = { rubric }
+      if (sessionForClaim) body.session = sessionForClaim
       const res = await fetch(`/api/habits/${habit.id}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ rubric }),
+        body: JSON.stringify(body),
       })
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}))
-        if (rubric === 'belum') {
-          haptic.undo()
-          setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null } : h))
-        } else {
-          if (rubric === 'ihsan') haptic.ihsan()
-          else haptic.success()
-          // Floating burst
-          const rowEl = typeof document !== 'undefined'
-            ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
-            : null
-          if (rowEl) {
-            showBurst(rowEl, {
-              text: `+${data.points ?? habit.points}`,
-              variant: rubric === 'ihsan' ? 'ihsan' : 'success',
-            })
+      if (!res.ok) {
+        haptic.locked()
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      if (rubric === 'belum') {
+        haptic.undo()
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habit.id) return h
+          if (isPerPrayer) {
+            const nextSessions = sessionsClaimed.filter(s => s !== sessionForClaim)
+            return {
+              ...h,
+              sessionsClaimed: nextSessions,
+              todayStatus: nextSessions.length > 0 ? 'claimed' : 'pending',
+            }
           }
-          setHabits(prev => prev.map(h => h.id === habit.id ? {
-            ...h, todayStatus: 'verified', rubric, pointsAwarded: data.points ?? h.points,
-          } : h))
+          return { ...h, todayStatus: 'pending', rubric: null, pointsAwarded: null }
+        }))
+      } else {
+        if (rubric === 'ihsan') haptic.ihsan()
+        else haptic.success()
+        // Floating burst
+        const rowEl = typeof document !== 'undefined'
+          ? document.querySelector(`[data-habitrow-id="${habit.id}"]`)
+          : null
+        if (rowEl) {
+          showBurst(rowEl, {
+            text: `+${data.points ?? habit.points}`,
+            variant: rubric === 'ihsan' ? 'ihsan' : 'success',
+          })
         }
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habit.id) return h
+          if (isPerPrayer) {
+            const nextSessions = Array.from(new Set([...sessionsClaimed, sessionForClaim]))
+            return { ...h, sessionsClaimed: nextSessions, todayStatus: 'claimed' }
+          }
+          return { ...h, todayStatus: 'verified', rubric, pointsAwarded: data.points ?? h.points }
+        }))
       }
     } catch (e) { console.error(e) }
   }
