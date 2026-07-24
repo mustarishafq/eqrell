@@ -913,6 +913,127 @@ async function handleRoute(request, { params }) {
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // WORLD ENGINE — Phaser 3 world state per child
+    // ═══════════════════════════════════════════════════════════════════
+    // Schema (collection: family_worlds):
+    //   { id, childId, familyId, version, buildings: [], demeritCount, createdAt, updatedAt }
+    //   buildings[]: { id, templateId, x, y, level, placedAt }
+    //
+    // GET  /world/:childId          → return state (auto-create with musalla seeded)
+    // POST /world/:childId          → save full state (idempotent upsert)
+    // POST /world/:childId/build    → append a new building { templateId, x, y }
+    // POST /world/:childId/upgrade  → level up building by id
+    // POST /world/:childId/demerit  → adjust demeritCount { delta }
+    if (route.startsWith('/world/')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+
+      const parts = route.split('/').filter(Boolean) // ['world', ':childId', ...]
+      const childId = parts[1]
+      const action = parts[2] || null
+      // Verify the child belongs to this family
+      const child = await db.collection('children').findOne(
+        { id: childId, familyId: user.familyId },
+        { projection: { _id: 0, id: 1, nickname: 1, ageBand: 1, favColor: 1 } }
+      )
+      if (!child) return err('child not found', 404)
+
+      const worldsCol = db.collection('family_worlds')
+
+      // Helper: fetch-or-seed world state for this child
+      const loadOrSeed = async () => {
+        let world = await worldsCol.findOne({ childId }, { projection: { _id: 0 } })
+        if (!world) {
+          // Seed with Musalla NOT yet built — anak akan trigger ritual bina Musalla
+          // Musalla pre-gazetted position (center) is passed via config on client
+          world = {
+            id: `world-${childId}`,
+            childId,
+            familyId: user.familyId,
+            version: 1,
+            buildings: [],
+            demeritCount: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }
+          await worldsCol.insertOne(world)
+        }
+        return world
+      }
+
+      // GET /world/:childId
+      if (!action && method === 'GET') {
+        const world = await loadOrSeed()
+        return json({ world, child })
+      }
+
+      // POST /world/:childId → replace full buildings array (used by auto-save)
+      if (!action && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const update = { updatedAt: new Date() }
+        if (Array.isArray(body.buildings)) update.buildings = body.buildings
+        if (typeof body.demeritCount === 'number') update.demeritCount = Math.max(0, body.demeritCount)
+        await loadOrSeed() // ensure exists
+        await worldsCol.updateOne({ childId }, { $set: update })
+        return json({ ok: true })
+      }
+
+      // POST /world/:childId/build → append single building
+      if (action === 'build' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const { templateId, x, y } = body
+        if (!templateId || typeof x !== 'number' || typeof y !== 'number') {
+          return err('Missing templateId/x/y', 400)
+        }
+        await loadOrSeed()
+        // Duplicate-position guard: cell must be empty (musalla-only exception handled client-side)
+        const existing = await worldsCol.findOne({ childId, 'buildings.x': x, 'buildings.y': y })
+        if (existing) return err('cell occupied', 409)
+        const newBuilding = {
+          id: `bld-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`,
+          templateId, x, y, level: 1, placedAt: new Date(),
+        }
+        await worldsCol.updateOne(
+          { childId },
+          { $push: { buildings: newBuilding }, $set: { updatedAt: new Date() } }
+        )
+        return json({ ok: true, building: newBuilding })
+      }
+
+      // POST /world/:childId/upgrade → level up by building id
+      if (action === 'upgrade' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const { buildingId } = body
+        if (!buildingId) return err('Missing buildingId', 400)
+        const r = await worldsCol.updateOne(
+          { childId, 'buildings.id': buildingId },
+          { $inc: { 'buildings.$.level': 1 }, $set: { updatedAt: new Date() } }
+        )
+        if (r.matchedCount === 0) return err('building not found', 404)
+        return json({ ok: true })
+      }
+
+      // POST /world/:childId/demerit → adjust demerit count { delta }
+      if (action === 'demerit' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const delta = Number(body.delta) || 0
+        await loadOrSeed()
+        await worldsCol.updateOne(
+          { childId },
+          [{ $set: {
+            demeritCount: { $max: [0, { $add: [{ $ifNull: ['$demeritCount', 0] }, delta] }] },
+            updatedAt: new Date(),
+          } }]
+        )
+        const updated = await worldsCol.findOne({ childId }, { projection: { demeritCount: 1 } })
+        return json({ ok: true, demeritCount: updated?.demeritCount || 0 })
+      }
+    }
+
     // GET /family/display-data  → bundle for ambient display
     // Returns { family, children[compact], streak, todayHabitsDone, todayHabitsTotal }
     if (route === '/family/display-data' && method === 'GET') {
