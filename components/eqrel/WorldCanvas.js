@@ -23,6 +23,7 @@ export default function WorldCanvas({
   worldState,       // { buildings, demeritCount }
   onEvent,          // (type, payload) => void — bubbles game events to React
   interactionLocked = false, // when true, Phaser ignores cell taps (used while modals are open)
+  construct,         // { x, y, templateId, level, key } | null — when set, triggers Red-Alert-style build anim
 }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -92,6 +93,27 @@ export default function WorldCanvas({
     if (!g) return
     try { g.registry.set('interactionLocked', interactionLocked) } catch { /* not ready */ }
   }, [interactionLocked])
+
+  // Trigger construction animation when `construct` prop changes to a new key
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g || !construct) return
+    const trigger = () => {
+      const scene = g.scene.getScene('WorldScene')
+      if (!scene || typeof scene.playConstruction !== 'function') {
+        // Try again after a beat if scene not yet ready
+        setTimeout(trigger, 120)
+        return
+      }
+      scene.playConstruction(
+        construct.x, construct.y, construct.templateId, construct.level || 1,
+        () => { onEvent?.('construction-done', construct) }
+      )
+    }
+    trigger()
+    // Only re-run when a new construction key is issued
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [construct?.key])
 
   return <div ref={containerRef} className="w-full h-full" />
 }

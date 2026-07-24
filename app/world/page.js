@@ -89,6 +89,8 @@ function WorldPageInner() {
   const [dragMode, setDragMode] = useState(false)
   // Upgrade dialog — shows when user taps an existing building
   const [upgradeTarget, setUpgradeTarget] = useState(null) // building object
+  // Construction animation trigger — passed to WorldCanvas; scene plays Red-Alert-style build anim
+  const [construct, setConstruct] = useState(null) // { x, y, templateId, level, key, isUpgrade? }
 
   // ─── Load world ───────────────────────────────────────────
   const load = useCallback(async () => {
@@ -142,34 +144,54 @@ function WorldPageInner() {
       }
       gridX = cell.x; gridY = cell.y
     }
+    // Move ritual to 'building' phase (small bottom toast now — animation
+    // plays on the canvas itself, Red-Alert-style scaffolding + rising sprite).
     setRitual({ phase: 'building', templateId, x: gridX, y: gridY })
-
-    // Fake construction delay (visual animation on Phaser side)
-    await new Promise(r => setTimeout(r, 2000))
-
-    // Persist to server
-    try {
-      const r = await fetch(`/api/world/${childId}/build`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId, x: gridX, y: gridY }),
-      })
-      if (r.ok) {
-        haptic.ihsan()
-        setRitual({ phase: 'alhamdulillah', templateId, x: gridX, y: gridY })
-        await load() // reload state; canvas will re-render buildings + villagers
-        setTimeout(() => {
-          setRitual(null)
-          setPickingTemplate(null)
-        }, 2500)
-      } else {
-        haptic.locked()
-        setRitual(null)
-      }
-    } catch (e) {
-      setRitual(null)
-    }
+    // Trigger the Phaser construction animation via prop
+    setConstruct({ x: gridX, y: gridY, templateId, level: 1, key: Date.now() })
   }
+
+  // Called by WorldCanvas when the Red-Alert construction anim finishes.
+  // Persists to DB and shows Alhamdulillah.
+  const finishConstruction = useCallback(async (payload) => {
+    // Detect if this was an upgrade or fresh build
+    const isUpgrade = !!payload?.isUpgrade
+    try {
+      if (isUpgrade) {
+        const target = (worldState?.buildings || []).find(b => b.templateId === payload.templateId)
+        if (!target) { setRitual(null); setConstruct(null); return }
+        const r = await fetch(`/api/world/${childId}/upgrade`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ buildingId: target.id }),
+        })
+        if (r.ok) {
+          haptic.ihsan()
+          setRitual({ phase: 'alhamdulillah', templateId: payload.templateId })
+          await load()
+        } else { setRitual(null) }
+      } else {
+        const r = await fetch(`/api/world/${childId}/build`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: payload.templateId, x: payload.x, y: payload.y }),
+        })
+        if (r.ok) {
+          haptic.ihsan()
+          setRitual({ phase: 'alhamdulillah', templateId: payload.templateId })
+          await load()
+        } else {
+          haptic.locked()
+          setRitual(null)
+        }
+      }
+    } catch { setRitual(null) }
+    setConstruct(null)
+    setTimeout(() => {
+      setRitual(null)
+      setPickingTemplate(null)
+    }, 2500)
+  }, [childId, worldState, load])
 
   const dismissRitual = () => setRitual(null)
 
@@ -229,27 +251,25 @@ function WorldPageInner() {
 
   const confirmUpgrade = async () => {
     if (!ritual) return
-    setRitual({ ...ritual, phase: 'building' })
-    await new Promise(r => setTimeout(r, 1500))
     const targetBuilding = (worldState?.buildings || []).find(b => b.templateId === ritual.templateId)
     if (!targetBuilding) { setRitual(null); return }
-    try {
-      const r = await fetch(`/api/world/${childId}/upgrade`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ buildingId: targetBuilding.id }),
-      })
-      if (r.ok) {
-        haptic.ihsan()
-        setRitual({ phase: 'alhamdulillah', templateId: ritual.templateId })
-        await load()
-        setTimeout(() => setRitual(null), 2500)
-      } else { setRitual(null) }
-    } catch { setRitual(null) }
+    setRitual({ ...ritual, phase: 'building' })
+    // Trigger construction anim on the target building (with next level for visual pop)
+    setConstruct({
+      x: targetBuilding.x, y: targetBuilding.y,
+      templateId: ritual.templateId,
+      level: (targetBuilding.level || 1) + 1,
+      key: Date.now(),
+      isUpgrade: true,
+    })
   }
 
-  // ─── World canvas event handler (cell taps) ───────────────
+  // ─── World canvas event handler (cell taps + construction completion) ────
   const handleCanvasEvent = useCallback((type, payload) => {
+    if (type === 'construction-done') {
+      finishConstruction(payload)
+      return
+    }
     if (type === 'cell-tap') {
       // Check if user tapped an existing building — offer upgrade
       const b = (worldState?.buildings || []).find(building => {
@@ -266,7 +286,7 @@ function WorldPageInner() {
         }
       }
     }
-  }, [worldState, childId])
+  }, [worldState, childId, finishConstruction])
   const onSelectBuilding = (templateId) => {
     const hasMusalla = (worldState?.buildings || []).some(b => b.templateId === 'musalla')
     if (templateId !== 'musalla' && !hasMusalla) {
@@ -311,6 +331,7 @@ function WorldPageInner() {
             worldState={worldState}
             onEvent={handleCanvasEvent}
             interactionLocked={overlayOpen}
+            construct={construct}
           />
         )}
       </div>
@@ -544,18 +565,18 @@ const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) 
 
 const BuildingProgressOverlay = ({ lang = 'ms' }) => (
   <motion.div
-    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-    className="absolute inset-0 z-[90] flex items-center justify-center pointer-events-none"
+    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+    className="absolute left-1/2 -translate-x-1/2 top-16 z-[85] pointer-events-none"
   >
-    <div className="bg-white/95 rounded-2xl px-6 py-4 shadow-xl flex items-center gap-3">
+    <div className="bg-white/90 backdrop-blur rounded-full px-4 py-2 shadow-lg flex items-center gap-2 border border-emerald-200">
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-        className="text-3xl"
+        className="text-lg"
       >🏗️</motion.div>
       <div>
-        <div className="font-black text-emerald-900">{l('building', lang)}</div>
-        <div className="text-xs text-emerald-700/70">{l('buildingSub', lang)}</div>
+        <div className="font-black text-emerald-900 text-xs">{l('building', lang)}</div>
+        <div className="text-[10px] text-emerald-700/70">{l('buildingSub', lang)}</div>
       </div>
     </div>
   </motion.div>
