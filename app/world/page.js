@@ -6,6 +6,7 @@ import { ArrowLeft, Sparkles, Package } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { haptic } from '@/lib/feedback'
+import { useLang } from '@/lib/i18n/LangProvider'
 import {
   BUILDING_TEMPLATES, BUILDING_LIST, MUSALLA_ANCHOR,
   ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE,
@@ -18,11 +19,46 @@ const WorldCanvas = dynamic(() => import('@/components/eqrel/WorldCanvas'), {
     <div className="w-full h-full flex items-center justify-center text-white">
       <div className="text-center">
         <div className="text-4xl mb-2">🕌</div>
-        <div className="text-sm opacity-70">Memuatkan dunia...</div>
+        <div className="text-sm opacity-70">…</div>
       </div>
     </div>
   ),
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Multilingual labels for the World page
+// ═══════════════════════════════════════════════════════════════════════════
+const L = {
+  loading:      { ms: 'Memuatkan dunia…', en: 'Loading world…', id: 'Memuat dunia…', ar: 'جاري تحميل العالم…' },
+  pickChild:    { ms: 'Sila pilih anak dari Kid Mode.', en: 'Please choose a child from Kid Mode.', id: 'Silakan pilih anak dari Kid Mode.', ar: 'يرجى اختيار الطفل من وضع الطفل.' },
+  back:         { ms: 'Balik', en: 'Back', id: 'Kembali', ar: 'رجوع' },
+  yourWorld:    { ms: 'Dunia', en: 'World of', id: 'Dunia', ar: 'عالم' },
+  you:          { ms: 'Kamu', en: 'You', id: 'Kamu', ar: 'أنت' },
+  buildings:    { ms: 'binaan', en: 'buildings', id: 'bangunan', ar: 'مبان' },
+  buildMusalla: { ms: 'Bina Musalla dulu', en: 'Build the Musalla first', id: 'Bangun Musalla dulu', ar: 'ابنِ المصلى أولاً' },
+  buildLevel:   { ms: 'level', en: 'level', id: 'level', ar: 'مستوى' },
+  buildBuilding:{ ms: 'Bina Binaan', en: 'Build Buildings', id: 'Bangun Bangunan', ar: 'ابنِ المباني' },
+  dragMode:     { ms: 'Drag mode', en: 'Drag mode', id: 'Mode drag', ar: 'وضع السحب' },
+  free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
+  points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
+  start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
+  noSpace:      { ms: 'Tiada ruang lagi. Upgrade binaan sedia ada dulu!', en: 'No more space. Upgrade an existing building first!', id: 'Tidak ada ruang lagi. Naikkan level bangunan yang ada dulu!', ar: 'لا يوجد مساحة. طوّر مبنى موجود أولاً!' },
+  next:         { ms: 'Seterusnya →', en: 'Next →', id: 'Selanjutnya →', ar: 'التالي ←' },
+  startBuilding:{ ms: '🕌 Mula Bina Musalla', en: '🕌 Start Building Musalla', id: '🕌 Mulai Bangun Musalla', ar: '🕌 ابدأ بناء المصلى' },
+  onboardTitle1:{ ms: 'Kisah Hijrah', en: 'The Story of Hijrah', id: 'Kisah Hijrah', ar: 'قصة الهجرة' },
+  onboardText1: { ms: 'Rasulullah ﷺ hijrah dari Makkah ke Madinah kerana Allah.', en: 'The Prophet ﷺ migrated from Makkah to Madinah for the sake of Allah.', id: 'Rasulullah ﷺ hijrah dari Makkah ke Madinah karena Allah.', ar: 'هاجر النبي ﷺ من مكة إلى المدينة في سبيل الله.' },
+  onboardTitle2:{ ms: 'Bina Masjid Dulu', en: 'Build the Mosque First', id: 'Bangun Masjid Dulu', ar: 'ابنِ المسجد أولاً' },
+  onboardText2: { ms: 'Perkara PERTAMA yang Baginda ﷺ buat: bina Masjid Quba — masjid pertama dalam Islam.', en: 'The FIRST thing the Prophet ﷺ did: build Masjid Quba — the first mosque in Islam.', id: 'Hal PERTAMA yang Baginda ﷺ lakukan: membangun Masjid Quba — masjid pertama dalam Islam.', ar: 'أول ما فعل النبي ﷺ: بناء مسجد قباء — أول مسجد في الإسلام.' },
+  onboardTitle3:{ ms: 'Sekarang Giliran', en: 'Now It\u2019s Your Turn', id: 'Sekarang Giliran', ar: 'الآن دورك' },
+  onboardText3: { ms: 'Bina Musalla di dunia kamu. Ini akan jadi pusat keluarga & komuniti.', en: 'Build a Musalla in your world. It will become the heart of your family & community.', id: 'Bangun Musalla di duniamu. Ini akan menjadi pusat keluarga & komunitas.', ar: 'ابنِ مصلى في عالمك. سيصبح مركز عائلتك ومجتمعك.' },
+  bermulaBina:  { ms: 'Bermula Bina', en: 'Beginning to Build', id: 'Mulai Membangun', ar: 'بدء بناء' },
+  bismillahBtn: { ms: '🤲 Bismillah — Mula Bina', en: '🤲 Bismillah — Start Building', id: '🤲 Bismillah — Mulai Bangun', ar: '🤲 بسم الله — ابدأ البناء' },
+  cancel:       { ms: 'Batal', en: 'Cancel', id: 'Batal', ar: 'إلغاء' },
+  building:     { ms: 'Sedang bina…', en: 'Building…', id: 'Sedang membangun…', ar: 'جاري البناء…' },
+  buildingSub:  { ms: 'Bismillah, semoga berkah', en: 'Bismillah, may it be blessed', id: 'Bismillah, semoga berkah', ar: 'بسم الله، بارك الله فيه' },
+  siap:         { ms: 'Siap!', en: 'Ready!', id: 'Selesai!', ar: 'جاهز!' },
+}
+const l = (key, lang) => (L[key]?.[lang] || L[key]?.ms || key)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WorldPage — /world?childId=xxx
@@ -32,7 +68,7 @@ function WorldPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const childId = searchParams.get('childId')
-  const [lang] = useState('ms') // TODO: hook to user pref
+  const { lang } = useLang()  // Follow user's global language toggle
   const [child, setChild] = useState(null)
   const [worldState, setWorldState] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -88,7 +124,7 @@ function WorldPageInner() {
       const cell = autoPlace(templateId, worldState.buildings)
       if (!cell) {
         setRitual(null)
-        alert('Tiada ruang lagi. Bina level up building sedia ada dulu!')
+        alert(l('noSpace', lang))
         return
       }
       gridX = cell.x; gridY = cell.y
@@ -180,8 +216,8 @@ function WorldPageInner() {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-emerald-50">
         <div className="text-center">
-          <p className="text-emerald-800 mb-4">Sila pilih anak dari Kid Mode.</p>
-          <button onClick={() => router.push('/')} className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold">Balik</button>
+          <p className="text-emerald-800 mb-4">{l('pickChild', lang)}</p>
+          <button onClick={() => router.push('/')} className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold">{l('back', lang)}</button>
         </div>
       </div>
     )
@@ -190,9 +226,10 @@ function WorldPageInner() {
   const buildings = worldState?.buildings || []
   const hasMusalla = buildings.some(b => b.templateId === 'musalla')
   const musalla = buildings.find(b => b.templateId === 'musalla')
+  const isRTL = lang === 'ar'
 
   return (
-    <div className="fixed inset-0 overflow-hidden" style={{
+    <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
       background: 'radial-gradient(1200px 800px at 50% 30%, #a8dda8 0%, #6eaa6e 45%, #2d5c3a 100%)',
     }}>
       {/* Phaser canvas */}
@@ -208,14 +245,17 @@ function WorldPageInner() {
           onClick={() => router.push('/kid?childId=' + childId)}
           className="pointer-events-auto flex items-center gap-1 rounded-xl bg-white/85 backdrop-blur px-3 py-2 text-emerald-900 font-black text-sm shadow active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4" /> Balik
+          <ArrowLeft className="w-4 h-4" /> {l('back', lang)}
         </button>
         <div className="pointer-events-none text-center">
           <div className="text-white font-black text-lg drop-shadow-lg">
-            🌍 Dunia {child?.nickname || 'Kamu'}
+            🌍 {l('yourWorld', lang)} {child?.nickname || l('you', lang)}
           </div>
           <div className="text-white/80 text-xs">
-            {buildings.length} binaan · {musalla ? `Musalla level ${musalla.level}` : 'Bina Musalla dulu'}
+            {buildings.length} {l('buildings', lang)}{' · '}
+            {musalla
+              ? `${getBuildingName('musalla', musalla.level, lang)} ${l('buildLevel', lang)} ${musalla.level}`
+              : l('buildMusalla', lang)}
           </div>
         </div>
         <div className="w-16" /> {/* balance for centering */}
@@ -227,7 +267,7 @@ function WorldPageInner() {
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-4 h-4 text-emerald-700" />
             <div className="text-xs font-black uppercase tracking-wider text-emerald-900">
-              Bina Binaan
+              {l('buildBuilding', lang)}
             </div>
             {hasMusalla && (
               <label className="ml-auto flex items-center gap-1 text-[10px] font-bold text-emerald-800/70 cursor-pointer">
@@ -237,7 +277,7 @@ function WorldPageInner() {
                   onChange={e => setDragMode(e.target.checked)}
                   className="w-3 h-3 accent-emerald-500"
                 />
-                Drag mode
+                {l('dragMode', lang)}
               </label>
             )}
           </div>
@@ -258,14 +298,14 @@ function WorldPageInner() {
                 >
                   <div className="text-2xl leading-none mb-1">{t.icon}</div>
                   <div className="text-[10px] font-black text-emerald-900 leading-tight">
-                    {t.name[lang]}
+                    {t.name[lang] || t.name.ms}
                   </div>
                   <div className="text-[9px] text-emerald-700/70">
-                    {t.cost === 0 ? 'PERCUMA' : `${t.cost} mata`}
+                    {t.cost === 0 ? l('free', lang) : `${t.cost} ${l('points', lang)}`}
                   </div>
                   {isMusallaFirst && (
                     <div className="absolute -top-1.5 -right-1.5 bg-amber-400 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                      MULA
+                      {l('start', lang)}
                     </div>
                   )}
                   {isLocked && <div className="absolute inset-0 flex items-center justify-center text-xl">🔒</div>}
@@ -286,7 +326,7 @@ function WorldPageInner() {
             onCancel={dismissRitual}
           />
         )}
-        {ritual?.phase === 'building' && <BuildingProgressOverlay />}
+        {ritual?.phase === 'building' && <BuildingProgressOverlay lang={lang} />}
         {ritual?.phase === 'alhamdulillah' && (
           <AlhamdulillahOverlay templateId={ritual.templateId} lang={lang} />
         )}
@@ -314,7 +354,7 @@ function WorldPageInner() {
 
 export default function WorldPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-full bg-emerald-900 flex items-center justify-center text-white">Memuatkan…</div>}>
+    <Suspense fallback={<div className="h-screen w-full bg-emerald-900 flex items-center justify-center text-white">…</div>}>
       <WorldPageInner />
     </Suspense>
   )
@@ -326,15 +366,17 @@ export default function WorldPage() {
 
 const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
   const cards = [
-    { icon: '🕋', title: 'Kisah Hijrah', text: 'Rasulullah ﷺ hijrah dari Makkah ke Madinah kerana Allah.' },
-    { icon: '🏗️', title: 'Bina Masjid Dulu', text: 'Perkara PERTAMA yang Baginda ﷺ buat: bina Masjid Quba — masjid pertama dalam Islam.' },
-    { icon: '💚', title: `Sekarang Giliran ${childName || 'Kamu'}`, text: 'Bina Musalla di dunia kamu. Ini akan jadi pusat keluarga & komuniti.' },
+    { icon: '🕋', title: l('onboardTitle1', lang), text: l('onboardText1', lang) },
+    { icon: '🏗️', title: l('onboardTitle2', lang), text: l('onboardText2', lang) },
+    { icon: '💚', title: `${l('onboardTitle3', lang)} ${childName || l('you', lang)}`, text: l('onboardText3', lang) },
   ]
   const c = cards[step] || cards[0]
+  const isRTL = lang === 'ar'
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-[100] flex items-center justify-center p-6"
+      dir={isRTL ? 'rtl' : 'ltr'}
       style={{ background: 'rgba(6, 63, 54, 0.92)' }}
     >
       <motion.div
@@ -355,7 +397,7 @@ const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
           onClick={() => step < cards.length - 1 ? setStep(step + 1) : onComplete()}
           className="w-full rounded-2xl bg-emerald-500 text-white font-black py-3 active:scale-95"
         >
-          {step < cards.length - 1 ? 'Seterusnya →' : '🕌 Mula Bina Musalla'}
+          {step < cards.length - 1 ? l('next', lang) : l('startBuilding', lang)}
         </button>
       </motion.div>
     </motion.div>
@@ -364,10 +406,12 @@ const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
 
 const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
   const t = BUILDING_TEMPLATES[templateId]
+  const isRTL = lang === 'ar'
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-[90] flex items-center justify-center p-6"
+      dir={isRTL ? 'rtl' : 'ltr'}
       style={{ background: 'rgba(6, 63, 54, 0.85)' }}
     >
       <motion.div
@@ -376,7 +420,7 @@ const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
       >
         <div className="text-6xl mb-2">{t?.icon}</div>
         <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
-          Bermula Bina {t?.name[lang]}
+          {l('bermulaBina', lang)} {t?.name[lang] || t?.name.ms}
         </div>
         <div className="font-serif text-4xl text-emerald-900 my-4" dir="rtl">
           {ISLAMIC_PHRASES.bismillah.ar}
@@ -391,20 +435,20 @@ const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
           onClick={onConfirm}
           className="w-full rounded-2xl bg-emerald-500 text-white font-black py-3 active:scale-95 mb-2"
         >
-          🕌 Bismillah — Mula Bina
+          {l('bismillahBtn', lang)}
         </button>
         <button
           onClick={onCancel}
           className="w-full rounded-2xl bg-transparent text-emerald-700 font-bold py-2 text-sm"
         >
-          Batal
+          {l('cancel', lang)}
         </button>
       </motion.div>
     </motion.div>
   )
 }
 
-const BuildingProgressOverlay = () => (
+const BuildingProgressOverlay = ({ lang = 'ms' }) => (
   <motion.div
     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
     className="absolute inset-0 z-[90] flex items-center justify-center pointer-events-none"
@@ -416,8 +460,8 @@ const BuildingProgressOverlay = () => (
         className="text-3xl"
       >🏗️</motion.div>
       <div>
-        <div className="font-black text-emerald-900">Sedang bina...</div>
-        <div className="text-xs text-emerald-700/70">Bismillah, semoga berkah</div>
+        <div className="font-black text-emerald-900">{l('building', lang)}</div>
+        <div className="text-xs text-emerald-700/70">{l('buildingSub', lang)}</div>
       </div>
     </div>
   </motion.div>
@@ -425,15 +469,17 @@ const BuildingProgressOverlay = () => (
 
 const AlhamdulillahOverlay = ({ templateId, lang }) => {
   const t = BUILDING_TEMPLATES[templateId]
+  const isRTL = lang === 'ar'
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-[90] flex items-center justify-center p-6 pointer-events-none"
+      dir={isRTL ? 'rtl' : 'ltr'}
     >
       <div className="max-w-md w-full bg-gradient-to-br from-amber-100 to-emerald-100 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl">
         <div className="text-6xl mb-2">✨</div>
         <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
-          {t?.name[lang]} Siap!
+          {t?.name[lang] || t?.name.ms} {l('siap', lang)}
         </div>
         <div className="font-serif text-4xl text-emerald-900 my-4" dir="rtl">
           {ISLAMIC_PHRASES.alhamdulillah.ar}
