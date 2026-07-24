@@ -332,6 +332,15 @@ function WorldPageInner() {
       finishConstruction(payload)
       return
     }
+    if (type === 'drag-armed') {
+      // Long-press engaged drag mode — give a tactile buzz so the child knows
+      // the building is now "picked up" and can be repositioned safely.
+      haptic.select()
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(30) } catch { /* noop */ }
+      }
+      return
+    }
     if (type === 'building-moved') {
       // User drag-dropped a building; persist to server. Revert on failure.
       ;(async () => {
