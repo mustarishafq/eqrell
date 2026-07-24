@@ -39,6 +39,10 @@ const L = {
   buildLevel:   { ms: 'level', en: 'level', id: 'level', ar: 'مستوى' },
   buildBuilding:{ ms: 'Bina Binaan', en: 'Build Buildings', id: 'Bangun Bangunan', ar: 'ابنِ المباني' },
   dragHint:     { ms: 'Tekan lama untuk pindah', en: 'Long-press to move', id: 'Tekan lama untuk pindah', ar: 'اضغط مطولاً للتحريك' },
+  buildingInfo: { ms: 'Info Binaan', en: 'Building Info', id: 'Info Bangunan', ar: 'معلومات المبنى' },
+  progress:     { ms: 'Kemajuan', en: 'Progress', id: 'Kemajuan', ar: 'التقدم' },
+  builtOn:      { ms: 'Dibina pada', en: 'Built on', id: 'Dibangun pada', ar: 'بُني في' },
+  close:        { ms: 'Tutup', en: 'Close', id: 'Tutup', ar: 'إغلاق' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
@@ -301,11 +305,8 @@ function WorldPageInner() {
                payload.row >= building.y && payload.row < building.y + size.h
       })
       if (b) {
-        const t = BUILDING_TEMPLATES[b.templateId]
-        if (t && (b.level || 1) < (t.maxLevel || 1)) {
-          haptic.select()
-          setUpgradeTarget(b)
-        }
+        haptic.select()
+        setUpgradeTarget(b) // always open info card, even at max level (shows reflection)
       }
     }
   }, [worldState, childId, finishConstruction, load])
@@ -455,7 +456,7 @@ function WorldPageInner() {
       {/* Upgrade dialog */}
       <AnimatePresence>
         {upgradeTarget && (
-          <UpgradeDialog
+          <BuildingInfoCard
             building={upgradeTarget}
             lang={lang}
             onConfirm={executeUpgrade}
@@ -677,9 +678,12 @@ const CloudOverlay = ({ demeritCount, lang }) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// UpgradeDialog — shown when child taps an existing building
+// BuildingInfoCard — bottom-sheet shown when child taps an existing building.
+// Displays: icon, level-aware name, date placed, villagers spawned, Islamic
+// context (short reflection). Actions: Upgrade (if not max) + rearrange hint
+// + close. Musalla gets an additional verse/hadith blurb.
 // ═══════════════════════════════════════════════════════════════════════════
-const UpgradeDialog = ({ building, lang, onConfirm, onCancel }) => {
+const BuildingInfoCard = ({ building, lang, onConfirm, onCancel }) => {
   const t = BUILDING_TEMPLATES[building.templateId]
   if (!t) return null
   const currentLevel = building.level || 1
@@ -688,51 +692,145 @@ const UpgradeDialog = ({ building, lang, onConfirm, onCancel }) => {
   const currentName = getBuildingName(building.templateId, currentLevel, lang)
   const nextName = getBuildingName(building.templateId, nextLevel, lang)
   const isRTL = lang === 'ar'
+
+  // Format placedAt date — falls back to "just now" if missing
+  const placedDate = building.placedAt ? new Date(building.placedAt) : null
+  const dateStr = placedDate
+    ? placedDate.toLocaleDateString(lang === 'ar' ? 'ar' : (lang === 'ms' ? 'ms-MY' : (lang === 'id' ? 'id-ID' : 'en-GB')), {
+        day: 'numeric', month: 'long', year: 'numeric',
+      })
+    : ''
+
+  // Islamic reflection per building type
+  const reflection = {
+    musalla: {
+      ms: '"Masjid itu rumah setiap orang bertaqwa" — Riwayat Tabrani. Tempat berkumpulnya keluarga & jiran untuk mengingati Allah.',
+      en: '"The mosque is the home of every pious person" — narrated by Tabarani. A gathering place for family & neighbours to remember Allah.',
+      id: '"Masjid adalah rumah setiap orang bertakwa" — HR Tabrani. Tempat berkumpulnya keluarga & tetangga untuk mengingat Allah.',
+      ar: '«المسجد بيت كل تقي» — رواه الطبراني. مكان اجتماع الأهل والجيران لذكر الله.',
+    },
+    rumah: {
+      ms: 'Baiti Jannati — rumahku syurgaku. Tempat kasih sayang keluarga bertumbuh dalam redha Allah.',
+      en: 'Baiti Jannati — my home, my paradise. Where family love grows under Allah\'s pleasure.',
+      id: 'Baiti Jannati — rumahku surgaku. Tempat kasih sayang keluarga bertumbuh dalam ridha Allah.',
+      ar: 'بيتي جنتي — حيث تنمو محبة الأسرة في رضا الله.',
+    },
+    kebun: {
+      ms: 'Menanam adalah sedekah — buahnya boleh dinikmati manusia, haiwan, dan burung. Hadith Nabi ﷺ.',
+      en: 'Planting is charity — its fruits enjoyed by humans, animals, and birds. Hadith of the Prophet ﷺ.',
+      id: 'Menanam adalah sedekah — buahnya dinikmati manusia, hewan, dan burung. Hadits Nabi ﷺ.',
+      ar: 'الغرس صدقة — يأكل منها الإنسان والدابة والطير. حديث النبي ﷺ.',
+    },
+  }[building.templateId] || {}
+  const reflectionText = reflection[lang] || reflection.ms || ''
+
+  // Progress bar to next level
+  const progressPct = (currentLevel / (t.maxLevel || 1)) * 100
+
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[95] flex items-center justify-center p-6"
+      className="absolute inset-0 z-[95] flex items-end sm:items-center justify-center p-0 sm:p-6"
       dir={isRTL ? 'rtl' : 'ltr'}
-      style={{ background: 'rgba(6, 63, 54, 0.85)' }}
+      style={{ background: 'rgba(6, 63, 54, 0.75)' }}
       onClick={onCancel}
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+        initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100 }}
         onClick={e => e.stopPropagation()}
-        className="max-w-md w-full bg-white rounded-3xl p-6 text-center shadow-2xl"
+        className="max-w-md w-full bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl"
       >
-        <div className="text-6xl mb-2">{t.icon}</div>
-        <div className="text-xs uppercase tracking-widest font-black text-emerald-700 mb-1">
-          {currentName} · L{currentLevel}
-        </div>
-        {isMax ? (
-          <>
-            <div className="text-lg font-bold text-emerald-900 mt-3 mb-6">
-              ✨ {l('maxLevel', lang)}
+        {/* Handle bar (mobile) */}
+        <div className="w-12 h-1 bg-emerald-200 rounded-full mx-auto mb-4 sm:hidden" />
+
+        {/* Header */}
+        <div className="flex items-start gap-4 mb-4">
+          <div className="text-5xl flex-shrink-0" style={{
+            filter: t.isSacred ? 'drop-shadow(0 0 12px rgba(255,183,3,0.5))' : 'none',
+          }}>{t.icon}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-widest font-black text-emerald-600">
+              {t.isSacred ? '🌟 ' : ''}{l('buildingInfo', lang)}
             </div>
-          </>
+            <div className="text-xl font-black text-emerald-900 leading-tight">
+              {currentName}
+            </div>
+            <div className="text-xs text-emerald-700/70 mt-0.5 font-medium">
+              L{currentLevel} · {building.templateId === 'musalla' ? '🕌' : building.templateId === 'rumah' ? '🏠' : '🌴'} {t.villagerSpawn} 🧕
+            </div>
+          </div>
+        </div>
+
+        {/* Level progress bar */}
+        <div className="mb-4">
+          <div className="flex justify-between text-[10px] font-bold text-emerald-700/70 mb-1">
+            <span>{l('progress', lang)}</span>
+            <span>L{currentLevel} / L{t.maxLevel || 1}</span>
+          </div>
+          <div className="h-2 rounded-full bg-emerald-100 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="h-full rounded-full"
+              style={{
+                background: 'linear-gradient(90deg, #10b981, #FFB703)',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Placed date */}
+        {dateStr && (
+          <div className="flex items-center gap-2 text-xs text-emerald-800/80 mb-3 bg-emerald-50/60 rounded-xl px-3 py-2">
+            <span>📅</span>
+            <span className="font-semibold">{l('builtOn', lang)}</span>
+            <span className="font-black">{dateStr}</span>
+          </div>
+        )}
+
+        {/* Islamic reflection */}
+        {reflectionText && (
+          <div className="text-xs italic text-emerald-800/85 leading-relaxed bg-amber-50/60 border-l-4 border-amber-300 rounded-lg px-3 py-2 mb-4">
+            {reflectionText}
+          </div>
+        )}
+
+        {/* Rearrange hint (only non-sacred) */}
+        {!t.isSacred && (
+          <div className="flex items-center gap-2 text-[11px] text-emerald-800/70 mb-4">
+            <span>✋</span>
+            <span>{l('dragHint', lang)}</span>
+          </div>
+        )}
+
+        {/* Upgrade section */}
+        {isMax ? (
+          <div className="text-center text-sm font-black text-amber-600 py-3">
+            ✨ {l('maxLevel', lang)}
+          </div>
         ) : (
           <>
-            <div className="text-2xl my-3">⬇️</div>
-            <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
-              {l('upgradeTo', lang)}
-            </div>
-            <div className="text-2xl font-black text-emerald-900 mb-6">
-              {nextName} · L{nextLevel}
+            <div className="text-center mb-2">
+              <div className="text-[10px] uppercase tracking-widest font-black text-amber-600">
+                {l('upgradeTo', lang)}
+              </div>
+              <div className="text-lg font-black text-emerald-900">
+                {nextName} · L{nextLevel}
+              </div>
             </div>
             <button
               onClick={onConfirm}
-              className="w-full rounded-2xl bg-emerald-500 text-white font-black py-3 active:scale-95 mb-2"
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black py-3 active:scale-95 shadow-md mb-2"
             >
-              {l('upgradeBtn', lang)}
+              ⬆️ {l('upgradeBtn', lang)}
             </button>
           </>
         )}
         <button
           onClick={onCancel}
-          className="w-full rounded-2xl bg-transparent text-emerald-700 font-bold py-2 text-sm"
+          className="w-full rounded-2xl bg-transparent text-emerald-700 font-bold py-2 text-sm active:bg-emerald-50"
         >
-          {l('cancel', lang)}
+          {l('close', lang)}
         </button>
       </motion.div>
     </motion.div>
