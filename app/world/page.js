@@ -343,8 +343,9 @@ function WorldPageInner() {
       return
     }
     if (type === 'building-moved') {
-      // User drag-dropped a building; persist to server. Optimistic patch on
-      // success (no full reload → no flash). Only reload on failure to revert.
+      // User drag-dropped a building; persist to server immediately, but DO NOT
+      // update local worldState yet — Phaser plays a 10s restructure animation
+      // to teach patience & effort. State patch happens on 'restructure-done'.
       ;(async () => {
         try {
           const r = await fetch(`/api/world/${childId}/move`, {
@@ -355,25 +356,27 @@ function WorldPageInner() {
               x: payload.x, y: payload.y,
             }),
           })
-          if (r.ok) {
-            haptic.select()
-            // Optimistic patch — buildings set unchanged, only position patched.
-            // syncStateFromRegistry sees same IDs and tweens in place (no flash).
-            setWorldState(prev => prev ? ({
-              ...prev,
-              buildings: (prev.buildings || []).map(b =>
-                b.id === payload.buildingId ? { ...b, x: payload.x, y: payload.y } : b
-              ),
-            }) : prev)
-          } else {
+          if (!r.ok) {
             haptic.locked()
-            // Server rejected — reload to revert visible state
-            await load()
+            await load()  // server rejected → revert
           }
+          // Success: server DB now shows new position; Phaser animation runs
+          // in parallel. No state update here — that comes on restructure-done.
         } catch {
           await load()
         }
       })()
+      return
+    }
+    if (type === 'restructure-done') {
+      // Phaser finished the 10s restructure — sync local state to match.
+      haptic.select()
+      setWorldState(prev => prev ? ({
+        ...prev,
+        buildings: (prev.buildings || []).map(b =>
+          b.id === payload.buildingId ? { ...b, x: payload.x, y: payload.y } : b
+        ),
+      }) : prev)
       return
     }
     if (type === 'cell-tap') {
