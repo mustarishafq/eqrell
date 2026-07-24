@@ -343,7 +343,8 @@ function WorldPageInner() {
       return
     }
     if (type === 'building-moved') {
-      // User drag-dropped a building; persist to server. Revert on failure.
+      // User drag-dropped a building; persist to server. Optimistic patch on
+      // success (no full reload → no flash). Only reload on failure to revert.
       ;(async () => {
         try {
           const r = await fetch(`/api/world/${childId}/move`, {
@@ -356,10 +357,17 @@ function WorldPageInner() {
           })
           if (r.ok) {
             haptic.select()
-            await load()  // resync — canvas re-renders with new position
+            // Optimistic patch — buildings set unchanged, only position patched.
+            // syncStateFromRegistry sees same IDs and tweens in place (no flash).
+            setWorldState(prev => prev ? ({
+              ...prev,
+              buildings: (prev.buildings || []).map(b =>
+                b.id === payload.buildingId ? { ...b, x: payload.x, y: payload.y } : b
+              ),
+            }) : prev)
           } else {
             haptic.locked()
-            // Force reload of state — Phaser will snap back since server didn't update
+            // Server rejected — reload to revert visible state
             await load()
           }
         } catch {
