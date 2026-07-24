@@ -289,10 +289,12 @@ function WorldPageInner() {
     const occupied = new Set(existingBuildings.map(b => `${b.x},${b.y}`))
     const musalla = existingBuildings.find(b => b.templateId === 'musalla')
     const anchor = musalla ? { x: musalla.x, y: musalla.y } : MUSALLA_ANCHOR
-    // Musalla footprint is 2×2 — mark those as occupied for placement purposes
+    // Musalla RESERVED footprint is 4×4 (for future Masjid/Jami' upgrade)
+    // — mark all 16 cells as occupied so autoplace never puts a house
+    // inside the sacred growth zone.
     if (musalla) {
-      for (let dx = 0; dx < 2; dx++)
-        for (let dy = 0; dy < 2; dy++)
+      for (let dx = 0; dx < 4; dx++)
+        for (let dy = 0; dy < 4; dy++)
           occupied.add(`${musalla.x + dx},${musalla.y + dy}`)
     }
     // Dynamic world bounds (18×18 initially, expands to 24/30/36)
@@ -367,7 +369,10 @@ function WorldPageInner() {
     if (type === 'drag-armed') {
       // Long-press engaged drag mode — give a tactile buzz so the child knows
       // the building is now "picked up" and can be repositioned safely.
+      // Also Bismillah: the child is starting the act of moving/restructuring
+      // — every deliberate action starts with the name of Allah.
       haptic.select()
+      bismillah()
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try { navigator.vibrate(30) } catch { /* noop */ }
       }
@@ -401,7 +406,10 @@ function WorldPageInner() {
     }
     if (type === 'restructure-done') {
       // Phaser finished the 10s restructure — sync local state to match.
+      // Alhamdulillah: the rebuilding is complete, the child sees their new
+      // arrangement — natural moment for gratitude & completion satisfaction.
       haptic.select()
+      alhamdulillah()
       setWorldState(prev => prev ? ({
         ...prev,
         buildings: (prev.buildings || []).map(b =>

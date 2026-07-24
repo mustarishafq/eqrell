@@ -1010,14 +1010,25 @@ async function handleRoute(request, { params }) {
         const buildings = world?.buildings || []
         // Bounds check: cell (and its footprint) must fit within current dynamic bounds
         const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
+        // Sacred reserved footprint — musalla pre-reserves 4×4 for future
+        // upgrade to Masjid (3×3) and Jami' Masjid (4×4), so no other
+        // building can occupy the growth zone.
+        const RESERVED = { musalla: { w: 4, h: 4 } }
         const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + sz.w > b.maxX || y + sz.h > b.maxY) {
           return err('out of bounds', 400)
         }
-        // Duplicate-position guard: cell must be empty (musalla-only exception handled client-side)
-        const existing = await worldsCol.findOne({ childId, 'buildings.x': x, 'buildings.y': y })
-        if (existing) return err('cell occupied', 409)
+        // Reserved-zone overlap: reject if this placement overlaps any
+        // building's RESERVED footprint (musalla's 4×4 sacred zone).
+        for (const bd of buildings) {
+          const s = RESERVED[bd.templateId] || TILE_SIZES[bd.templateId] || { w: 1, h: 1 }
+          const overlapsX = x < bd.x + s.w && x + sz.w > bd.x
+          const overlapsY = y < bd.y + s.h && y + sz.h > bd.y
+          if (overlapsX && overlapsY) {
+            return err('cell reserved (sacred zone or building)', 409)
+          }
+        }
         const newBuilding = {
           id: `bld-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`,
           templateId, x, y, level: 1, placedAt: new Date(),
@@ -1085,10 +1096,14 @@ async function handleRoute(request, { params }) {
         if (x < b.minX || y < b.minY || x + targetSize.w > b.maxX || y + targetSize.h > b.maxY) {
           return err('out of bounds', 400)
         }
-        // Overlap check (exclude the moving building itself)
+        // Overlap check (exclude the moving building itself). Also enforce
+        // the sacred RESERVED zone: even though the musalla itself is 2×2,
+        // it reserves a 4×4 footprint for future upgrades — no other
+        // building may move into that sacred growth area.
+        const RESERVED = { musalla: { w: 4, h: 4 } }
         for (const b of buildings) {
           if (b.id === buildingId) continue
-          const s = TILE_SIZES[b.templateId] || { w: 1, h: 1 }
+          const s = RESERVED[b.templateId] || TILE_SIZES[b.templateId] || { w: 1, h: 1 }
           for (let dx = 0; dx < targetSize.w; dx++) {
             for (let dy = 0; dy < targetSize.h; dy++) {
               const tx = x + dx, ty = y + dy
