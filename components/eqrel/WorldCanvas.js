@@ -24,6 +24,7 @@ export default function WorldCanvas({
   onEvent,          // (type, payload) => void — bubbles game events to React
   interactionLocked = false, // when true, Phaser ignores cell taps (used while modals are open)
   construct,         // { x, y, templateId, level, key } | null — when set, triggers Red-Alert-style build anim
+  lang = 'ms',       // language toggle for villager bubbles (ms/en/id/ar)
 }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -60,6 +61,7 @@ export default function WorldCanvas({
             game.registry.set('worldState', worldState)
             game.registry.set('onEvent', onEvent)
             game.registry.set('interactionLocked', interactionLocked)
+            game.registry.set('lang', lang)
           },
         },
       })
@@ -93,6 +95,13 @@ export default function WorldCanvas({
     if (!g) return
     try { g.registry.set('interactionLocked', interactionLocked) } catch { /* not ready */ }
   }, [interactionLocked])
+
+  // Push lang changes into the scene — new bubbles will pick this up immediately
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g) return
+    try { g.registry.set('lang', lang) } catch { /* not ready */ }
+  }, [lang])
 
   // Trigger construction animation when `construct` prop changes to a new key
   useEffect(() => {

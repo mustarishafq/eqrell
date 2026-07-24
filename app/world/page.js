@@ -332,6 +332,7 @@ function WorldPageInner() {
             onEvent={handleCanvasEvent}
             interactionLocked={overlayOpen}
             construct={construct}
+            lang={lang}
           />
         )}
       </div>
