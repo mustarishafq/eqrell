@@ -57,6 +57,12 @@ const L = {
   building:     { ms: 'Sedang bina…', en: 'Building…', id: 'Sedang membangun…', ar: 'جاري البناء…' },
   buildingSub:  { ms: 'Bismillah, semoga berkah', en: 'Bismillah, may it be blessed', id: 'Bismillah, semoga berkah', ar: 'بسم الله، بارك الله فيه' },
   siap:         { ms: 'Siap!', en: 'Ready!', id: 'Selesai!', ar: 'جاهز!' },
+  upgradeTitle: { ms: 'Naik Taraf', en: 'Upgrade', id: 'Naikkan Level', ar: 'ترقية' },
+  upgradeTo:    { ms: 'Naik taraf kepada', en: 'Upgrade to', id: 'Naikkan ke', ar: 'ترقية إلى' },
+  upgradeCost:  { ms: 'Kos', en: 'Cost', id: 'Biaya', ar: 'التكلفة' },
+  upgradeBtn:   { ms: '⬆️ Bismillah — Naik Taraf', en: '⬆️ Bismillah — Upgrade', id: '⬆️ Bismillah — Naikkan', ar: '⬆️ بسم الله — ترقية' },
+  maxLevel:     { ms: 'Sudah tahap tertinggi', en: 'Already at max level', id: 'Sudah level tertinggi', ar: 'وصل الحد الأقصى' },
+  cloudsMsg:    { ms: 'Baca istighfar untuk tenangkan langit', en: 'Recite Istighfar to calm the sky', id: 'Baca istighfar untuk menenangkan langit', ar: 'اقرأ الاستغفار ليصفو السماء' },
 }
 const l = (key, lang) => (L[key]?.[lang] || L[key]?.ms || key)
 
@@ -78,9 +84,11 @@ function WorldPageInner() {
   const [onboardingStep, setOnboardingStep] = useState(0)
 
   // Ritual state — bismillah/alhamdulillah overlays
-  const [ritual, setRitual] = useState(null) // {phase: 'bismillah'|'building'|'alhamdulillah', templateId}
-  const [pickingTemplate, setPickingTemplate] = useState(null) // templateId user is placing
-  const [dragMode, setDragMode] = useState(false) // false = tap-to-place (auto)
+  const [ritual, setRitual] = useState(null)
+  const [pickingTemplate, setPickingTemplate] = useState(null)
+  const [dragMode, setDragMode] = useState(false)
+  // Upgrade dialog — shows when user taps an existing building
+  const [upgradeTarget, setUpgradeTarget] = useState(null) // building object
 
   // ─── Load world ───────────────────────────────────────────
   const load = useCallback(async () => {
@@ -114,6 +122,11 @@ function WorldPageInner() {
   const confirmBismillah = async () => {
     if (!ritual) return
     haptic.tap()
+    // Upgrade flow branches to different handler
+    if (ritual.isUpgrade) {
+      await confirmUpgrade()
+      return
+    }
     const templateId = ritual.templateId
     let gridX, gridY
     if (templateId === 'musalla') {
@@ -201,7 +214,59 @@ function WorldPageInner() {
     return null
   }
 
-  // ─── Sidebar action ───────────────────────────────────────
+  // ─── Upgrade handler ──────────────────────────────────────
+  const executeUpgrade = async () => {
+    if (!upgradeTarget) return
+    const t = BUILDING_TEMPLATES[upgradeTarget.templateId]
+    if (!t || (upgradeTarget.level || 1) >= (t.maxLevel || 1)) {
+      setUpgradeTarget(null)
+      return
+    }
+    haptic.tap()
+    setRitual({ phase: 'bismillah', templateId: upgradeTarget.templateId, isUpgrade: true })
+    setUpgradeTarget(null)
+  }
+
+  const confirmUpgrade = async () => {
+    if (!ritual) return
+    setRitual({ ...ritual, phase: 'building' })
+    await new Promise(r => setTimeout(r, 1500))
+    const targetBuilding = (worldState?.buildings || []).find(b => b.templateId === ritual.templateId)
+    if (!targetBuilding) { setRitual(null); return }
+    try {
+      const r = await fetch(`/api/world/${childId}/upgrade`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buildingId: targetBuilding.id }),
+      })
+      if (r.ok) {
+        haptic.ihsan()
+        setRitual({ phase: 'alhamdulillah', templateId: ritual.templateId })
+        await load()
+        setTimeout(() => setRitual(null), 2500)
+      } else { setRitual(null) }
+    } catch { setRitual(null) }
+  }
+
+  // ─── World canvas event handler (cell taps) ───────────────
+  const handleCanvasEvent = useCallback((type, payload) => {
+    if (type === 'cell-tap') {
+      // Check if user tapped an existing building — offer upgrade
+      const b = (worldState?.buildings || []).find(building => {
+        const t = BUILDING_TEMPLATES[building.templateId]
+        const size = t?.tileSize || { w: 1, h: 1 }
+        return payload.col >= building.x && payload.col < building.x + size.w &&
+               payload.row >= building.y && payload.row < building.y + size.h
+      })
+      if (b) {
+        const t = BUILDING_TEMPLATES[b.templateId]
+        if (t && (b.level || 1) < (t.maxLevel || 1)) {
+          haptic.select()
+          setUpgradeTarget(b)
+        }
+      }
+    }
+  }, [worldState, childId])
   const onSelectBuilding = (templateId) => {
     const hasMusalla = (worldState?.buildings || []).some(b => b.templateId === 'musalla')
     if (templateId !== 'musalla' && !hasMusalla) {
@@ -235,9 +300,14 @@ function WorldPageInner() {
       {/* Phaser canvas */}
       <div className="absolute inset-0">
         {!loading && worldState && (
-          <WorldCanvas childId={childId} worldState={worldState} onEvent={() => {}} />
+          <WorldCanvas childId={childId} worldState={worldState} onEvent={handleCanvasEvent} />
         )}
       </div>
+
+      {/* ═══ CLOUD OVERLAY — visualizes demeritCount by darkening the sky ═══
+          Each demerit adds a semi-opaque grey layer + drift animation.
+          Istighfar reduces demeritCount via /demerit endpoint, sky clears. */}
+      <CloudOverlay demeritCount={worldState?.demeritCount || 0} lang={lang} />
 
       {/* Header — back button + title */}
       <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between pointer-events-none">
@@ -321,6 +391,7 @@ function WorldPageInner() {
         {ritual?.phase === 'bismillah' && (
           <BismillahOverlay
             templateId={ritual.templateId}
+            isUpgrade={ritual.isUpgrade}
             lang={lang}
             onConfirm={confirmBismillah}
             onCancel={dismissRitual}
@@ -329,6 +400,18 @@ function WorldPageInner() {
         {ritual?.phase === 'building' && <BuildingProgressOverlay lang={lang} />}
         {ritual?.phase === 'alhamdulillah' && (
           <AlhamdulillahOverlay templateId={ritual.templateId} lang={lang} />
+        )}
+      </AnimatePresence>
+
+      {/* Upgrade dialog */}
+      <AnimatePresence>
+        {upgradeTarget && (
+          <UpgradeDialog
+            building={upgradeTarget}
+            lang={lang}
+            onConfirm={executeUpgrade}
+            onCancel={() => setUpgradeTarget(null)}
+          />
         )}
       </AnimatePresence>
 
@@ -404,7 +487,7 @@ const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
   )
 }
 
-const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
+const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) => {
   const t = BUILDING_TEMPLATES[templateId]
   const isRTL = lang === 'ar'
   return (
@@ -420,7 +503,7 @@ const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
       >
         <div className="text-6xl mb-2">{t?.icon}</div>
         <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
-          {l('bermulaBina', lang)} {t?.name[lang] || t?.name.ms}
+          {isUpgrade ? l('upgradeTitle', lang) : l('bermulaBina', lang)} {t?.name[lang] || t?.name.ms}
         </div>
         <div className="font-serif text-4xl text-emerald-900 my-4" dir="rtl">
           {ISLAMIC_PHRASES.bismillah.ar}
@@ -435,7 +518,7 @@ const BismillahOverlay = ({ templateId, lang, onConfirm, onCancel }) => {
           onClick={onConfirm}
           className="w-full rounded-2xl bg-emerald-500 text-white font-black py-3 active:scale-95 mb-2"
         >
-          {l('bismillahBtn', lang)}
+          {isUpgrade ? l('upgradeBtn', lang) : l('bismillahBtn', lang)}
         </button>
         <button
           onClick={onCancel}
@@ -489,6 +572,120 @@ const AlhamdulillahOverlay = ({ templateId, lang }) => {
           {ISLAMIC_PHRASES.alhamdulillah.meaning[lang]}
         </div>
       </div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CloudOverlay — dark clouds appear as demeritCount grows.
+// Uses layered blurred CSS shapes for depth (no Phaser overhead).
+// 0 demerit = clear sky, 10+ = heavy storm.
+// ═══════════════════════════════════════════════════════════════════════════
+const CloudOverlay = ({ demeritCount, lang }) => {
+  if (!demeritCount || demeritCount <= 0) return null
+  const clouds = Math.min(demeritCount, 10)
+  // Overall darkening intensity (0 → 0.5 max)
+  const darken = Math.min(0.5, demeritCount * 0.05)
+  return (
+    <div className="absolute inset-0 pointer-events-none z-[20] overflow-hidden">
+      {/* Sky darkening layer */}
+      <div className="absolute inset-0 transition-opacity duration-1000" style={{
+        background: `rgba(20, 20, 30, ${darken})`,
+      }} />
+      {/* Individual cloud puffs — slow drift */}
+      {[...Array(clouds)].map((_, i) => {
+        const size = 120 + (i % 4) * 40
+        const yPos = 5 + (i * 7) % 40   // spread top portion of screen
+        const startX = -(i * 15) % 100
+        const duration = 40 + (i % 5) * 8  // 40-72s drift
+        return (
+          <motion.div
+            key={i}
+            initial={{ x: `${startX - 20}vw` }}
+            animate={{ x: `${startX + 120}vw` }}
+            transition={{ duration, repeat: Infinity, ease: 'linear' }}
+            className="absolute rounded-full"
+            style={{
+              top: `${yPos}%`,
+              width: size,
+              height: size * 0.55,
+              background: 'radial-gradient(ellipse, rgba(45,50,65,0.85) 0%, rgba(45,50,65,0.35) 60%, transparent 100%)',
+              filter: 'blur(12px)',
+            }}
+          />
+        )
+      })}
+      {/* Hint text — shows only when clouds start appearing */}
+      {clouds >= 3 && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-none">
+          <div className="bg-black/50 backdrop-blur text-white/90 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
+            🤲 {l('cloudsMsg', lang)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UpgradeDialog — shown when child taps an existing building
+// ═══════════════════════════════════════════════════════════════════════════
+const UpgradeDialog = ({ building, lang, onConfirm, onCancel }) => {
+  const t = BUILDING_TEMPLATES[building.templateId]
+  if (!t) return null
+  const currentLevel = building.level || 1
+  const nextLevel = currentLevel + 1
+  const isMax = nextLevel > (t.maxLevel || 1)
+  const currentName = getBuildingName(building.templateId, currentLevel, lang)
+  const nextName = getBuildingName(building.templateId, nextLevel, lang)
+  const isRTL = lang === 'ar'
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[95] flex items-center justify-center p-6"
+      dir={isRTL ? 'rtl' : 'ltr'}
+      style={{ background: 'rgba(6, 63, 54, 0.85)' }}
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+        onClick={e => e.stopPropagation()}
+        className="max-w-md w-full bg-white rounded-3xl p-6 text-center shadow-2xl"
+      >
+        <div className="text-6xl mb-2">{t.icon}</div>
+        <div className="text-xs uppercase tracking-widest font-black text-emerald-700 mb-1">
+          {currentName} · L{currentLevel}
+        </div>
+        {isMax ? (
+          <>
+            <div className="text-lg font-bold text-emerald-900 mt-3 mb-6">
+              ✨ {l('maxLevel', lang)}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-2xl my-3">⬇️</div>
+            <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
+              {l('upgradeTo', lang)}
+            </div>
+            <div className="text-2xl font-black text-emerald-900 mb-6">
+              {nextName} · L{nextLevel}
+            </div>
+            <button
+              onClick={onConfirm}
+              className="w-full rounded-2xl bg-emerald-500 text-white font-black py-3 active:scale-95 mb-2"
+            >
+              {l('upgradeBtn', lang)}
+            </button>
+          </>
+        )}
+        <button
+          onClick={onCancel}
+          className="w-full rounded-2xl bg-transparent text-emerald-700 font-bold py-2 text-sm"
+        >
+          {l('cancel', lang)}
+        </button>
+      </motion.div>
     </motion.div>
   )
 }
