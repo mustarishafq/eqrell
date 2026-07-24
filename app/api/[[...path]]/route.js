@@ -1017,6 +1017,57 @@ async function handleRoute(request, { params }) {
         return json({ ok: true })
       }
 
+      // POST /world/:childId/move → move an existing building to new grid cell { buildingId, x, y }
+      // Rules: cannot move the Musalla (it's the anchor); target cell must not
+      // overlap any other building's footprint. Uses BUILDING_TEMPLATES sizes.
+      if (action === 'move' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const { buildingId, x, y } = body
+        if (!buildingId || typeof x !== 'number' || typeof y !== 'number') {
+          return err('Missing buildingId/x/y', 400)
+        }
+        await loadOrSeed()
+        const world = await worldsCol.findOne({ childId })
+        if (!world) return err('world not found', 404)
+        const buildings = world.buildings || []
+        const target = buildings.find(b => b.id === buildingId)
+        if (!target) return err('building not found', 404)
+        if (target.templateId === 'musalla') return err('Musalla cannot be moved', 400)
+
+        // Simple footprint check — treat all non-musalla buildings as 1x1 for now,
+        // matching current template sizes. Overlap detection tests all cells.
+        // (Musalla is 2x2, so we skip its own id AND allow moving next to it.)
+        const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
+        const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
+        // World grid is 8x8 (WORLD_SIZE)
+        const WORLD_SIZE = 8
+        if (x < 0 || y < 0 || x + targetSize.w > WORLD_SIZE || y + targetSize.h > WORLD_SIZE) {
+          return err('out of bounds', 400)
+        }
+        // Overlap check (exclude the moving building itself)
+        for (const b of buildings) {
+          if (b.id === buildingId) continue
+          const s = TILE_SIZES[b.templateId] || { w: 1, h: 1 }
+          for (let dx = 0; dx < targetSize.w; dx++) {
+            for (let dy = 0; dy < targetSize.h; dy++) {
+              const tx = x + dx, ty = y + dy
+              if (tx >= b.x && tx < b.x + s.w && ty >= b.y && ty < b.y + s.h) {
+                return err('cell occupied', 409)
+              }
+            }
+          }
+        }
+        await worldsCol.updateOne(
+          { childId, 'buildings.id': buildingId },
+          { $set: {
+            'buildings.$.x': x,
+            'buildings.$.y': y,
+            updatedAt: new Date(),
+          } }
+        )
+        return json({ ok: true })
+      }
+
       // POST /world/:childId/demerit → adjust demerit count { delta }
       if (action === 'demerit' && method === 'POST') {
         const body = await request.json().catch(() => ({}))

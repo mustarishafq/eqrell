@@ -38,7 +38,7 @@ const L = {
   buildMusalla: { ms: 'Bina Musalla dulu', en: 'Build the Musalla first', id: 'Bangun Musalla dulu', ar: 'ابنِ المصلى أولاً' },
   buildLevel:   { ms: 'level', en: 'level', id: 'level', ar: 'مستوى' },
   buildBuilding:{ ms: 'Bina Binaan', en: 'Build Buildings', id: 'Bangun Bangunan', ar: 'ابنِ المباني' },
-  dragMode:     { ms: 'Drag mode', en: 'Drag mode', id: 'Mode drag', ar: 'وضع السحب' },
+  dragHint:     { ms: 'Tekan lama untuk pindah', en: 'Long-press to move', id: 'Tekan lama untuk pindah', ar: 'اضغط مطولاً للتحريك' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
@@ -85,8 +85,6 @@ function WorldPageInner() {
 
   // Ritual state — bismillah/alhamdulillah overlays
   const [ritual, setRitual] = useState(null)
-  const [pickingTemplate, setPickingTemplate] = useState(null)
-  const [dragMode, setDragMode] = useState(false)
   // Upgrade dialog — shows when user taps an existing building
   const [upgradeTarget, setUpgradeTarget] = useState(null) // building object
   // Construction animation trigger — passed to WorldCanvas; scene plays Red-Alert-style build anim
@@ -189,7 +187,6 @@ function WorldPageInner() {
     setConstruct(null)
     setTimeout(() => {
       setRitual(null)
-      setPickingTemplate(null)
     }, 2500)
   }, [childId, worldState, load])
 
@@ -270,8 +267,33 @@ function WorldPageInner() {
       finishConstruction(payload)
       return
     }
+    if (type === 'building-moved') {
+      // User drag-dropped a building; persist to server. Revert on failure.
+      ;(async () => {
+        try {
+          const r = await fetch(`/api/world/${childId}/move`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              buildingId: payload.buildingId,
+              x: payload.x, y: payload.y,
+            }),
+          })
+          if (r.ok) {
+            haptic.select()
+            await load()  // resync — canvas re-renders with new position
+          } else {
+            haptic.locked()
+            // Force reload of state — Phaser will snap back since server didn't update
+            await load()
+          }
+        } catch {
+          await load()
+        }
+      })()
+      return
+    }
     if (type === 'cell-tap') {
-      // Check if user tapped an existing building — offer upgrade
       const b = (worldState?.buildings || []).find(building => {
         const t = BUILDING_TEMPLATES[building.templateId]
         const size = t?.tileSize || { w: 1, h: 1 }
@@ -286,7 +308,7 @@ function WorldPageInner() {
         }
       }
     }
-  }, [worldState, childId, finishConstruction])
+  }, [worldState, childId, finishConstruction, load])
   const onSelectBuilding = (templateId) => {
     const hasMusalla = (worldState?.buildings || []).some(b => b.templateId === 'musalla')
     if (templateId !== 'musalla' && !hasMusalla) {
@@ -316,7 +338,7 @@ function WorldPageInner() {
   // Lock Phaser cell taps whenever any React overlay is visible, so that clicks
   // on modal buttons (Bismillah confirm, Upgrade dialog, Onboarding, etc.) don't
   // simultaneously trigger a tile hit-zone underneath them.
-  const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding || !!pickingTemplate
+  const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -373,15 +395,9 @@ function WorldPageInner() {
               {l('buildBuilding', lang)}
             </div>
             {hasMusalla && (
-              <label className="ml-auto flex items-center gap-1 text-[10px] font-bold text-emerald-800/70 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={dragMode}
-                  onChange={e => setDragMode(e.target.checked)}
-                  className="w-3 h-3 accent-emerald-500"
-                />
-                {l('dragMode', lang)}
-              </label>
+              <div className="ml-auto text-[10px] font-bold text-emerald-800/60 flex items-center gap-1">
+                <span>✋</span> {l('dragHint', lang)}
+              </div>
             )}
           </div>
           <div className="grid grid-cols-3 gap-2">
