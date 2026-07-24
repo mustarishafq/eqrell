@@ -43,6 +43,7 @@ const L = {
   progress:     { ms: 'Kemajuan', en: 'Progress', id: 'Kemajuan', ar: 'التقدم' },
   builtOn:      { ms: 'Dibina pada', en: 'Built on', id: 'Dibangun pada', ar: 'بُني في' },
   close:        { ms: 'Tutup', en: 'Close', id: 'Tutup', ar: 'إغلاق' },
+  more:         { ms: 'Lebih', en: 'More', id: 'Selengkapnya', ar: 'المزيد' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
@@ -376,7 +377,11 @@ function WorldPageInner() {
       })
       if (b) {
         haptic.select()
-        setUpgradeTarget(b) // always open info card, even at max level (shows reflection)
+        // Attach anchor coords so InfoCard positions itself near the building
+        setUpgradeTarget({
+          ...b,
+          anchor: { screenX: payload.screenX, screenY: payload.screenY },
+        })
       }
     }
   }, [worldState, childId, finishConstruction, load])
@@ -563,6 +568,7 @@ function WorldPageInner() {
         {upgradeTarget && (
           <BuildingInfoCard
             building={upgradeTarget}
+            anchor={upgradeTarget?.anchor}
             lang={lang}
             onConfirm={executeUpgrade}
             onCancel={() => setUpgradeTarget(null)}
@@ -783,13 +789,14 @@ const CloudOverlay = ({ demeritCount, lang }) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BuildingInfoCard — bottom-sheet shown when child taps an existing building.
-// Displays: icon, level-aware name, date placed, villagers spawned, Islamic
-// context (short reflection). Actions: Upgrade (if not max) + rearrange hint
-// + close. Musalla gets an additional verse/hadith blurb.
+// BuildingInfoCard — LIGHTWEIGHT floating popover shown when child taps a
+// building. Small, non-modal, dismisses on tap-outside. Shows compact info
+// (icon + name + level + villagers + date). "Selanjutnya" button expands to
+// show reflection + upgrade CTA in a compact side-drawer style.
 // ═══════════════════════════════════════════════════════════════════════════
-const BuildingInfoCard = ({ building, lang, onConfirm, onCancel }) => {
+const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor }) => {
   const t = BUILDING_TEMPLATES[building.templateId]
+  const [expanded, setExpanded] = useState(false)
   if (!t) return null
   const currentLevel = building.level || 1
   const nextLevel = currentLevel + 1
@@ -798,146 +805,142 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel }) => {
   const nextName = getBuildingName(building.templateId, nextLevel, lang)
   const isRTL = lang === 'ar'
 
-  // Format placedAt date — falls back to "just now" if missing
+  // Compute anchor position — near building, above if enough space, otherwise below
+  const anchorX = anchor?.screenX ?? (typeof window !== 'undefined' ? window.innerWidth / 2 : 200)
+  const anchorY = anchor?.screenY ?? (typeof window !== 'undefined' ? window.innerHeight / 2 : 300)
+  const cardW = expanded ? 300 : 220
+  const cardH = expanded ? 240 : 100
+  // Position card above the building by default
+  let cx = anchorX - cardW / 2
+  let cy = anchorY - cardH - 40  // building height offset
+  // Clamp to viewport
+  if (typeof window !== 'undefined') {
+    const pad = 12
+    cx = Math.max(pad, Math.min(window.innerWidth - cardW - pad, cx))
+    if (cy < pad) cy = anchorY + 40  // flip below if no room above
+    cy = Math.min(window.innerHeight - cardH - pad, cy)
+  }
+
   const placedDate = building.placedAt ? new Date(building.placedAt) : null
   const dateStr = placedDate
     ? placedDate.toLocaleDateString(lang === 'ar' ? 'ar' : (lang === 'ms' ? 'ms-MY' : (lang === 'id' ? 'id-ID' : 'en-GB')), {
-        day: 'numeric', month: 'long', year: 'numeric',
+        day: 'numeric', month: 'short',
       })
     : ''
 
-  // Islamic reflection per building type
   const reflection = {
     musalla: {
-      ms: '"Masjid itu rumah setiap orang bertaqwa" — Riwayat Tabrani. Tempat berkumpulnya keluarga & jiran untuk mengingati Allah.',
-      en: '"The mosque is the home of every pious person" — narrated by Tabarani. A gathering place for family & neighbours to remember Allah.',
-      id: '"Masjid adalah rumah setiap orang bertakwa" — HR Tabrani. Tempat berkumpulnya keluarga & tetangga untuk mengingat Allah.',
-      ar: '«المسجد بيت كل تقي» — رواه الطبراني. مكان اجتماع الأهل والجيران لذكر الله.',
+      ms: '"Masjid rumah setiap orang bertaqwa" — Tabrani',
+      en: '"The mosque is the home of every pious" — Tabarani',
+      id: '"Masjid rumah setiap orang bertakwa" — HR Tabrani',
+      ar: '«المسجد بيت كل تقي» — رواه الطبراني',
     },
     rumah: {
-      ms: 'Baiti Jannati — rumahku syurgaku. Tempat kasih sayang keluarga bertumbuh dalam redha Allah.',
-      en: 'Baiti Jannati — my home, my paradise. Where family love grows under Allah\'s pleasure.',
-      id: 'Baiti Jannati — rumahku surgaku. Tempat kasih sayang keluarga bertumbuh dalam ridha Allah.',
-      ar: 'بيتي جنتي — حيث تنمو محبة الأسرة في رضا الله.',
+      ms: 'Baiti Jannati — rumahku syurgaku 🏡',
+      en: 'Baiti Jannati — my home, my paradise 🏡',
+      id: 'Baiti Jannati — rumahku surgaku 🏡',
+      ar: 'بيتي جنتي 🏡',
     },
     kebun: {
-      ms: 'Menanam adalah sedekah — buahnya boleh dinikmati manusia, haiwan, dan burung. Hadith Nabi ﷺ.',
-      en: 'Planting is charity — its fruits enjoyed by humans, animals, and birds. Hadith of the Prophet ﷺ.',
-      id: 'Menanam adalah sedekah — buahnya dinikmati manusia, hewan, dan burung. Hadits Nabi ﷺ.',
-      ar: 'الغرس صدقة — يأكل منها الإنسان والدابة والطير. حديث النبي ﷺ.',
+      ms: 'Menanam adalah sedekah 🌱',
+      en: 'Planting is charity 🌱',
+      id: 'Menanam adalah sedekah 🌱',
+      ar: 'الغرس صدقة 🌱',
     },
   }[building.templateId] || {}
   const reflectionText = reflection[lang] || reflection.ms || ''
 
-  // Progress bar to next level
-  const progressPct = (currentLevel / (t.maxLevel || 1)) * 100
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[95] flex items-end sm:items-center justify-center p-0 sm:p-6 pointer-events-auto"
-      dir={isRTL ? 'rtl' : 'ltr'}
-      style={{ background: 'rgba(6, 63, 54, 0.75)' }}
-      onClick={onCancel}
-    >
+    <>
+      {/* Invisible click-catcher: dismisses on tap-outside (no dark backdrop
+          so world stays visible & non-intrusive). */}
+      <div
+        className="absolute inset-0 z-[92]"
+        onClick={onCancel}
+        style={{ background: 'transparent', pointerEvents: 'auto' }}
+      />
+
       <motion.div
-        initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100 }}
+        initial={{ opacity: 0, scale: 0.85, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="absolute z-[95] pointer-events-auto"
+        style={{ left: cx, top: cy, width: cardW }}
+        dir={isRTL ? 'rtl' : 'ltr'}
         onClick={e => e.stopPropagation()}
-        className="max-w-md w-full bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl pointer-events-auto"
       >
-        {/* Handle bar (mobile) */}
-        <div className="w-12 h-1 bg-emerald-200 rounded-full mx-auto mb-4 sm:hidden" />
-
-        {/* Header */}
-        <div className="flex items-start gap-4 mb-4">
-          <div className="text-5xl flex-shrink-0" style={{
-            filter: t.isSacred ? 'drop-shadow(0 0 12px rgba(255,183,3,0.5))' : 'none',
-          }}>{t.icon}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] uppercase tracking-widest font-black text-emerald-600">
-              {t.isSacred ? '🌟 ' : ''}{l('buildingInfo', lang)}
-            </div>
-            <div className="text-xl font-black text-emerald-900 leading-tight">
-              {currentName}
-            </div>
-            <div className="text-xs text-emerald-700/70 mt-0.5 font-medium">
-              L{currentLevel} · {building.templateId === 'musalla' ? '🕌' : building.templateId === 'rumah' ? '🏠' : '🌴'} {t.villagerSpawn} 🧕
-            </div>
-          </div>
-        </div>
-
-        {/* Level progress bar */}
-        <div className="mb-4">
-          <div className="flex justify-between text-[10px] font-bold text-emerald-700/70 mb-1">
-            <span>{l('progress', lang)}</span>
-            <span>L{currentLevel} / L{t.maxLevel || 1}</span>
-          </div>
-          <div className="h-2 rounded-full bg-emerald-100 overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-              className="h-full rounded-full"
-              style={{
-                background: 'linear-gradient(90deg, #10b981, #FFB703)',
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Placed date */}
-        {dateStr && (
-          <div className="flex items-center gap-2 text-xs text-emerald-800/80 mb-3 bg-emerald-50/60 rounded-xl px-3 py-2">
-            <span>📅</span>
-            <span className="font-semibold">{l('builtOn', lang)}</span>
-            <span className="font-black">{dateStr}</span>
-          </div>
-        )}
-
-        {/* Islamic reflection */}
-        {reflectionText && (
-          <div className="text-xs italic text-emerald-800/85 leading-relaxed bg-amber-50/60 border-l-4 border-amber-300 rounded-lg px-3 py-2 mb-4">
-            {reflectionText}
-          </div>
-        )}
-
-        {/* Rearrange hint (only non-sacred) */}
-        {!t.isSacred && (
-          <div className="flex items-center gap-2 text-[11px] text-emerald-800/70 mb-4">
-            <span>✋</span>
-            <span>{l('dragHint', lang)}</span>
-          </div>
-        )}
-
-        {/* Upgrade section */}
-        {isMax ? (
-          <div className="text-center text-sm font-black text-amber-600 py-3">
-            ✨ {l('maxLevel', lang)}
-          </div>
-        ) : (
-          <>
-            <div className="text-center mb-2">
-              <div className="text-[10px] uppercase tracking-widest font-black text-amber-600">
-                {l('upgradeTo', lang)}
+        <div className="bg-white rounded-2xl shadow-2xl border-2 border-emerald-200 overflow-hidden">
+          {/* Compact header */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <div className="text-3xl leading-none flex-shrink-0" style={{
+              filter: t.isSacred ? 'drop-shadow(0 0 8px rgba(255,183,3,0.6))' : 'none',
+            }}>{t.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-black text-emerald-900 text-sm leading-tight truncate">
+                {currentName}
               </div>
-              <div className="text-lg font-black text-emerald-900">
-                {nextName} · L{nextLevel}
+              <div className="text-[10px] text-emerald-700/70 font-semibold flex items-center gap-1.5 mt-0.5">
+                <span className="bg-emerald-100 text-emerald-800 rounded-full px-1.5 py-0.5 font-black">L{currentLevel}</span>
+                <span>🧕{t.villagerSpawn}</span>
+                {dateStr && <span>📅{dateStr}</span>}
               </div>
             </div>
             <button
-              onClick={onConfirm}
-              className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black py-3 active:scale-95 shadow-md mb-2"
+              onClick={onCancel}
+              className="w-6 h-6 rounded-full text-emerald-700 hover:bg-emerald-50 text-lg leading-none flex-shrink-0 active:scale-90"
+              aria-label="Close"
+            >×</button>
+          </div>
+
+          {/* Expanded panel — refleksi + upgrade CTA */}
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="border-t border-emerald-100"
+              >
+                <div className="px-3 py-2.5 space-y-2">
+                  {reflectionText && (
+                    <div className="text-[11px] italic text-emerald-800/85 leading-snug border-l-2 border-amber-300 pl-2">
+                      {reflectionText}
+                    </div>
+                  )}
+                  {!t.isSacred && (
+                    <div className="text-[10px] text-emerald-700/60 flex items-center gap-1">
+                      ✋ <span>{l('dragHint', lang)}</span>
+                    </div>
+                  )}
+                  {isMax ? (
+                    <div className="text-center text-xs font-black text-amber-600 py-1">
+                      ✨ {l('maxLevel', lang)}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={onConfirm}
+                      className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black py-2 text-xs active:scale-95 shadow"
+                    >
+                      ⬆️ {l('upgradeTo', lang)} {nextName}
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Toggle expand button */}
+          {(reflectionText || !isMax) && (
+            <button
+              onClick={() => setExpanded(x => !x)}
+              className="w-full text-[10px] font-bold text-emerald-600 py-1.5 border-t border-emerald-50 active:bg-emerald-50"
             >
-              ⬆️ {l('upgradeBtn', lang)}
+              {expanded ? '▲' : '▼'} {expanded ? l('close', lang) : l('more', lang)}
             </button>
-          </>
-        )}
-        <button
-          onClick={onCancel}
-          className="w-full rounded-2xl bg-transparent text-emerald-700 font-bold py-2 text-sm active:bg-emerald-50"
-        >
-          {l('close', lang)}
-        </button>
+          )}
+        </div>
       </motion.div>
-    </motion.div>
+    </>
   )
 }
