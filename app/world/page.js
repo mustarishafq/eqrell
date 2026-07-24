@@ -9,7 +9,7 @@ import { haptic } from '@/lib/feedback'
 import { useLang } from '@/lib/i18n/LangProvider'
 import {
   BUILDING_TEMPLATES, BUILDING_LIST, MUSALLA_ANCHOR,
-  ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE,
+  ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE, getCurrentBounds,
 } from '@/lib/worldEngine'
 
 // Phaser must be client-only — dynamic import prevents SSR crash
@@ -69,6 +69,8 @@ const L = {
   upgradeBtn:   { ms: '⬆️ Bismillah — Naik Taraf', en: '⬆️ Bismillah — Upgrade', id: '⬆️ Bismillah — Naikkan', ar: '⬆️ بسم الله — ترقية' },
   maxLevel:     { ms: 'Sudah tahap tertinggi', en: 'Already at max level', id: 'Sudah level tertinggi', ar: 'وصل الحد الأقصى' },
   cloudsMsg:    { ms: 'Baca istighfar untuk tenangkan langit', en: 'Recite Istighfar to calm the sky', id: 'Baca istighfar untuk menenangkan langit', ar: 'اقرأ الاستغفار ليصفو السماء' },
+  worldGrew:    { ms: 'Dunia kamu berkembang! 🌱', en: 'Your world grew! 🌱', id: 'Duniamu berkembang! 🌱', ar: 'اتسع عالمك! 🌱' },
+  worldGrewSub: { ms: 'Alhamdulillah — lebih banyak ruang untuk bina', en: 'Alhamdulillah — more room to build', id: 'Alhamdulillah — lebih banyak ruang untuk membangun', ar: 'الحمد لله — مساحة أكبر للبناء' },
 }
 const l = (key, lang) => (L[key]?.[lang] || L[key]?.ms || key)
 
@@ -99,6 +101,8 @@ function WorldPageInner() {
   const [cameraCommand, setCameraCommand] = useState(null)
   // Drag-from-sidebar state — { templateId, pointerX, pointerY } while dragging
   const [buildDrag, setBuildDrag] = useState(null)
+  // Celebratory toast shown when the world progressively expands (5/10/15 buildings)
+  const [expandToast, setExpandToast] = useState(null)
 
   // Document-level pointer listeners while dragging a template from the sidebar.
   // Sends live pointer coords to Phaser (via WorldCanvas prop) so it can draw
@@ -271,6 +275,8 @@ function WorldPageInner() {
         for (let dy = 0; dy < 2; dy++)
           occupied.add(`${musalla.x + dx},${musalla.y + dy}`)
     }
+    // Dynamic world bounds (18×18 initially, expands to 24/30/36)
+    const bounds = getCurrentBounds({ buildings: existingBuildings })
     // Prefer distance 2-4 for houses (close to masjid but breathing room)
     // and 3-5 for orchards (outer ring)
     const minR = templateId === 'kebun' ? 3 : 2
@@ -283,7 +289,7 @@ function WorldPageInner() {
           if (Math.abs(dx) + Math.abs(dy) !== r) continue
           const x = anchor.x + dx
           const y = anchor.y + dy
-          if (x < 0 || x >= WORLD_SIZE || y < 0 || y >= WORLD_SIZE) continue
+          if (x < bounds.minX || x >= bounds.maxX || y < bounds.minY || y >= bounds.maxY) continue
           if (!occupied.has(`${x},${y}`)) candidates.push({ x, y })
         }
       }
@@ -291,9 +297,9 @@ function WorldPageInner() {
         return candidates[Math.floor(Math.random() * candidates.length)]
       }
     }
-    // Fallback: any empty cell
-    for (let y = 0; y < WORLD_SIZE; y++) {
-      for (let x = 0; x < WORLD_SIZE; x++) {
+    // Fallback: any empty cell within bounds
+    for (let y = bounds.minY; y < bounds.maxY; y++) {
+      for (let x = bounds.minX; x < bounds.maxX; x++) {
         if (!occupied.has(`${x},${y}`)) return { x, y }
       }
     }
@@ -378,6 +384,14 @@ function WorldPageInner() {
           b.id === payload.buildingId ? { ...b, x: payload.x, y: payload.y } : b
         ),
       }) : prev)
+      return
+    }
+    if (type === 'world-expanded') {
+      // Phaser detected buildings count crossed a threshold and the world
+      // grew to a bigger extent. Show a celebratory toast so the child feels
+      // rewarded for their progress ("Wow, my world grew!").
+      haptic.success?.()
+      setExpandToast({ size: payload.size, key: Date.now() })
       return
     }
     if (type === 'cell-tap') {
@@ -474,6 +488,34 @@ function WorldPageInner() {
           Each demerit adds a semi-opaque grey layer + drift animation.
           Istighfar reduces demeritCount via /demerit endpoint, sky clears. */}
       <CloudOverlay demeritCount={worldState?.demeritCount || 0} lang={lang} />
+
+      {/* ═══ WORLD EXPANSION TOAST — celebrates progressive growth ═══
+          When the buildings count crosses 5/10/15, the world enlarges and a
+          pill toast greets the child so they notice their progress. */}
+      <AnimatePresence>
+        {expandToast && (
+          <motion.div
+            key={expandToast.key}
+            initial={{ opacity: 0, y: -30, scale: 0.85 }}
+            animate={{ opacity: 1, y: 0,  scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+            onAnimationComplete={() => {
+              // Auto-dismiss after ~3.6s
+              setTimeout(() => setExpandToast(t => (t?.key === expandToast.key ? null : t)), 3600)
+            }}
+            className="fixed left-1/2 -translate-x-1/2 top-16 z-40 pointer-events-none"
+          >
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl px-5 py-3 shadow-2xl border-2 border-white/40 flex items-center gap-3">
+              <span className="text-2xl">🌍</span>
+              <div className="text-left">
+                <div className="font-black text-sm leading-tight">{l('worldGrew', lang)}</div>
+                <div className="text-xs opacity-90 leading-tight">{l('worldGrewSub', lang)}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header — back button + title */}
       <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between pointer-events-none">

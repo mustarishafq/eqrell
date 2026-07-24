@@ -983,6 +983,22 @@ async function handleRoute(request, { params }) {
       }
 
       // POST /world/:childId/build → append single building
+      // Dynamic world bounds: matches lib/worldEngine.js getWorldBounds().
+      // World starts 18×18 and expands to 24/30/36 based on building count,
+      // centered on Musalla's actual position.
+      const worldBoundsFor = (buildings) => {
+        const musalla = (buildings || []).find(b => b.templateId === 'musalla')
+        const mx = musalla ? musalla.x : 17
+        const my = musalla ? musalla.y : 17
+        const count = (buildings || []).length
+        const size = count >= 15 ? 36 : count >= 10 ? 30 : count >= 5 ? 24 : 18
+        const half = Math.floor(size / 2)
+        return {
+          minX: mx - half + 1, maxX: mx + half + 1,
+          minY: my - half + 1, maxY: my + half + 1,
+        }
+      }
+
       if (action === 'build' && method === 'POST') {
         const body = await request.json().catch(() => ({}))
         const { templateId, x, y } = body
@@ -990,6 +1006,15 @@ async function handleRoute(request, { params }) {
           return err('Missing templateId/x/y', 400)
         }
         await loadOrSeed()
+        const world = await worldsCol.findOne({ childId })
+        const buildings = world?.buildings || []
+        // Bounds check: cell (and its footprint) must fit within current dynamic bounds
+        const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
+        const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
+        const b = worldBoundsFor(buildings)
+        if (x < b.minX || y < b.minY || x + sz.w > b.maxX || y + sz.h > b.maxY) {
+          return err('out of bounds', 400)
+        }
         // Duplicate-position guard: cell must be empty (musalla-only exception handled client-side)
         const existing = await worldsCol.findOne({ childId, 'buildings.x': x, 'buildings.y': y })
         if (existing) return err('cell occupied', 409)
@@ -1055,9 +1080,9 @@ async function handleRoute(request, { params }) {
         // (Musalla is 2x2, so we skip its own id AND allow moving next to it.)
         const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
         const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
-        // World grid is 16x16 (WORLD_SIZE — must match lib/worldEngine.js)
-        const WORLD_SIZE = 16
-        if (x < 0 || y < 0 || x + targetSize.w > WORLD_SIZE || y + targetSize.h > WORLD_SIZE) {
+        // Dynamic bounds — matches lib/worldEngine.js. Musalla stays centered.
+        const b = worldBoundsFor(buildings)
+        if (x < b.minX || y < b.minY || x + targetSize.w > b.maxX || y + targetSize.h > b.maxY) {
           return err('out of bounds', 400)
         }
         // Overlap check (exclude the moving building itself)

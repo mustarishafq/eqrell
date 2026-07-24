@@ -127,16 +127,18 @@ export default function WorldCanvas({
       const next = Math.max(0.6, cam.zoom / 1.15)
       scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
     } else if (cameraCommand.action === 'center') {
-      // Center on Musalla anchor
+      // Center on Musalla's actual position (falls back to anchor)
       if (scene.originX != null) {
-        // Import gridToScreen from module-level? use inline formula
-        const TW = 96, TH = 48
-        const mx = scene.originX + (7 - 7) * TW / 2   // MUSALLA_ANCHOR (7,7)
-        const my = scene.originY + (7 + 7) * TH / 2
+        const state = scene.game?.registry?.get('worldState')
+        const musalla = state?.buildings?.find(b => b.templateId === 'musalla')
+        const mx = musalla ? musalla.x : 17
+        const my = musalla ? musalla.y : 17
+        const sx = scene.originX + (mx - my) * TILE_W / 2
+        const sy = scene.originY + (mx + my) * TILE_H / 2
         scene.tweens.add({
           targets: cam,
-          scrollX: mx - cam.width / (2 * cam.zoom),
-          scrollY: my - cam.height / (2 * cam.zoom),
+          scrollX: sx - cam.width / (2 * cam.zoom),
+          scrollY: sy - cam.height / (2 * cam.zoom),
           zoom: 1.0,
           duration: 400, ease: 'Sine.easeOut',
         })
