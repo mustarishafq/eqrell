@@ -44,6 +44,7 @@ const L = {
   builtOn:      { ms: 'Dibina pada', en: 'Built on', id: 'Dibangun pada', ar: 'بُني في' },
   close:        { ms: 'Tutup', en: 'Close', id: 'Tutup', ar: 'إغلاق' },
   more:         { ms: 'Lebih', en: 'More', id: 'Selengkapnya', ar: 'المزيد' },
+  needsMore:    { ms: 'Perlukan lagi bangunan', en: 'Needs more buildings', id: 'Perlu bangunan lagi', ar: 'يحتاج مبانٍ إضافية' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
@@ -580,6 +581,7 @@ function WorldPageInner() {
           <BuildingInfoCard
             building={upgradeTarget}
             anchor={upgradeTarget?.anchor}
+            allBuildings={buildings}
             lang={lang}
             onConfirm={executeUpgrade}
             onCancel={() => setUpgradeTarget(null)}
@@ -805,7 +807,7 @@ const CloudOverlay = ({ demeritCount, lang }) => {
 // (icon + name + level + villagers + date). "Selanjutnya" button expands to
 // show reflection + upgrade CTA in a compact side-drawer style.
 // ═══════════════════════════════════════════════════════════════════════════
-const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor }) => {
+const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuildings = [] }) => {
   const t = BUILDING_TEMPLATES[building.templateId]
   const [expanded, setExpanded] = useState(false)
   if (!t) return null
@@ -815,6 +817,18 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor }) => {
   const currentName = getBuildingName(building.templateId, currentLevel, lang)
   const nextName = getBuildingName(building.templateId, nextLevel, lang)
   const isRTL = lang === 'ar'
+
+  // Check progressive-unlock requirements for upgrade
+  const reqs = t.upgradeRequires?.[nextLevel] || null
+  let reqMet = true
+  const reqStatus = []
+  if (reqs) {
+    for (const [tid, need] of Object.entries(reqs)) {
+      const have = allBuildings.filter(b => b.templateId === tid).length
+      reqStatus.push({ tid, have, need, met: have >= need })
+      if (have < need) reqMet = false
+    }
+  }
 
   // Compute anchor position — near building, above if enough space, otherwise below
   const anchorX = anchor?.screenX ?? (typeof window !== 'undefined' ? window.innerWidth / 2 : 200)
@@ -927,6 +941,18 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor }) => {
                   {isMax ? (
                     <div className="text-center text-xs font-black text-amber-600 py-1">
                       ✨ {l('maxLevel', lang)}
+                    </div>
+                  ) : reqs && !reqMet ? (
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 p-2 space-y-1">
+                      <div className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
+                        🔒 {l('needsMore', lang)}
+                      </div>
+                      {reqStatus.map(r => (
+                        <div key={r.tid} className={`text-[10px] flex justify-between ${r.met ? 'text-emerald-700' : 'text-amber-800'}`}>
+                          <span>{r.tid === 'rumah' ? '🏠 Rumah' : r.tid}</span>
+                          <span className="font-bold">{r.have} / {r.need}</span>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <button

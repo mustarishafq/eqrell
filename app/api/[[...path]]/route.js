@@ -1009,6 +1009,22 @@ async function handleRoute(request, { params }) {
         const body = await request.json().catch(() => ({}))
         const { buildingId } = body
         if (!buildingId) return err('Missing buildingId', 400)
+        // Enforce progressive-unlock: musalla → masjid needs 3 houses, → jami masjid needs 8
+        const world = await worldsCol.findOne({ childId })
+        const target = (world?.buildings || []).find(b => b.id === buildingId)
+        if (!target) return err('building not found', 404)
+        const nextLevel = (target.level || 1) + 1
+        // Musalla upgrade requirements from worldEngine.upgradeRequires
+        const MUSALLA_REQS = { 2: { rumah: 3 }, 3: { rumah: 8 } }
+        if (target.templateId === 'musalla' && MUSALLA_REQS[nextLevel]) {
+          const reqs = MUSALLA_REQS[nextLevel]
+          for (const [tid, need] of Object.entries(reqs)) {
+            const have = (world.buildings || []).filter(b => b.templateId === tid).length
+            if (have < need) {
+              return err(`Need ${need} ${tid} to upgrade (have ${have})`, 400)
+            }
+          }
+        }
         const r = await worldsCol.updateOne(
           { childId, 'buildings.id': buildingId },
           { $inc: { 'buildings.$.level': 1 }, $set: { updatedAt: new Date() } }

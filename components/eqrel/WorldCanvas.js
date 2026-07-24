@@ -172,6 +172,8 @@ export default function WorldCanvas({
     if (!g) return
     const scene = g.scene.getScene('WorldScene')
     if (!scene) return
+    // Toggle grid visibility — grid appears only while dragging a new build
+    try { g.registry.set('buildDragActive', !!buildDrag) } catch { /* not ready */ }
     if (buildDrag && buildDrag.pointerX != null) {
       scene.showBuildPreview?.(buildDrag.templateId, buildDrag.pointerX, buildDrag.pointerY)
     } else {
