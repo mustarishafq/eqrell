@@ -293,14 +293,25 @@ function WorldPageInner() {
   const musalla = buildings.find(b => b.templateId === 'musalla')
   const isRTL = lang === 'ar'
 
+  // Lock Phaser cell taps whenever any React overlay is visible, so that clicks
+  // on modal buttons (Bismillah confirm, Upgrade dialog, Onboarding, etc.) don't
+  // simultaneously trigger a tile hit-zone underneath them.
+  const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding || !!pickingTemplate
+
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
       background: 'radial-gradient(1200px 800px at 50% 30%, #a8dda8 0%, #6eaa6e 45%, #2d5c3a 100%)',
     }}>
-      {/* Phaser canvas */}
-      <div className="absolute inset-0">
+      {/* Phaser canvas — pointer events disabled whenever a React overlay is up
+          so button taps on modals never bleed through to isometric tiles below. */}
+      <div className={`absolute inset-0 ${overlayOpen ? 'pointer-events-none' : ''}`}>
         {!loading && worldState && (
-          <WorldCanvas childId={childId} worldState={worldState} onEvent={handleCanvasEvent} />
+          <WorldCanvas
+            childId={childId}
+            worldState={worldState}
+            onEvent={handleCanvasEvent}
+            interactionLocked={overlayOpen}
+          />
         )}
       </div>
 

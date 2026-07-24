@@ -22,6 +22,7 @@ export default function WorldCanvas({
   childId,
   worldState,       // { buildings, demeritCount }
   onEvent,          // (type, payload) => void — bubbles game events to React
+  interactionLocked = false, // when true, Phaser ignores cell taps (used while modals are open)
 }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -57,6 +58,7 @@ export default function WorldCanvas({
             game.registry.set('childId', childId)
             game.registry.set('worldState', worldState)
             game.registry.set('onEvent', onEvent)
+            game.registry.set('interactionLocked', interactionLocked)
           },
         },
       })
@@ -83,6 +85,13 @@ export default function WorldCanvas({
       }
     } catch { /* scene may not be ready yet */ }
   }, [worldState])
+
+  // Push interactionLocked changes into the scene
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g) return
+    try { g.registry.set('interactionLocked', interactionLocked) } catch { /* not ready */ }
+  }, [interactionLocked])
 
   return <div ref={containerRef} className="w-full h-full" />
 }
