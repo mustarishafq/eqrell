@@ -438,9 +438,9 @@ function KidHomeActive({ router, childId, t, lang }) {
           </motion.div>
         )}
 
-        {/* Quiz + Reward Shop tiles row */}
+        {/* Quiz + Reward Shop + World tiles row */}
         {!loading && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-3 gap-2">
             {/* Quiz tile */}
             <button
               onClick={() => setQuizOpen(true)}
@@ -499,6 +499,18 @@ function KidHomeActive({ router, childId, t, lang }) {
                 )}
                 {showRewards ? '×' : '→'}
               </span>
+            </button>
+
+            {/* World tile — enter the Phaser 3 sandbox */}
+            <button
+              onClick={() => router.push(`/world?childId=${encodeURIComponent(childId)}`)}
+              className="rounded-2xl px-3 py-2.5 border-2 transition-all font-extrabold text-xs flex items-center justify-between bg-white/80 backdrop-blur border-white/90 text-emerald-800 hover:border-emerald-300 active:scale-[0.98]"
+            >
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-lg flex-shrink-0">🌍</span>
+                <span className="truncate">{t.world_tile_title || 'Dunia Saya'}</span>
+              </span>
+              <span className="text-[11px] opacity-80 flex-shrink-0">→</span>
             </button>
           </div>
         )}
