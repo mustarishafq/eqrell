@@ -95,6 +95,60 @@ function WorldPageInner() {
   const [construct, setConstruct] = useState(null) // { x, y, templateId, level, key, isUpgrade? }
   // Camera command (zoom in/out/center) sent to Phaser via WorldCanvas prop
   const [cameraCommand, setCameraCommand] = useState(null)
+  // Drag-from-sidebar state — { templateId, pointerX, pointerY } while dragging
+  const [buildDrag, setBuildDrag] = useState(null)
+
+  // Document-level pointer listeners while dragging a template from the sidebar.
+  // Sends live pointer coords to Phaser (via WorldCanvas prop) so it can draw
+  // a ghost outline at the target cell. On pointerup, reads Phaser's dropTarget
+  // from game registry and triggers executeBuild at the chosen cell.
+  //
+  // If the pointer never moved > 10px (i.e. user just tapped without dragging),
+  // we fall back to the old auto-place behaviour so quick taps still work.
+  useEffect(() => {
+    if (!buildDrag) return
+    const startX = buildDrag.pointerX
+    const startY = buildDrag.pointerY
+    let maxMoved = 0
+    const onMove = (e) => {
+      const p = e.touches?.[0] || e
+      const dist = Math.hypot(p.clientX - startX, p.clientY - startY)
+      if (dist > maxMoved) maxMoved = dist
+      setBuildDrag(prev => prev ? { ...prev, pointerX: p.clientX, pointerY: p.clientY } : null)
+    }
+    const onUp = () => {
+      const templateId = buildDrag.templateId
+      // Pure tap (no significant drag) → fall back to auto-place
+      if (maxMoved < 10) {
+        haptic.select()
+        executeBuild(templateId)
+        setBuildDrag(null)
+        return
+      }
+      // Drag → read Phaser's chosen drop target
+      const game = typeof window !== 'undefined' ? window.__eqrelPhaser : null
+      const target = game?.registry?.get('buildDropTarget')
+      if (target?.valid && templateId === target.templateId) {
+        haptic.select()
+        executeBuild(templateId, target.col, target.row)
+      } else {
+        haptic.locked()
+      }
+      setBuildDrag(null)
+      if (game) { try { game.registry.set('buildDropTarget', null) } catch { /* noop */ } }
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onUp)
+    return () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildDrag?.templateId])
 
   // ─── Load world ───────────────────────────────────────────
   const load = useCallback(async () => {
@@ -120,8 +174,10 @@ function WorldPageInner() {
 
   // ─── Build handler ────────────────────────────────────────
   const executeBuild = async (templateId, gridX, gridY) => {
-    // Ritual: bismillah → animation → alhamdulillah → save
-    setRitual({ phase: 'bismillah', templateId })
+    // Ritual: bismillah → animation → alhamdulillah → save.
+    // gridX/gridY optional — when provided (from drag-to-place), the build
+    // happens at that specific cell instead of auto-placing.
+    setRitual({ phase: 'bismillah', templateId, x: gridX, y: gridY })
     haptic.select()
   }
 
@@ -138,8 +194,11 @@ function WorldPageInner() {
     if (templateId === 'musalla') {
       gridX = MUSALLA_ANCHOR.x
       gridY = MUSALLA_ANCHOR.y
+    } else if (ritual.x != null && ritual.y != null) {
+      // User dragged the template to this cell — respect that choice
+      gridX = ritual.x; gridY = ritual.y
     } else {
-      // Use auto-place algorithm to pick a good cell
+      // Fallback to auto-place algorithm (button-only tap)
       const cell = autoPlace(templateId, worldState.buildings)
       if (!cell) {
         setRitual(null)
@@ -359,6 +418,7 @@ function WorldPageInner() {
             construct={construct}
             lang={lang}
             cameraCommand={cameraCommand}
+            buildDrag={buildDrag}
           />
         )}
       </div>
@@ -425,19 +485,31 @@ function WorldPageInner() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2" style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
             {BUILDING_LIST.map(t => {
               const isBuilt = buildings.some(b => b.templateId === t.id)
               const isLocked = t.id !== 'musalla' && !hasMusalla
               const isMusallaFirst = t.id === 'musalla' && !isBuilt
+              const isDisabled = isLocked || (t.id === 'musalla' && isBuilt)
+              // Drag-to-place handler — starts on pointerdown when enabled
+              const startDrag = (e) => {
+                if (isDisabled) return
+                e.preventDefault()
+                const p = e.touches?.[0] || e
+                setBuildDrag({ templateId: t.id, pointerX: p.clientX, pointerY: p.clientY })
+                haptic.select()
+              }
               return (
                 <button
                   key={t.id}
-                  onClick={() => !isLocked && (t.id !== 'musalla' || !isBuilt) && onSelectBuilding(t.id)}
-                  disabled={isLocked || (t.id === 'musalla' && isBuilt)}
+                  onPointerDown={startDrag}
+                  onTouchStart={startDrag}
+                  disabled={isDisabled}
+                  style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
                   className={`relative rounded-xl border-2 p-2 text-left transition-all active:scale-95
                     ${isLocked ? 'opacity-40 border-gray-200 bg-gray-50' :
                       isMusallaFirst ? 'border-amber-400 bg-amber-50 animate-pulse' :
+                      buildDrag?.templateId === t.id ? 'border-emerald-500 bg-emerald-100 scale-105' :
                       'border-emerald-300 bg-white hover:bg-emerald-50/60'}`}
                 >
                   <div className="text-2xl leading-none mb-1">{t.icon}</div>

@@ -26,6 +26,7 @@ export default function WorldCanvas({
   construct,         // { x, y, templateId, level, key } | null — when set, triggers Red-Alert-style build anim
   lang = 'ms',       // language toggle for villager bubbles (ms/en/id/ar)
   cameraCommand,     // { action: 'zoomIn'|'zoomOut'|'center', key } | null
+  buildDrag,         // { templateId, pointerX, pointerY, key } | null — for drag-from-sidebar preview
 }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -66,6 +67,11 @@ export default function WorldCanvas({
           },
         },
       })
+      // Expose the running game globally so React can read/write registry
+      // (used by drag-from-sidebar to read buildDropTarget after pointer-up)
+      if (typeof window !== 'undefined') {
+        window.__eqrelPhaser = gameRef.current
+      }
     })()
 
     return () => {
@@ -73,6 +79,9 @@ export default function WorldCanvas({
       if (gameRef.current) {
         try { gameRef.current.destroy(true) } catch { /* teardown race */ }
         gameRef.current = null
+      }
+      if (typeof window !== 'undefined' && window.__eqrelPhaser) {
+        window.__eqrelPhaser = null
       }
     }
   }, [childId]) // Only re-mount when child changes; state updates handled by scene
@@ -156,6 +165,19 @@ export default function WorldCanvas({
     // Only re-run when a new construction key is issued
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [construct?.key])
+
+  // Trigger build preview when user drags a template from the sidebar over the canvas
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g) return
+    const scene = g.scene.getScene('WorldScene')
+    if (!scene) return
+    if (buildDrag && buildDrag.pointerX != null) {
+      scene.showBuildPreview?.(buildDrag.templateId, buildDrag.pointerX, buildDrag.pointerY)
+    } else {
+      scene.hideBuildPreview?.()
+    }
+  }, [buildDrag])
 
   return (
     <div
