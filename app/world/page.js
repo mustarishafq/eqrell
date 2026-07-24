@@ -93,6 +93,8 @@ function WorldPageInner() {
   const [upgradeTarget, setUpgradeTarget] = useState(null) // building object
   // Construction animation trigger — passed to WorldCanvas; scene plays Red-Alert-style build anim
   const [construct, setConstruct] = useState(null) // { x, y, templateId, level, key, isUpgrade? }
+  // Camera command (zoom in/out/center) sent to Phaser via WorldCanvas prop
+  const [cameraCommand, setCameraCommand] = useState(null)
 
   // ─── Load world ───────────────────────────────────────────
   const load = useCallback(async () => {
@@ -356,9 +358,31 @@ function WorldPageInner() {
             interactionLocked={overlayOpen}
             construct={construct}
             lang={lang}
+            cameraCommand={cameraCommand}
           />
         )}
       </div>
+
+      {/* Floating zoom + center controls — right side above sidebar */}
+      {!overlayOpen && hasMusalla && (
+        <div className="absolute right-3 bottom-40 z-30 flex flex-col gap-2 pointer-events-auto">
+          <button
+            onClick={() => setCameraCommand({ action: 'zoomIn', key: Date.now() })}
+            className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-emerald-300 shadow-lg text-emerald-700 font-black text-xl active:scale-90"
+            aria-label="Zoom in"
+          >+</button>
+          <button
+            onClick={() => setCameraCommand({ action: 'zoomOut', key: Date.now() })}
+            className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-emerald-300 shadow-lg text-emerald-700 font-black text-xl active:scale-90"
+            aria-label="Zoom out"
+          >−</button>
+          <button
+            onClick={() => setCameraCommand({ action: 'center', key: Date.now() })}
+            className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-amber-300 shadow-lg text-amber-700 active:scale-90 flex items-center justify-center"
+            aria-label="Center on Musalla"
+          >🕌</button>
+        </div>
+      )}
 
       {/* ═══ CLOUD OVERLAY — visualizes demeritCount by darkening the sky ═══
           Each demerit adds a semi-opaque grey layer + drift animation.
@@ -730,7 +754,7 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel }) => {
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[95] flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="absolute inset-0 z-[95] flex items-end sm:items-center justify-center p-0 sm:p-6 pointer-events-auto"
       dir={isRTL ? 'rtl' : 'ltr'}
       style={{ background: 'rgba(6, 63, 54, 0.75)' }}
       onClick={onCancel}
@@ -738,7 +762,7 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel }) => {
       <motion.div
         initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100 }}
         onClick={e => e.stopPropagation()}
-        className="max-w-md w-full bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl"
+        className="max-w-md w-full bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl pointer-events-auto"
       >
         {/* Handle bar (mobile) */}
         <div className="w-12 h-1 bg-emerald-200 rounded-full mx-auto mb-4 sm:hidden" />

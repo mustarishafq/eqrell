@@ -25,6 +25,7 @@ export default function WorldCanvas({
   interactionLocked = false, // when true, Phaser ignores cell taps (used while modals are open)
   construct,         // { x, y, templateId, level, key } | null — when set, triggers Red-Alert-style build anim
   lang = 'ms',       // language toggle for villager bubbles (ms/en/id/ar)
+  cameraCommand,     // { action: 'zoomIn'|'zoomOut'|'center', key } | null
 }) {
   const containerRef = useRef(null)
   const gameRef = useRef(null)
@@ -103,6 +104,38 @@ export default function WorldCanvas({
     try { g.registry.set('lang', lang) } catch { /* not ready */ }
   }, [lang])
 
+  // Camera commands from React (zoom in/out/reset)
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g || !cameraCommand) return
+    const scene = g.scene.getScene('WorldScene')
+    if (!scene?.cameras?.main) return
+    const cam = scene.cameras.main
+    if (cameraCommand.action === 'zoomIn') {
+      const next = Math.min(1.8, cam.zoom * 1.15)
+      scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
+    } else if (cameraCommand.action === 'zoomOut') {
+      const next = Math.max(0.6, cam.zoom / 1.15)
+      scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
+    } else if (cameraCommand.action === 'center') {
+      // Center on Musalla anchor
+      if (scene.originX != null) {
+        // Import gridToScreen from module-level? use inline formula
+        const TW = 96, TH = 48
+        const mx = scene.originX + (7 - 7) * TW / 2   // MUSALLA_ANCHOR (7,7)
+        const my = scene.originY + (7 + 7) * TH / 2
+        scene.tweens.add({
+          targets: cam,
+          scrollX: mx - cam.width / (2 * cam.zoom),
+          scrollY: my - cam.height / (2 * cam.zoom),
+          zoom: 1.0,
+          duration: 400, ease: 'Sine.easeOut',
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraCommand?.key])
+
   // Trigger construction animation when `construct` prop changes to a new key
   useEffect(() => {
     const g = gameRef.current
@@ -124,5 +157,18 @@ export default function WorldCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [construct?.key])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full"
+      style={{
+        // Prevent text selection / callout during long-press drag on mobile
+        touchAction: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    />
+  )
 }

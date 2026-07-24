@@ -1039,8 +1039,8 @@ async function handleRoute(request, { params }) {
         // (Musalla is 2x2, so we skip its own id AND allow moving next to it.)
         const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
         const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
-        // World grid is 8x8 (WORLD_SIZE)
-        const WORLD_SIZE = 8
+        // World grid is 16x16 (WORLD_SIZE — must match lib/worldEngine.js)
+        const WORLD_SIZE = 16
         if (x < 0 || y < 0 || x + targetSize.w > WORLD_SIZE || y + targetSize.h > WORLD_SIZE) {
           return err('out of bounds', 400)
         }
