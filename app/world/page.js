@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Sparkles, Package } from 'lucide-react'
+import { ArrowLeft, Sparkles, Package, Volume2, VolumeX } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { haptic } from '@/lib/feedback'
 import { useLang } from '@/lib/i18n/LangProvider'
+import audio, { installAutoPrime, isMuted, toggleMuted, bismillah, alhamdulillah } from '@/lib/audio'
 import {
   BUILDING_TEMPLATES, BUILDING_LIST, MUSALLA_ANCHOR,
   ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE, getCurrentBounds,
@@ -103,6 +104,20 @@ function WorldPageInner() {
   const [buildDrag, setBuildDrag] = useState(null)
   // Celebratory toast shown when the world progressively expands (5/10/15 buildings)
   const [expandToast, setExpandToast] = useState(null)
+  // Audio mute preference (persisted in localStorage). We mirror to React state
+  // so the header toggle re-renders on change. Initialised via effect (SSR-safe).
+  const [audioMuted, setAudioMutedState] = useState(false)
+
+  // Install auto-prime on first user interaction so build/completion sounds can
+  // play from inside timed callbacks later (browsers block audio otherwise).
+  useEffect(() => {
+    installAutoPrime()
+    setAudioMutedState(isMuted())
+    // Sync mute state across tabs / other components
+    const onChange = (e) => setAudioMutedState(!!e.detail?.muted)
+    window.addEventListener('eqrel-audio-muted-changed', onChange)
+    return () => window.removeEventListener('eqrel-audio-muted-changed', onChange)
+  }, [])
 
   // Document-level pointer listeners while dragging a template from the sidebar.
   // Sends live pointer coords to Phaser (via WorldCanvas prop) so it can draw
@@ -216,6 +231,11 @@ function WorldPageInner() {
     // Move ritual to 'building' phase (small bottom toast now — animation
     // plays on the canvas itself, Red-Alert-style scaffolding + rising sprite).
     setRitual({ phase: 'building', templateId, x: gridX, y: gridY })
+    // Bismillah — the child is starting a new build; every action begins with
+    // the name of Allah. Also serves as an audible acknowledgement that the
+    // tap/drop registered so the child knows something is happening while the
+    // 6-second construction animation plays.
+    bismillah()
     // Trigger the Phaser construction animation via prop
     setConstruct({ x: gridX, y: gridY, templateId, level: 1, key: Date.now() })
   }
@@ -337,6 +357,10 @@ function WorldPageInner() {
   // ─── World canvas event handler (cell taps + construction completion) ────
   const handleCanvasEvent = useCallback((type, payload) => {
     if (type === 'construction-done') {
+      // Alhamdulillah — the building is complete. This is the natural moment
+      // for gratitude to Allah for what has been given. Feels celebratory
+      // pairs beautifully with the sparkle burst Phaser plays at completion.
+      alhamdulillah()
       finishConstruction(payload)
       return
     }
@@ -389,8 +413,12 @@ function WorldPageInner() {
     if (type === 'world-expanded') {
       // Phaser detected buildings count crossed a threshold and the world
       // grew to a bigger extent. Show a celebratory toast so the child feels
-      // rewarded for their progress ("Wow, my world grew!").
+      // rewarded for their progress ("Wow, my world grew!"), and play
+      // Alhamdulillah to root the excitement in gratitude to Allah for the
+      // barakah — this is the pedagogical moment we want to associate the
+      // dopamine hit with dhikr, not with pure "achievement" euphoria.
       haptic.success?.()
+      alhamdulillah()
       setExpandToast({ size: payload.size, key: Date.now() })
       return
     }
@@ -481,6 +509,21 @@ function WorldPageInner() {
             className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-amber-300 shadow-lg text-amber-700 active:scale-90 flex items-center justify-center"
             aria-label="Center on Musalla"
           >🕌</button>
+          {/* Audio mute toggle — parents (or older kids) can silence Bismillah
+              /Alhamdulillah cues during quiet hours (naps, live prayer, etc.).
+              Preference persists via localStorage. */}
+          <button
+            onClick={() => { toggleMuted(); haptic.tap() }}
+            className={`w-10 h-10 rounded-full backdrop-blur border-2 shadow-lg active:scale-90 flex items-center justify-center transition-colors ${
+              audioMuted
+                ? 'bg-white/90 border-slate-300 text-slate-500'
+                : 'bg-white/90 border-emerald-300 text-emerald-700'
+            }`}
+            aria-label={audioMuted ? 'Unmute audio' : 'Mute audio'}
+            title={audioMuted ? (lang === 'ms' ? 'Bunyikan audio' : 'Unmute') : (lang === 'ms' ? 'Senyapkan audio' : 'Mute')}
+          >
+            {audioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
         </div>
       )}
 
