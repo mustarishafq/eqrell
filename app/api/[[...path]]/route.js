@@ -1019,12 +1019,12 @@ async function handleRoute(request, { params }) {
       // mudah ditambah landmark lain (menara air, taman kota) nanti.
       const AUTO_LANDMARKS = []
       // Overlap check for a candidate (x,y,w,h) against every existing building
-      // AND the musalla's reserved 4×4 zone (RESERVED map, defined below).
+      // AND the musalla's reserved 5×5 zone (RESERVED map, defined below).
       const cellsFree = (buildings, x, y, w, h) => {
         for (const bd of buildings) {
           const t = bd.templateId
           // Reuse the RESERVED/TILE_SIZES defined below in the build block
-          const foot = (t === 'musalla')            ? { w: 4, h: 4 } :
+          const foot = (t === 'musalla')            ? { w: 5, h: 5 } :
                        (t === 'surau')              ? { w: 2, h: 2 } :
                        (t === 'masjid_landmark')    ? { w: 3, h: 3 } :
                        (t === 'kebun' || t === 'rumah') ? { w: 1, h: 1 } : { w: 1, h: 1 }
@@ -1099,12 +1099,12 @@ async function handleRoute(request, { params }) {
           masjid_landmark: { w: 3, h: 3 },
           rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
         }
-        // Sacred reserved footprint — musalla pre-reserves 4×4 for future
-        // upgrade to Masjid (3×3) and Jami' Masjid (4×4), so no other
-        // building can occupy the growth zone. Auto-landmarks (Surau/Masjid)
-        // reserve their own exact footprint so user builds can't overlap.
+        // Sacred reserved footprint — musalla pre-reserves 5×5 (Jami' Masjid
+        // L3 is 4×4 with 1-tile buffer ring so children can't crowd houses
+        // right up against the mosque). Auto-landmarks (Surau/Masjid) reserve
+        // their own exact footprint so user builds can't overlap.
         const RESERVED = {
-          musalla: { w: 4, h: 4 },
+          musalla: { w: 5, h: 5 },
           surau: { w: 2, h: 2 },
           masjid_landmark: { w: 3, h: 3 },
         }
@@ -1230,11 +1230,11 @@ async function handleRoute(request, { params }) {
           return err('out of bounds', 400)
         }
         // Overlap check (exclude the moving building itself). Also enforce
-        // the sacred RESERVED zone: even though the musalla itself is 2×2,
-        // it reserves a 4×4 footprint for future upgrades — no other
-        // building may move into that sacred growth area.
+        // the sacred RESERVED zone: musalla reserves 5×5 (padding buffer so
+        // other buildings never crowd the mosque, even at L3 Jami' Masjid
+        // 4×4). No other building may move into that sacred zone.
         const RESERVED = {
-          musalla: { w: 4, h: 4 },
+          musalla: { w: 5, h: 5 },
           surau: { w: 2, h: 2 },
           masjid_landmark: { w: 3, h: 3 },
         }
