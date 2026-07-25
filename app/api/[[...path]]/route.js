@@ -3,6 +3,7 @@ import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
 import { TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'
+import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import crypto from 'node:crypto'
 
 // Helper: determine if a habit is per-prayer recurring, using explicit field or template default
@@ -1155,13 +1156,27 @@ async function handleRoute(request, { params }) {
         if (!target) return err('building not found', 404)
         const nextLevel = (target.level || 1) + 1
         // Musalla upgrade requirements from worldEngine.upgradeRequires
+        // The requirement key 'rumah' means ANY house variant in the 'rumah'
+        // category — rumah_kayu, rumah_batu, rumah_kampung, banglo. Falling
+        // back to string-equality would never match since children build
+        // rumah_kayu etc, not the legacy 'rumah' base template.
         const MUSALLA_REQS = { 2: { rumah: 3 }, 3: { rumah: 8 } }
         if (target.templateId === 'musalla' && MUSALLA_REQS[nextLevel]) {
           const reqs = MUSALLA_REQS[nextLevel]
-          for (const [tid, need] of Object.entries(reqs)) {
-            const have = (world.buildings || []).filter(b => b.templateId === tid).length
+          // Categorise every existing building so we can count by category
+          // (fall back to templateId for older seeds that used raw 'rumah').
+          const bldByCat = {}
+          for (const b of (world.buildings || [])) {
+            // Category is derived server-side via the same BUILDING_TEMPLATES
+            // map used client-side (rumah_kayu → 'rumah', banglo → 'rumah').
+            const tpl = BUILDING_TEMPLATES[b.templateId]
+            const cat = tpl?.category || b.templateId
+            bldByCat[cat] = (bldByCat[cat] || 0) + 1
+          }
+          for (const [catOrId, need] of Object.entries(reqs)) {
+            const have = bldByCat[catOrId] || 0
             if (have < need) {
-              return err(`Need ${need} ${tid} to upgrade (have ${have})`, 400)
+              return err(`Need ${need} ${catOrId} to upgrade (have ${have})`, 400)
             }
           }
         }
