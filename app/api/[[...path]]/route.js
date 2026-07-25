@@ -1165,7 +1165,7 @@ async function handleRoute(request, { params }) {
         // category — rumah_kayu, rumah_batu, rumah_kampung, banglo. Falling
         // back to string-equality would never match since children build
         // rumah_kayu etc, not the legacy 'rumah' base template.
-        const MUSALLA_REQS = { 2: { rumah: 3 }, 3: { rumah: 8 } }
+        const MUSALLA_REQS = { 2: { rumah: 7 }, 3: { rumah: 15 } }
         if (target.templateId === 'musalla' && MUSALLA_REQS[nextLevel]) {
           const reqs = MUSALLA_REQS[nextLevel]
           // Categorise every existing building so we can count by category

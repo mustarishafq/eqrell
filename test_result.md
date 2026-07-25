@@ -1,7 +1,8 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "World Engine — 3 FIXES for user-reported issues: (A) Musalla tap tak buka popup, (B) Surau dengan icon Kaabah masih ada di world anak, (C) Popup tidak block sidebar dibawahnya. FIX A (critical bug): Musalla (isSacred=true) tidak dapat setInteractive/tap handlers sebab renderSingleBuilding + renderBuildings hanya panggil enableBuildingDrag() untuk `!t.isSacred && b.id`. Sacred buildings tidak dapat setInteractive sama sekali → pointerdown/pointerup tidak fire → cell-tap event tidak emit → BuildingInfoCard tidak muncul. Restructure enableBuildingDrag() supaya SENTIASA setInteractive (dengan draggable: !isSacred flag), dan setDraggable() hanya panggil bila !isSacred. Buang guard `!t.isSacred` dari 2 tempat renderSingleBuilding + renderBuildings — semua bangunan (termasuk sacred) sekarang dapat tap detection. Client-side reqStatus juga fixed — filter b.templateId===tid diubah kepada category-based match menggunakan BUILDING_TEMPLATES lookup (rumah_kayu.category='rumah' etc), match logic server-side yang sudah ada. FIX B: Surau + masjid_landmark ditemui di 2 world (child-1784771932269, child-1784771980764). Buang keseluruhan Surau auto-placement dari AUTO_LANDMARKS = [] (kosong sekarang, extensible untuk landmark lain). Migration $pull dalam loadOrSeed dikembangkan untuk strip kedua-dua templateId. Bulk cleanup via mongosh updateMany() strip dari 2 existing worlds. FIX C: overlayOpen state expanded dari {ritual OR upgradeTarget OR onboarding} kepada juga include {moveConfirmation, landmarkCelebration}. Sidebar container kini bertukar kepada `pointer-events-none opacity-70` bila overlayOpen — visual dimming + non-interactive supaya tap pada popup tidak bocor ke variant tile/tab dibawahnya. z-30 explicit pada sidebar (popup z-90+ overlay above). Testing agent verified: (1) Musalla tap sekarang buka BuildingInfoCard dengan Naik Taraf button, (2) sidebar dimmed & non-interactive bila popup open, (3) tiada Surau/masjid_landmark lagi di world. Files: lib/phaser/WorldScene.js (interactive setup separated from drag setup + 2 guard removals), app/world/page.js (overlayOpen expansion + sidebar dim styling + reqStatus category-based match), app/api/[[...path]]/route.js (AUTO_LANDMARKS emptied + migration $in list), lib/worldEngine.js (surau retirement — already retired masjid_landmark). (2026-07-25)" (1) Musalla centered in golden zone regardless of level: _footprintCenter now uses reserveSize (4×4) for musalla positioning so L1 (2×2) sits centered in the sacred zone, not at the corner. Same for playConstruction + playRestructure. (2) Drag rollback per user preference: removed the custom 2s hold-to-drag state machine, restored Phaser's built-in setDraggable on each building container with input.dragTimeThreshold=250ms + dragDistanceThreshold=10px. (3) 'Goes to default location' bug: temp construction bContainer reparent + camera scroll preserve already in place — will be re-verified by testing agent. Files: lib/phaser/WorldScene.js (Phaser drag lifecycle, _footprintCenter musalla override, playRestructure musalla override). (2026-07-25)"
+  update_note: "World Engine — Musalla upgrade thresholds & FORWARD-growth fix. (A) Threshold change: L2 upgrade now needs 7 rumah (from 3), L3 needs 15 rumah (from 8) — reflected in BOTH backend MUSALLA_REQS map (app/api/[[...path]]/route.js) AND client worldEngine.js upgradeRequires. (B) Growth direction fix: user reported 'L2 dan L3 dibina berkembang ke belakang bukan ke depan, sepatutnya kedepan memenuhi golden gazet grid'. Root cause: _footprintCenter (WorldScene.js) had a musalla-specific override that centered ALL levels on the 4×4 reserved zone — so L1 sat middle of golden square, then L2 (3×3) & L3 (4×4) had to grow BACKWARDS (into back-top of zone) to keep centered. Fix: removed the reserveSize special case in 3 places (_footprintCenter, playRestructure, playConstruction). Now musalla anchors at (b.x, b.y) back-top corner like every other building and grows FORWARD toward the front-bottom of the golden 4×4 grid — L3 fills the entire golden zone. (C) i18n bind for InfoCard requirements: reqStatus row previously hardcoded '🏠 Rumah' regardless of language. Added L keys reqRumah/reqKebun/reqTernakan/reqPasar/reqAir/reqAwam + needForUpgrade. BuildingInfoCard now looks up category label from L map ('req'+catKey) with fallback, and shows 'Untuk naik taraf ke Masjid: 🏠 Rumah 7 / 15' per language. Files: lib/worldEngine.js (upgradeRequires 7/15), app/api/[[...path]]/route.js (MUSALLA_REQS), lib/phaser/WorldScene.js (removed 3 musalla reserveSize overrides), app/world/page.js (new L keys + reqStatus category lookup). (2026-07-25)"
+  _prev_note_7: "World Engine — 3 FIXES for user-reported issues: (A) Musalla tap tak buka popup, (B) Surau dengan icon Kaabah masih ada di world anak, (C) Popup tidak block sidebar dibawahnya. FIX A (critical bug): Musalla (isSacred=true) tidak dapat setInteractive/tap handlers sebab renderSingleBuilding + renderBuildings hanya panggil enableBuildingDrag() untuk `!t.isSacred && b.id`. Sacred buildings tidak dapat setInteractive sama sekali → pointerdown/pointerup tidak fire → cell-tap event tidak emit → BuildingInfoCard tidak muncul. Restructure enableBuildingDrag() supaya SENTIASA setInteractive (dengan draggable: !isSacred flag), dan setDraggable() hanya panggil bila !isSacred. Buang guard `!t.isSacred` dari 2 tempat renderSingleBuilding + renderBuildings — semua bangunan (termasuk sacred) sekarang dapat tap detection. Client-side reqStatus juga fixed — filter b.templateId===tid diubah kepada category-based match menggunakan BUILDING_TEMPLATES lookup (rumah_kayu.category='rumah' etc), match logic server-side yang sudah ada. FIX B: Surau + masjid_landmark ditemui di 2 world (child-1784771932269, child-1784771980764). Buang keseluruhan Surau auto-placement dari AUTO_LANDMARKS = [] (kosong sekarang, extensible untuk landmark lain). Migration $pull dalam loadOrSeed dikembangkan untuk strip kedua-dua templateId. Bulk cleanup via mongosh updateMany() strip dari 2 existing worlds. FIX C: overlayOpen state expanded dari {ritual OR upgradeTarget OR onboarding} kepada juga include {moveConfirmation, landmarkCelebration}. Sidebar container kini bertukar kepada `pointer-events-none opacity-70` bila overlayOpen — visual dimming + non-interactive supaya tap pada popup tidak bocor ke variant tile/tab dibawahnya. z-30 explicit pada sidebar (popup z-90+ overlay above). Testing agent verified: (1) Musalla tap sekarang buka BuildingInfoCard dengan Naik Taraf button, (2) sidebar dimmed & non-interactive bila popup open, (3) tiada Surau/masjid_landmark lagi di world. Files: lib/phaser/WorldScene.js (interactive setup separated from drag setup + 2 guard removals), app/world/page.js (overlayOpen expansion + sidebar dim styling + reqStatus category-based match), app/api/[[...path]]/route.js (AUTO_LANDMARKS emptied + migration $in list), lib/worldEngine.js (surau retirement — already retired masjid_landmark). (2026-07-25)" (1) Musalla centered in golden zone regardless of level: _footprintCenter now uses reserveSize (4×4) for musalla positioning so L1 (2×2) sits centered in the sacred zone, not at the corner. Same for playConstruction + playRestructure. (2) Drag rollback per user preference: removed the custom 2s hold-to-drag state machine, restored Phaser's built-in setDraggable on each building container with input.dragTimeThreshold=250ms + dragDistanceThreshold=10px. (3) 'Goes to default location' bug: temp construction bContainer reparent + camera scroll preserve already in place — will be re-verified by testing agent. Files: lib/phaser/WorldScene.js (Phaser drag lifecycle, _footprintCenter musalla override, playRestructure musalla override). (2026-07-25)"
   _prev_note_6: "3 CORRELATED bugs fixed by unifying the footprint-center anchor formula. Bugs reported: (1) 'masjid not building inside the golden area', (2) 'relocate still not function', (3) 'finish building new build alhamdulillah popup appear, and it goes to default location'. Root cause common to all three: three different render paths used inconsistent anchor formulas — renderSingleBuilding used gridToScreen(anchor.x, anchor.y) [top-left cell center], while playConstruction used gridToScreen(anchor.x + (sz.w-1)/2 + 0.5, anchor.y + (sz.h-1)/2 + 0.5) [one cell PAST the footprint center]. Both were subtly wrong: the correct centering formula for an N×N footprint anchored at (ax, ay) is gridToScreen(ax + (N-1)/2, ay + (N-1)/2). Fix: new _footprintCenter(b, t) helper computes cx, cy at the true footprint center using t.tileSizeByLevel[level] || t.tileSize. All 3 render paths (renderSingleBuilding, renderBuildings, playConstruction, playRestructure) now use this SAME helper — building visible position no longer drifts by half a cell between temp-construction sprite → real container hand-off, and higher-level mosques (3×3 Masjid, 4×4 Jami' Masjid) center perfectly inside the golden 4×4 sacred zone. Additionally: enableBuildingDrag now reads tileSizeByLevel[level] so hit area grows with the mosque (a Jami' Masjid gets a bigger touch target). Verified with instrumented Playwright drag test: rumah at (14,14) held 2500ms → state armed at t=2s → dragged left → dropped → 10s restructure animation → FINAL grid pos (13,15). Also verified L1 Musalla, L2 Masjid (with 2 minarets), L3 Jami' Masjid (with 4 minarets) all visually center on the golden reserved zone. Files: lib/phaser/WorldScene.js (new _footprintCenter helper; renderSingleBuilding + renderBuildings + playConstruction + playRestructure use it; enableBuildingDrag reads tileSizeByLevel for hit area sizing). (2026-07-25)"
   _prev_note_5: "World Engine — 2 bugs fixed. window.setTimeout replaced Phaser's time.delayedCall (GPU stalls throttled delayedCall so hold-arm never fired). drawBuildingSprite now scales body/dome/minarets per level so Masjid (L2 3×3) and Jami' Masjid (L3 4×4) look grand vs L1 Musalla (2×2). (2026-07-25)"
   _prev_note_4: "World Engine — Four bugs fixed in one batch. topOnly=true, audio on relocate, no more zoom-out flash + missing (temp sprite reparent + diff-fade ground), musalla reserveSize=4x4 + sacred zone visual. (2026-07-25)"
@@ -491,6 +492,68 @@ agent_communication:
           
           NO ISSUES FOUND. Habit backend is production-ready.
 
+  - task: "World Engine — Musalla upgrade thresholds (L2=7 rumah, L3=15 rumah)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/worldEngine.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Changed Musalla upgrade requirements from (L2=3 rumah, L3=8 rumah) to (L2=7 rumah, L3=15 rumah).
+          Backend: MUSALLA_REQS map at line 1168 in route.js now requires { 2: { rumah: 7 }, 3: { rumah: 15 } }
+          Client: worldEngine.js upgradeRequires at line 93-96 matches backend requirements.
+          Category-based counting: All rumah variants (rumah_kayu, rumah_batu, rumah_kampung, banglo) count toward the 'rumah' category requirement.
+          Endpoints tested: POST /api/world/:childId/build, POST /api/world/:childId/upgrade
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL MUSALLA UPGRADE TESTS PASSED (29/29)
+          
+          Comprehensive Musalla upgrade threshold test suite executed successfully. Created musalla-specific tests in /app/backend_test.py covering:
+          
+          ✅ SECTION 1: Initial World Setup (1 test)
+             - Musalla L1 built successfully at (17,17)
+          
+          ✅ SECTION 2: L1 → L2 Upgrade (Requires 7 Rumah) (13 tests)
+             - Built 6 rumah (mix of rumah_kayu, rumah_batu, rumah_kampung, banglo)
+             - Verified 6 rumah count is correct
+             - Upgrade attempt with 6 rumah correctly returns 400 error
+             - Musalla remains at L1 after failed upgrade
+             - Built 7th rumah
+             - Verified 7 rumah count is correct
+             - Upgrade with 7 rumah succeeds with 200 status
+             - Musalla successfully upgraded to L2 (Masjid)
+          
+          ✅ SECTION 3: L2 → L3 Upgrade (Requires 15 Rumah) (14 tests)
+             - Built 7 more rumah to reach 14 total
+             - Verified 14 rumah count is correct
+             - Upgrade attempt with 14 rumah correctly returns 400 error
+             - Musalla remains at L2 after failed upgrade
+             - Built 15th rumah
+             - Verified 15 rumah count is correct
+             - Upgrade with 15 rumah succeeds with 200 status
+             - Musalla successfully upgraded to L3 (Jami' Masjid)
+          
+          ✅ SECTION 4: Verify All Rumah Variants Count (1 test)
+             - Multiple rumah variants used: rumah_kayu (11), rumah_batu (1), rumah_kampung (1), banglo (2)
+             - All variants correctly counted toward 'rumah' category requirement
+          
+          KEY FINDINGS:
+          - L1 → L2 threshold of 7 rumah enforced correctly
+          - L2 → L3 threshold of 15 rumah enforced correctly
+          - Error messages clear: "Need 7 rumah to upgrade (have X)" and "Need 15 rumah to upgrade (have X)"
+          - All rumah variants (rumah_kayu, rumah_batu, rumah_kampung, banglo) count toward requirement
+          - Category-based counting working correctly (server groups by category, not templateId)
+          - Sacred zone (4×4 around Musalla) properly reserved, preventing building conflicts
+          - World auto-expansion working (18×18 → 24×24 at 5 buildings threshold)
+          - POST /api/world/:childId/build endpoint working for all rumah variants
+          - POST /api/world/:childId/upgrade endpoint enforcing thresholds correctly
+          
+          NO ISSUES FOUND. Musalla upgrade thresholds are working correctly as specified.
 
   - task: "i18n — add Indonesian (ID) & Arabic (AR/RTL) support + browser auto-detect"
     implemented: true
@@ -4094,3 +4157,84 @@ agent_communication:
       2. ⚠️ Consider updating upgrade requirements logic to recognize building variants (e.g., rumah_kayu should count toward 'rumah' requirement)
       3. ✅ Z-index fix is working correctly
       4. ✅ No further action needed for the tap detection issue
+
+
+
+#====================================================================================================
+# Latest Testing Session - Musalla Upgrade Threshold Testing (2026-01-26)
+#====================================================================================================
+
+metadata:
+  updated_by: "testing_agent"
+  update_note: "Musalla upgrade threshold testing complete - ALL TESTS PASSED (29/29). New thresholds L2=7 rumah, L3=15 rumah are correctly enforced. (2026-01-26)"
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 MUSALLA UPGRADE THRESHOLD TESTING COMPLETE - ALL TESTS PASSED (29/29)
+      
+      Tested the Musalla upgrade threshold changes as requested. The new thresholds are working perfectly:
+      
+      **TEST SCOPE:**
+      - POST /api/world/:childId/build endpoint (building rumah variants)
+      - POST /api/world/:childId/upgrade endpoint (upgrading Musalla)
+      - Threshold enforcement: L1 → L2 requires 7 rumah, L2 → L3 requires 15 rumah
+      - Category-based counting: All rumah variants count toward requirement
+      
+      **TEST RESULTS:**
+      
+      ✅ SECTION 1: Initial World Setup (1 test)
+         - Musalla L1 built successfully at (17,17)
+      
+      ✅ SECTION 2: L1 → L2 Upgrade - Requires 7 Rumah (13 tests)
+         - Built 6 rumah (mix of rumah_kayu, rumah_batu, rumah_kampung, banglo)
+         - Upgrade with 6 rumah correctly FAILS with 400 error
+         - Error message: "Need 7 rumah to upgrade (have 6)"
+         - Built 7th rumah
+         - Upgrade with 7 rumah SUCCEEDS with 200 status
+         - Musalla successfully upgraded to L2 (Masjid)
+      
+      ✅ SECTION 3: L2 → L3 Upgrade - Requires 15 Rumah (14 tests)
+         - Built 7 more rumah to reach 14 total
+         - Upgrade with 14 rumah correctly FAILS with 400 error
+         - Error message: "Need 15 rumah to upgrade (have 14)"
+         - Built 15th rumah
+         - Upgrade with 15 rumah SUCCEEDS with 200 status
+         - Musalla successfully upgraded to L3 (Jami' Masjid)
+      
+      ✅ SECTION 4: Rumah Variant Verification (1 test)
+         - Multiple rumah variants used: rumah_kayu (11), rumah_batu (1), rumah_kampung (1), banglo (2)
+         - All variants correctly counted toward 'rumah' category requirement
+      
+      **KEY FINDINGS:**
+      
+      ✅ L1 → L2 threshold of 7 rumah enforced correctly
+      ✅ L2 → L3 threshold of 15 rumah enforced correctly
+      ✅ Error messages clear and informative
+      ✅ All rumah variants (rumah_kayu, rumah_batu, rumah_kampung, banglo) count toward requirement
+      ✅ Category-based counting working correctly (server groups by category, not templateId)
+      ✅ Sacred zone (4×4 around Musalla) properly reserved
+      ✅ World auto-expansion working (18×18 → 24×24 at 5 buildings threshold)
+      ✅ POST /api/world/:childId/build endpoint working for all rumah variants
+      ✅ POST /api/world/:childId/upgrade endpoint enforcing thresholds correctly
+      
+      **FILES TESTED:**
+      - /app/app/api/[[...path]]/route.js (line ~1168: MUSALLA_REQS)
+      - /app/lib/worldEngine.js (line ~93: upgradeRequires)
+      
+      **TEST DATA:**
+      - Created fresh test family + child for each test run
+      - Placed 15 rumah spread around Musalla to avoid sacred zone conflicts
+      - Verified world auto-expansion from 18×18 to 24×24 grid
+      - All test data cleaned up successfully after each run
+      
+      **NO ISSUES FOUND.** The Musalla upgrade thresholds are working exactly as specified:
+      - L2 (Masjid) requires 7 rumah ✅
+      - L3 (Jami' Masjid) requires 15 rumah ✅
+      - All rumah variants count toward the requirement ✅

@@ -46,6 +46,13 @@ const L = {
   close:        { ms: 'Tutup', en: 'Close', id: 'Tutup', ar: 'إغلاق' },
   more:         { ms: 'Lebih', en: 'More', id: 'Selengkapnya', ar: 'المزيد' },
   needsMore:    { ms: 'Perlukan lagi bangunan', en: 'Needs more buildings', id: 'Perlu bangunan lagi', ar: 'يحتاج مبانٍ إضافية' },
+  needForUpgrade:{ ms: 'Untuk naik taraf ke', en: 'To upgrade to', id: 'Untuk naik ke', ar: 'للترقية إلى' },
+  reqRumah:     { ms: '🏠 Rumah', en: '🏠 Houses', id: '🏠 Rumah', ar: '🏠 منازل' },
+  reqKebun:     { ms: '🌴 Kebun', en: '🌴 Orchards', id: '🌴 Kebun', ar: '🌴 بساتين' },
+  reqTernakan:  { ms: '🐄 Ternakan', en: '🐄 Livestock', id: '🐄 Ternak', ar: '🐄 ماشية' },
+  reqPasar:     { ms: '🛒 Pasar', en: '🛒 Market', id: '🛒 Pasar', ar: '🛒 سوق' },
+  reqAir:       { ms: '💧 Air', en: '💧 Water', id: '💧 Air', ar: '💧 ماء' },
+  reqAwam:      { ms: '🏛️ Awam', en: '🏛️ Public', id: '🏛️ Umum', ar: '🏛️ عام' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
@@ -1367,12 +1374,19 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuil
                       <div className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
                         🔒 {l('needsMore', lang)}
                       </div>
-                      {reqStatus.map(r => (
-                        <div key={r.tid} className={`text-[10px] flex justify-between ${r.met ? 'text-emerald-700' : 'text-amber-800'}`}>
-                          <span>{r.tid === 'rumah' ? '🏠 Rumah' : r.tid}</span>
-                          <span className="font-bold">{r.have} / {r.need}</span>
-                        </div>
-                      ))}
+                      <div className="text-[10px] text-amber-900/80 leading-snug">
+                        {l('needForUpgrade', lang)} <span className="font-bold">{nextName}</span>:
+                      </div>
+                      {reqStatus.map(r => {
+                        const catKey = 'req' + r.tid.charAt(0).toUpperCase() + r.tid.slice(1)
+                        const catLabel = L[catKey]?.[lang] || L[catKey]?.ms || r.tid
+                        return (
+                          <div key={r.tid} className={`text-[10px] flex justify-between ${r.met ? 'text-emerald-700' : 'text-amber-800'}`}>
+                            <span>{catLabel}</span>
+                            <span className="font-bold">{r.have} / {r.need}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                   ) : (
                     <button

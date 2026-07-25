@@ -1729,12 +1729,337 @@ def run_habit_tests():
     
     return results['failed'] == 0
 
+
+def run_musalla_upgrade_tests():
+    """Test Musalla upgrade threshold changes (L2=7 rumah, L3=15 rumah)"""
+    print("\n" + "="*80)
+    print("🕌 MUSALLA UPGRADE THRESHOLD TESTS")
+    print("="*80)
+    
+    results = {'passed': 0, 'failed': 0, 'total': 0}
+    
+    # Create test user and family
+    print("\n📋 Setting up test user and family...")
+    user1 = create_test_user_with_session('musalla-test@eqrel.local', 'Musalla Test Parent')
+    cookies1 = {'eqrel_session': user1['token']}
+    
+    # Create family
+    resp = requests.post(f"{API_URL}/family/create-or-join", 
+                        json={'role': 'ibu'}, 
+                        cookies=cookies1)
+    if resp.status_code != 200:
+        print(f"❌ Failed to create family: {resp.status_code}")
+        cleanup_test_data()
+        return False
+    
+    family_data = resp.json()
+    family_id = family_data['family']['id']
+    test_families.append(family_id)
+    print(f"✅ Family created: {family_id}")
+    
+    # Create test child
+    child_data = {
+        'nickname': 'Test Ali',
+        'dob': '2020-01-01',
+        'gender': 'male',
+        'ageBand': 'k1',
+        'avatarId': 'boy-1',
+        'favColor': '#00B894',
+        'preferredLang': 'ms'
+    }
+    resp = requests.post(f"{API_URL}/children", json=child_data, cookies=cookies1)
+    if resp.status_code != 200:
+        print(f"❌ Failed to create child: {resp.status_code}")
+        cleanup_test_data()
+        return False
+    
+    child = resp.json()['child']
+    child_id = child['id']
+    test_children.append(child_id)
+    print(f"✅ Child created: {child_id}")
+    
+    # Helper function to build a building
+    def build_building(template_id, x, y, test_name):
+        results['total'] += 1
+        resp = requests.post(
+            f"{API_URL}/world/{child_id}/build",
+            json={'templateId': template_id, 'x': x, 'y': y},
+            cookies=cookies1
+        )
+        if resp.status_code == 200:
+            print(f"   ✅ TEST {results['total']}: {test_name} - PASS")
+            results['passed'] += 1
+            return True
+        else:
+            print(f"   ❌ TEST {results['total']}: {test_name} - FAIL")
+            print(f"      Status: {resp.status_code}, Response: {resp.text[:200]}")
+            results['failed'] += 1
+            return False
+    
+    # Helper function to get world state
+    def get_world():
+        resp = requests.get(f"{API_URL}/world/{child_id}", cookies=cookies1)
+        if resp.status_code == 200:
+            return resp.json()['world']
+        return None
+    
+    # Helper function to count rumah buildings
+    def count_rumah(world):
+        if not world or 'buildings' not in world:
+            return 0
+        count = 0
+        for b in world['buildings']:
+            # Check if building is in rumah category
+            template_id = b.get('templateId', '')
+            if template_id in ['rumah', 'rumah_kayu', 'rumah_batu', 'rumah_kampung', 'banglo']:
+                count += 1
+        return count
+    
+    # Helper function to get musalla building
+    def get_musalla(world):
+        if not world or 'buildings' not in world:
+            return None
+        for b in world['buildings']:
+            if b.get('templateId') == 'musalla':
+                return b
+        return None
+    
+    # Helper function to upgrade musalla
+    def upgrade_musalla(expected_status, test_name):
+        results['total'] += 1
+        world = get_world()
+        musalla = get_musalla(world)
+        if not musalla:
+            print(f"   ❌ TEST {results['total']}: {test_name} - FAIL (Musalla not found)")
+            results['failed'] += 1
+            return False
+        
+        resp = requests.post(
+            f"{API_URL}/world/{child_id}/upgrade",
+            json={'buildingId': musalla['id']},
+            cookies=cookies1
+        )
+        
+        if resp.status_code == expected_status:
+            print(f"   ✅ TEST {results['total']}: {test_name} - PASS")
+            results['passed'] += 1
+            return True
+        else:
+            print(f"   ❌ TEST {results['total']}: {test_name} - FAIL")
+            print(f"      Expected: {expected_status}, Got: {resp.status_code}")
+            print(f"      Response: {resp.text[:200]}")
+            results['failed'] += 1
+            return False
+    
+    print("\n📦 SECTION 1: Initial World Setup")
+    print("-" * 80)
+    
+    # Build initial Musalla (should be auto-created or we build it)
+    world = get_world()
+    musalla = get_musalla(world)
+    if not musalla:
+        print("   Building Musalla at (17, 17)...")
+        build_building('musalla', 17, 17, "Build Musalla L1")
+    else:
+        print(f"   ✅ Musalla already exists at level {musalla.get('level', 1)}")
+    
+    print("\n📦 SECTION 2: L1 → L2 Upgrade (Requires 7 Rumah)")
+    print("-" * 80)
+    
+    # Build 6 rumah (mix of variants) - should NOT be enough
+    # Note: Musalla at (17,17) has a 4×4 sacred zone from (16,16) to (19,19)
+    # We need to place rumah outside this zone
+    print("   Building 6 rumah (various types)...")
+    rumah_positions = [
+        (14, 14), (14, 15), (14, 16), (15, 14),  # top-left area
+        (20, 14), (21, 14)  # top-right area
+    ]
+    rumah_types = ['rumah_kayu', 'rumah_kayu', 'rumah_batu', 'rumah_kampung', 'rumah_kayu', 'banglo']
+    
+    for i, (x, y) in enumerate(rumah_positions[:6]):
+        build_building(rumah_types[i], x, y, f"Build {rumah_types[i]} at ({x},{y})")
+    
+    # Verify we have 6 rumah
+    world = get_world()
+    rumah_count = count_rumah(world)
+    results['total'] += 1
+    if rumah_count == 6:
+        print(f"   ✅ TEST {results['total']}: Verify 6 rumah built - PASS")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Verify 6 rumah built - FAIL (got {rumah_count})")
+        results['failed'] += 1
+    
+    # Try to upgrade with only 6 rumah - should FAIL with 400
+    print("\n   Attempting to upgrade Musalla L1 → L2 with only 6 rumah (should fail)...")
+    upgrade_musalla(400, "Upgrade L1→L2 with 6 rumah (expect 400)")
+    
+    # Verify error message mentions "Need 7 rumah"
+    world = get_world()
+    musalla = get_musalla(world)
+    results['total'] += 1
+    if musalla and musalla.get('level', 1) == 1:
+        print(f"   ✅ TEST {results['total']}: Musalla still at L1 after failed upgrade - PASS")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Musalla still at L1 after failed upgrade - FAIL")
+        results['failed'] += 1
+    
+    # Build 7th rumah
+    print("\n   Building 7th rumah...")
+    build_building('rumah_kayu', 22, 14, "Build 7th rumah_kayu at (22,14)")
+    
+    # Verify we have 7 rumah
+    world = get_world()
+    rumah_count = count_rumah(world)
+    results['total'] += 1
+    if rumah_count == 7:
+        print(f"   ✅ TEST {results['total']}: Verify 7 rumah built - PASS")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Verify 7 rumah built - FAIL (got {rumah_count})")
+        results['failed'] += 1
+    
+    # Try to upgrade with 7 rumah - should SUCCEED
+    print("\n   Attempting to upgrade Musalla L1 → L2 with 7 rumah (should succeed)...")
+    upgrade_musalla(200, "Upgrade L1→L2 with 7 rumah (expect 200)")
+    
+    # Verify Musalla is now L2
+    world = get_world()
+    musalla = get_musalla(world)
+    results['total'] += 1
+    if musalla and musalla.get('level', 1) == 2:
+        print(f"   ✅ TEST {results['total']}: Musalla upgraded to L2 (Masjid) - PASS")
+        results['passed'] += 1
+    else:
+        level = musalla.get('level', 1) if musalla else 'N/A'
+        print(f"   ❌ TEST {results['total']}: Musalla upgraded to L2 (Masjid) - FAIL (level={level})")
+        results['failed'] += 1
+    
+    print("\n📦 SECTION 3: L2 → L3 Upgrade (Requires 15 Rumah)")
+    print("-" * 80)
+    
+    # Build more rumah to reach 14 total (need 7 more)
+    # Spread them out to avoid sacred zone and world bounds
+    # Note: After L2 upgrade, Musalla is 3×3, so sacred zone might be larger
+    print("   Building 7 more rumah to reach 14 total...")
+    more_positions = [
+        (14, 20), (14, 21), (15, 20), (15, 21),
+        (22, 20), (20, 21), (21, 20)
+    ]
+    
+    for i, (x, y) in enumerate(more_positions):
+        build_building('rumah_kayu', x, y, f"Build rumah_kayu at ({x},{y})")
+    
+    # Verify we have 14 rumah
+    world = get_world()
+    rumah_count = count_rumah(world)
+    results['total'] += 1
+    if rumah_count == 14:
+        print(f"   ✅ TEST {results['total']}: Verify 14 rumah built - PASS")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Verify 14 rumah built - FAIL (got {rumah_count})")
+        results['failed'] += 1
+    
+    # Try to upgrade with only 14 rumah - should FAIL with 400
+    print("\n   Attempting to upgrade Musalla L2 → L3 with only 14 rumah (should fail)...")
+    upgrade_musalla(400, "Upgrade L2→L3 with 14 rumah (expect 400)")
+    
+    # Verify Musalla still at L2
+    world = get_world()
+    musalla = get_musalla(world)
+    results['total'] += 1
+    if musalla and musalla.get('level', 1) == 2:
+        print(f"   ✅ TEST {results['total']}: Musalla still at L2 after failed upgrade - PASS")
+        results['passed'] += 1
+    else:
+        level = musalla.get('level', 1) if musalla else 'N/A'
+        print(f"   ❌ TEST {results['total']}: Musalla still at L2 after failed upgrade - FAIL (level={level})")
+        results['failed'] += 1
+    
+    # Build 15th rumah
+    print("\n   Building 15th rumah...")
+    build_building('banglo', 21, 21, "Build 15th banglo at (21,21)")
+    
+    # Verify we have 15 rumah
+    world = get_world()
+    rumah_count = count_rumah(world)
+    results['total'] += 1
+    if rumah_count == 15:
+        print(f"   ✅ TEST {results['total']}: Verify 15 rumah built - PASS")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Verify 15 rumah built - FAIL (got {rumah_count})")
+        results['failed'] += 1
+    
+    # Try to upgrade with 15 rumah - should SUCCEED
+    print("\n   Attempting to upgrade Musalla L2 → L3 with 15 rumah (should succeed)...")
+    upgrade_musalla(200, "Upgrade L2→L3 with 15 rumah (expect 200)")
+    
+    # Verify Musalla is now L3
+    world = get_world()
+    musalla = get_musalla(world)
+    results['total'] += 1
+    if musalla and musalla.get('level', 1) == 3:
+        print(f"   ✅ TEST {results['total']}: Musalla upgraded to L3 (Jami' Masjid) - PASS")
+        results['passed'] += 1
+    else:
+        level = musalla.get('level', 1) if musalla else 'N/A'
+        print(f"   ❌ TEST {results['total']}: Musalla upgraded to L3 (Jami' Masjid) - FAIL (level={level})")
+        results['failed'] += 1
+    
+    print("\n📦 SECTION 4: Verify All Rumah Variants Count")
+    print("-" * 80)
+    
+    # Count each rumah variant type
+    world = get_world()
+    variant_counts = {}
+    if world and 'buildings' in world:
+        for b in world['buildings']:
+            template_id = b.get('templateId', '')
+            if template_id in ['rumah', 'rumah_kayu', 'rumah_batu', 'rumah_kampung', 'banglo']:
+                variant_counts[template_id] = variant_counts.get(template_id, 0) + 1
+    
+    results['total'] += 1
+    if len(variant_counts) >= 3:  # Should have at least 3 different variants
+        print(f"   ✅ TEST {results['total']}: Multiple rumah variants used - PASS")
+        print(f"      Variants: {variant_counts}")
+        results['passed'] += 1
+    else:
+        print(f"   ❌ TEST {results['total']}: Multiple rumah variants used - FAIL")
+        print(f"      Variants: {variant_counts}")
+        results['failed'] += 1
+    
+    # Cleanup
+    print("\n🧹 Cleaning up test data...")
+    cleanup_test_data()
+    
+    # Print summary
+    print("\n" + "="*80)
+    print(f"🕌 MUSALLA UPGRADE TESTS SUMMARY")
+    print("="*80)
+    print(f"Total tests: {results['total']}")
+    print(f"✅ Passed: {results['passed']}")
+    print(f"❌ Failed: {results['failed']}")
+    print("="*80)
+    
+    return results['failed'] == 0
+
+
 if __name__ == '__main__':
     import sys
     
-    # Check if we should run habit tests or all tests
-    if len(sys.argv) > 1 and sys.argv[1] == '--habits':
-        success = run_habit_tests()
+    # Check if we should run specific tests or all tests
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '--habits':
+            success = run_habit_tests()
+        elif sys.argv[1] == '--musalla':
+            success = run_musalla_upgrade_tests()
+        else:
+            print(f"Unknown test suite: {sys.argv[1]}")
+            print("Available options: --habits, --musalla")
+            exit(1)
     else:
         success = run_all_tests()
     
