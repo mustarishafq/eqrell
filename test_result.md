@@ -1,7 +1,8 @@
 #====================================================================================================
 metadata:
   updated_by: "main_agent"
-  update_note: "World Engine — Replace Jami' Masjid L3 asset (again) dengan versi baru dimuat naik. URL: 06CB2AFC-C0E6-4F08-B098-A20FABD139CC.webp. Aset asal 341×512 dengan 96px bottom-transparent-padding, di-crop ke 327×338 dengan 2px padding, quality 85, saiz akhir 43KB. Ciri visual: Jami' Masjid dengan 2 menara sisi tinggi (roof hijau), kubah emas besar dengan bulan sabit, kubah hijau kecil dikelilingi, dan air pancut kecil di halaman. Path kekal /assets/world/masjid_l3.webp jadi tak perlu tukar kod. Center-anchor 8×8 golden zone dan visibility rendah kekal. Files: public/assets/world/masjid_l3.webp (replaced). (2026-07-25)"
+  update_note: "World Engine — 5 perubahan besar Rumah + Upgrade Removal. (1) BUANG rumah_kampung dari sidebar — VARIANT_LABELS + BUILDING_VARIANTS updated. Kekal dalam BUILDING_TEMPLATES dengan `hidden:true` untuk backward-compat (world lama yang sudah bina rumah_kampung masih render). getVariantsForCategory() sekarang filter `!v.hidden`. (2) SAIZ RUMAH IKUT MATA di ASSET_REGISTRY (lib/phaser/WorldScene.js): rumah_kayu baseScale 0.36→0.28 (30 mata, paling kecil), rumah_batu 0.36 (60 mata, sederhana), banglo 0.38→0.48 (100 mata, paling besar). Visual saiz sekarang refleks kos mata secara natural. (3) BANGLO KOS DIKURANGKAN 150→100 mata. (4) SIDEBAR CARD PREVIEW guna WebP asset. worldEngine.js: v() factory sekarang terima `extras.spriteAsset` param, dan setiap varian rumah + musalla base template kini ada `spriteAsset` path. world/page.js: sidebar variant card render <img src={t.spriteAsset}> sebagai preview 36×36 kalau ada, else fall back ke emoji <span>{t.icon}</span>. Karya seni sebenar sekarang muncul di card, bukan emoji. (5) BUANG SEMUA NAIK TARAF NON-MUSALLA: user reasoning 'kita sudah introduce binaan ikut bilangan mata, jadi tak perlu lagi ada naik taraf binaan'. maxLevel diubah kepada 1 untuk semua templates KECUALI musalla: base 'rumah' 3→1, base 'kebun' 2→1, v() factory default 2→1 (semua varian). Frontend BuildingInfoCard automatik detect isMax=true untuk rumah/kebun/dll (nextLevel 2 > maxLevel 1) dan tunjuk 'Sudah tahap tertinggi' bukannya butang naik taraf. Backend /api/world/:childId/upgrade endpoint reject dengan error 400 'Only Musalla can be upgraded' untuk mana-mana templateId bukan musalla. Files: lib/worldEngine.js (VARIANT_LABELS, BUILDING_VARIANTS, v() factory, base rumah/kebun maxLevel, musalla spriteAsset, getVariantsForCategory hidden filter), lib/phaser/WorldScene.js (ASSET_REGISTRY baseScale), app/world/page.js (sidebar card <img>), app/api/[[...path]]/route.js (upgrade endpoint musalla-only check). Lint pass. (2026-07-25)"
+  _prev_note_16: "World Engine — Replace Jami' Masjid L3 asset (again) dengan versi baru dimuat naik. URL: 06CB2AFC-C0E6-4F08-B098-A20FABD139CC.webp. Aset asal 341×512 dengan 96px bottom-transparent-padding, di-crop ke 327×338 dengan 2px padding, quality 85, saiz akhir 43KB. Ciri visual: Jami' Masjid dengan 2 menara sisi tinggi (roof hijau), kubah emas besar dengan bulan sabit, kubah hijau kecil dikelilingi, dan air pancut kecil di halaman. Path kekal /assets/world/masjid_l3.webp jadi tak perlu tukar kod. Center-anchor 8×8 golden zone dan visibility rendah kekal. Files: public/assets/world/masjid_l3.webp (replaced). (2026-07-25)"
   _prev_note_15: "World Engine — 3 perubahan besar sekali: (1) REPLACE Jami' Masjid L3 asset dengan aset baru dimuat naik (public/assets/world/masjid_l3.webp; 341×512, 28KB, tight-cropped, quality 85). Aset ini sudah 0px bottom-padding jadi tak perlu re-crop. (2) GOLDEN ZONE 5×5 → 8×8: reserveSize dinaikkan supaya Jami' Masjid dengan 2 menara sisi + kubah besar tidak block rumah di belakangnya. 3 tempat update: lib/worldEngine.js (reserveSize {w:8,h:8}), lib/phaser/WorldScene.js (_drawSacredZone hardcoded +7 untuk 8×8 diamond + fill alpha 0.14→0.04 + stroke thickness 3→1 + alpha 0.9→0.30 + buang pulse tween → guna setAlpha(0.55) static + isCellPlacementValid RESERVED musalla {w:8,h:8}), app/api/[[...path]]/route.js (3 tempat: RESERVED build map, RESERVED move map, cellsFree fallback foot). Sacred zone kini nampak SANGAT halus — hanya garis dashed thin & fill amber sangat cair — tidak mendominasi visual dunia. (3) CENTER-ANCHOR MUSALLA: _footprintCenter untuk musalla ditukar dari 'front-corner of level foot' kepada 'center of reserveSize zone'. Untuk 8×8 reserve, cx = b.x + 3.5, cy = b.y + 3.5. Kesan: L1, L2, L3 semua render di POSISI SKRIN SAMA (tengah golden zone). Bina masjid tumbuh dari tengah keluar (bukan bergerak). Silhouette masjid simetri — tak menonong kedepan/belakang, tak block rumah di kiri/kanan. Sama update di playConstruction dan playRestructure. Files (5 total edits): lib/worldEngine.js, lib/phaser/WorldScene.js (3 tempat), app/api/[[...path]]/route.js (2 tempat). Lint pass. (2026-07-25)"
   _prev_note_14: "World Engine — Fix aset Masjid L2/L3 kelihatan offset ke belakang. Root cause bukan pada anchor logic (yang sudah betul), tetapi pada aset WebP itu sendiri: masjid_l2.webp ada 133px empty transparent bottom-padding, masjid_l3.webp ada 110px empty bottom-padding. Bila sprite di-set origin (0.5, 1.0) bottom-center, image bottom pixel (yang KOSONG) sits di anchor point, jadi bina masjid VISUAL tergantung 100+ pixel di ATAS anchor = jauh ke belakang dalam projection iso. Musalla L1 (bot-pad=1px) tidak alami masalah ini sebab imej dah tight-cropped. Fix: crop bottom & horizontal transparent padding pada masjid_l2.webp dan masjid_l3.webp menggunakan PIL. Hasil: masjid_l2 341×512 → 275×267 (30KB), masjid_l3 341×512 → 327×338 (39KB, quality 82). Bottom-pad kini 2px setiap satu. Anchor logic (front-corner of level footprint) sekarang berfungsi visual — bina masjid base bertapak tepat di anchor point dan bulk extend ke atas = ke belakang mengisi golden zone dari front. baseScale tak diubah (0.90 L2, 1.20 L3) sebab content bbox width sama. Files: public/assets/world/masjid_l2.webp (re-cropped), public/assets/world/masjid_l3.webp (re-cropped). (2026-07-25)"
   _prev_note_13: "World Engine — Aset custom Jami' Masjid L3 diintegrasi. Aset: /assets/world/masjid_l3.webp (39.6KB, 341×512, RGBA). Ciri visual: Jami' Masjid megah dengan 2 menara sisi tinggi, kubah emas besar dengan bulan sabit, beberapa kubah hijau kecil, dan air pancut kecil di halaman. ASSET_REGISTRY.musalla.levels[3] dikemas kini dari `masjid_l2.webp` ke `masjid_l3.webp` (baseScale 1.20 kekal). Preload sistem sudah support level variant loading via key 'bld_musalla_L3' — tak perlu perubahan lain. Files: (1) public/assets/world/masjid_l3.webp (baharu). (2) lib/phaser/WorldScene.js (levels[3].path). Lint pass. (2026-07-25)"
@@ -4176,6 +4177,87 @@ metadata:
   updated_by: "testing_agent"
   update_note: "Musalla upgrade threshold testing complete - ALL TESTS PASSED (29/29). New thresholds L2=7 rumah, L3=15 rumah are correctly enforced. (2026-01-26)"
 
+backend:
+  - task: "Non-musalla buildings CANNOT upgrade (NEW behavior)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (11/11)
+          
+          Tested the NEW behavior where non-musalla buildings cannot be upgraded via POST /api/world/:childId/upgrade.
+          
+          **Test Results:**
+          
+          ✅ TEST 1: Build Musalla at (17,17) - Musalla L1 created successfully
+          ✅ TEST 2: Build rumah_kayu - Building created successfully
+          ✅ TEST 3: Try to upgrade rumah_kayu → Got expected 400 error: "Only Musalla can be upgraded"
+          ✅ TEST 4: Build banglo, kebun_kurma, kandang_lembu - All 3 buildings created successfully
+          ✅ TEST 5: Try to upgrade banglo, kebun_kurma, kandang_lembu → All 3 correctly blocked with 400 error: "Only Musalla can be upgraded"
+          ✅ TEST 6: Musalla upgrade L1→L2 with 6 rumah → Got expected 400 error: "Need 7 rumah to upgrade (have 6)"
+          ✅ TEST 7: Build 7th rumah, then upgrade Musalla L1→L2 → 200 success, Musalla upgraded to L2 (Masjid)
+          ✅ TEST 8: Verify Musalla is now L2 - Level 2 confirmed
+          ✅ TEST 9: Musalla upgrade L2→L3 with 14 rumah → Got expected 400 error: "Need 15 rumah to upgrade (have 14)"
+          ✅ TEST 10: Build 15th rumah, then upgrade Musalla L2→L3 → 200 success, Musalla upgraded to L3 (Jami' Masjid)
+          ✅ TEST 11: Verify Musalla is now L3 - Level 3 confirmed
+          
+          **Key Findings:**
+          
+          ✅ Non-musalla buildings (rumah_kayu, banglo, kebun_kurma, kandang_lembu) correctly blocked from upgrading
+          ✅ Error message "Only Musalla can be upgraded" returned for all non-musalla upgrade attempts
+          ✅ Musalla upgrade thresholds working correctly (L1→L2 needs 7 rumah, L2→L3 needs 15 rumah)
+          ✅ All rumah variants (rumah_kayu, banglo) count toward the 'rumah' category requirement
+          ✅ Upgrade endpoint returns appropriate error messages with current count
+          ✅ Musalla successfully upgrades to L2 and L3 when requirements are met
+          
+          **Files Tested:**
+          - /app/app/api/[[...path]]/route.js (line 1162-1166: musalla-only check)
+          - /app/lib/worldEngine.js (maxLevel=1 for non-musalla templates)
+          
+          **Test Script:** /app/backend_test_world_upgrade.py
+          **Cleanup:** All test data cleaned up successfully
+          
+          NO ISSUES FOUND. The new behavior is working perfectly - only Musalla can be upgraded, all other buildings are blocked with appropriate error message.
+
+  - task: "Musalla upgrade thresholds unchanged (REGRESSION CHECK)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/worldEngine.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ REGRESSION CHECK PASSED (included in 11/11 tests above)
+          
+          Verified that the Musalla upgrade thresholds remain unchanged:
+          
+          ✅ L1 → L2 (Musalla → Masjid) requires 7 rumah
+             - Tested with 6 rumah → 400 error "Need 7 rumah to upgrade (have 6)"
+             - Tested with 7 rumah → 200 success, upgraded to L2
+          
+          ✅ L2 → L3 (Masjid → Jami' Masjid) requires 15 rumah
+             - Tested with 14 rumah → 400 error "Need 15 rumah to upgrade (have 14)"
+             - Tested with 15 rumah → 200 success, upgraded to L3
+          
+          ✅ Category-based counting working correctly
+             - All rumah variants (rumah_kayu, banglo) count toward 'rumah' requirement
+             - Server groups buildings by category, not templateId
+          
+          **Thresholds Confirmed:**
+          - MUSALLA_REQS in route.js (line 1175): { 2: { rumah: 7 }, 3: { rumah: 15 } }
+          - upgradeRequires in worldEngine.js (line 93): { 2: { rumah: 7 }, 3: { rumah: 15 } }
+          
+          NO REGRESSIONS FOUND. The upgrade thresholds are working exactly as before.
+
 test_plan:
   current_focus: []
   stuck_tasks: []
@@ -4183,6 +4265,43 @@ test_plan:
   test_priority: "high_first"
 
 agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 WORLD ENGINE UPGRADE BEHAVIOR TESTING COMPLETE - ALL TESTS PASSED (11/11)
+      
+      Tested 2 backend behavior changes in the EQrel World Engine as requested:
+      
+      **1. Musalla upgrade thresholds unchanged (REGRESSION CHECK)** ✅
+         - L1→L2 needs 7 rumah ✓
+         - L2→L3 needs 15 rumah ✓
+         - Category-based counting working correctly ✓
+         - All rumah variants count toward requirement ✓
+      
+      **2. NEW: Non-musalla buildings CANNOT upgrade** ✅
+         - rumah_kayu upgrade blocked with 400 error ✓
+         - banglo upgrade blocked with 400 error ✓
+         - kebun_kurma upgrade blocked with 400 error ✓
+         - kandang_lembu upgrade blocked with 400 error ✓
+         - Error message: "Only Musalla can be upgraded" ✓
+      
+      **Test Coverage:**
+      - Used seed_test_family.py for test data setup ✓
+      - Authenticated via eqrel_session cookie ✓
+      - Built Musalla + multiple rumah variants ✓
+      - Attempted upgrades on non-musalla buildings (all blocked) ✓
+      - Tested Musalla upgrade with insufficient rumah (blocked) ✓
+      - Tested Musalla upgrade with sufficient rumah (success) ✓
+      - Verified level changes after upgrades ✓
+      - Cleanup via cleanup_test_family.py ✓
+      
+      **Files Tested:**
+      - /app/app/api/[[...path]]/route.js (line 1162-1166: musalla-only check, line 1175: MUSALLA_REQS)
+      - /app/lib/worldEngine.js (maxLevel=1 for non-musalla, line 93: upgradeRequires)
+      
+      **Test Script:** /app/backend_test_world_upgrade.py (11 comprehensive tests)
+      
+      NO ISSUES FOUND. Both the new behavior and the regression check are working perfectly.
+  
   - agent: "testing"
     message: |
       🎉 MUSALLA UPGRADE THRESHOLD TESTING COMPLETE - ALL TESTS PASSED (29/29)

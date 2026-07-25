@@ -764,7 +764,17 @@ function WorldPageInner() {
                       'border-emerald-300 bg-white hover:bg-emerald-50/60'}`}
                 >
                   <div className="text-2xl leading-none mb-1 flex items-center justify-between">
-                    <span>{t.icon}</span>
+                    {t.spriteAsset ? (
+                      <img
+                        src={t.spriteAsset}
+                        alt={t.name[lang] || t.name.ms}
+                        draggable={false}
+                        className="h-9 w-9 object-contain drop-shadow-sm pointer-events-none"
+                        style={{ imageRendering: 'auto' }}
+                      />
+                    ) : (
+                      <span>{t.icon}</span>
+                    )}
                     {tierBadge && <span className="text-[10px]">{tierBadge}</span>}
                   </div>
                   <div className="text-[10px] font-black text-emerald-900 leading-tight">

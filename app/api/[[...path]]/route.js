@@ -1155,18 +1155,25 @@ async function handleRoute(request, { params }) {
         const body = await request.json().catch(() => ({}))
         const { buildingId } = body
         if (!buildingId) return err('Missing buildingId', 400)
-        // Enforce progressive-unlock: musalla → masjid needs 3 houses, → jami masjid needs 8
+        // Enforce progressive-unlock: musalla → masjid needs 7 houses, → jami masjid needs 15
         const world = await worldsCol.findOne({ childId })
         const target = (world?.buildings || []).find(b => b.id === buildingId)
         if (!target) return err('building not found', 404)
+        // Only Musalla can be upgraded — user removed non-musalla upgrades on
+        // 2026-07-25 ("kita sudah introduce binaan ikut bilangan mata, jadi
+        // tak perlu lagi ada naik taraf binaan"). Other buildings max out at L1.
+        if (target.templateId !== 'musalla') {
+          return err('Only Musalla can be upgraded', 400)
+        }
         const nextLevel = (target.level || 1) + 1
+        if (nextLevel > 3) return err('already at max level', 400)
         // Musalla upgrade requirements from worldEngine.upgradeRequires
         // The requirement key 'rumah' means ANY house variant in the 'rumah'
-        // category — rumah_kayu, rumah_batu, rumah_kampung, banglo. Falling
-        // back to string-equality would never match since children build
-        // rumah_kayu etc, not the legacy 'rumah' base template.
+        // category — rumah_kayu, rumah_batu, banglo. Falling back to string-
+        // equality would never match since children build variants, not the
+        // legacy 'rumah' base template.
         const MUSALLA_REQS = { 2: { rumah: 7 }, 3: { rumah: 15 } }
-        if (target.templateId === 'musalla' && MUSALLA_REQS[nextLevel]) {
+        if (MUSALLA_REQS[nextLevel]) {
           const reqs = MUSALLA_REQS[nextLevel]
           // Categorise every existing building so we can count by category
           // (fall back to templateId for older seeds that used raw 'rumah').
