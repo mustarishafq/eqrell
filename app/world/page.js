@@ -111,6 +111,10 @@ function WorldPageInner() {
   // Landmark celebration: shown when the server auto-places a Surau (@5)
   // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
   const [landmarkCelebration, setLandmarkCelebration] = useState(null)
+  // Move confirmation: shown after the child drops a building on a new cell.
+  // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
+  // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
+  const [moveConfirmation, setMoveConfirmation] = useState(null)
   // Audio mute preference (persisted in localStorage). We mirror to React state
   // so the header toggle re-renders on change. Initialised via effect (SSR-safe).
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -206,6 +210,49 @@ function WorldPageInner() {
     // gridX/gridY optional — when provided (from drag-to-place), the build
     // happens at that specific cell instead of auto-placing.
     setRitual({ phase: 'bismillah', templateId, x: gridX, y: gridY })
+    haptic.select()
+  }
+
+  // ─── Move confirmation handlers ─────────────────────────────
+  // When the child drops a dragged building onto a new cell, Phaser snaps
+  // it back to origin and emits 'building-move-requested'. We show a small
+  // card; only if the child confirms do we (a) tell Phaser to play the
+  // 10s restructure animation at destination, and (b) POST to /move. If
+  // the child cancels or taps outside, nothing is committed (safe from
+  // accidental drags).
+  const confirmMoveRelocate = async () => {
+    if (!moveConfirmation) return
+    const { buildingId, x, y } = moveConfirmation
+    setMoveConfirmation(null)
+    haptic.ihsan()
+    // Kick off the restructure animation in Phaser via the scene method
+    const scene = (typeof window !== 'undefined')
+      ? window.__eqrelPhaser?.scene?.getScene?.('WorldScene')
+      : null
+    scene?.confirmPendingMove?.(buildingId, x, y)
+    // Persist to server in parallel — the restructure animation runs for
+    // ~10s so we have plenty of time; on failure we revert via load().
+    try {
+      const r = await fetch(`/api/world/${childId}/move`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buildingId, x, y }),
+      })
+      if (!r.ok) {
+        haptic.locked()
+        await load()
+      }
+    } catch {
+      await load()
+    }
+  }
+  const cancelMoveRelocate = () => {
+    if (!moveConfirmation) return
+    const scene = (typeof window !== 'undefined')
+      ? window.__eqrelPhaser?.scene?.getScene?.('WorldScene')
+      : null
+    scene?.cancelPendingMove?.(moveConfirmation.buildingId)
+    setMoveConfirmation(null)
     haptic.select()
   }
 
@@ -392,6 +439,16 @@ function WorldPageInner() {
       }
       return
     }
+    if (type === 'building-move-requested') {
+      // User dragged a building onto a new valid cell. Instead of committing
+      // the move (which caused accidental relocations from stray drags), we
+      // pop a small confirmation card near the destination. The building has
+      // already snapped back to its origin in Phaser — nothing is committed
+      // until the child taps "Ya, alih". On cancel we just dismiss the card.
+      haptic.select()
+      setMoveConfirmation(payload)
+      return
+    }
     if (type === 'building-moved') {
       // User drag-dropped a building; persist to server immediately, but DO NOT
       // update local worldState yet — Phaser plays a 10s restructure animation
@@ -512,6 +569,17 @@ function WorldPageInner() {
           />
         )}
       </div>
+
+      {/* Move confirmation card — floats near destination cell when child
+          drops a dragged building. Prevents accidental relocations. */}
+      {moveConfirmation && (
+        <MoveConfirmCard
+          confirmation={moveConfirmation}
+          lang={lang}
+          onConfirm={confirmMoveRelocate}
+          onCancel={cancelMoveRelocate}
+        />
+      )}
 
       {/* Floating zoom + center controls — right side above sidebar */}
       {!overlayOpen && hasMusalla && (
@@ -1045,6 +1113,98 @@ const CloudOverlay = ({ demeritCount, lang }) => {
         </div>
       )}
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MoveConfirmCard — LIGHTWEIGHT floating popover that appears next to the
+// destination cell right after a child drops a dragged building. Two clear
+// buttons: "Ya, alih ke sini" (green) & "Batal" (grey). Prevents accidental
+// relocations from stray drag gestures. Position derived from screen coords
+// pushed by Phaser via the 'building-move-requested' event.
+// ═══════════════════════════════════════════════════════════════════════════
+const MoveConfirmCard = ({ confirmation, lang, onConfirm, onCancel }) => {
+  const t = BUILDING_TEMPLATES[confirmation.templateId] || {}
+  const isRTL = lang === 'ar'
+  const name = t.name?.[lang] || t.name?.ms || confirmation.templateId
+  // Auto-cancel after 8s of no interaction — safety net so an abandoned
+  // card doesn't lock further drags.
+  useEffect(() => {
+    const timer = setTimeout(onCancel, 8000)
+    return () => clearTimeout(timer)
+  }, [onCancel])
+  // Clamp screen position so the card never renders outside the visible
+  // canvas (top-right cutoff, bottom-left cutoff on small screens).
+  const width = 260, height = 130
+  const pad = 12
+  const winW = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const winH = typeof window !== 'undefined' ? window.innerHeight : 800
+  // Card default anchor: 20px above the destination cell, horizontally centred.
+  let cx = (confirmation.screenX ?? winW / 2) - width / 2
+  let cy = (confirmation.screenY ?? winH / 2) - height - 40
+  cx = Math.max(pad, Math.min(cx, winW - width - pad))
+  cy = Math.max(pad + 60, Math.min(cy, winH - height - 160)) // avoid sidebar
+  const CONFIRM = {
+    ms: 'Alih ke sini?', en: 'Move here?', id: 'Pindah ke sini?', ar: 'انقل إلى هنا؟',
+  }
+  const YES = {
+    ms: 'Ya, alih', en: 'Yes, move', id: 'Ya, pindahkan', ar: 'نعم، انقل',
+  }
+  const NO = {
+    ms: 'Batal', en: 'Cancel', id: 'Batal', ar: 'إلغاء',
+  }
+  return (
+    <>
+      {/* Backdrop — tap anywhere to cancel */}
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onCancel}
+        className="absolute inset-0 z-[85] bg-transparent"
+        style={{ touchAction: 'manipulation' }}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.85, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.85, y: 12 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+        className="absolute z-[86] pointer-events-auto"
+        style={{ left: cx, top: cy, width }}
+        dir={isRTL ? 'rtl' : 'ltr'}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border-2 border-emerald-300 overflow-hidden">
+          {/* Little "pointer" triangle under the card, pointing at the cell */}
+          <div className="absolute left-1/2 -bottom-2 -translate-x-1/2 w-4 h-4 rotate-45 bg-white border-r-2 border-b-2 border-emerald-300" />
+          <div className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="text-2xl">{t.icon || '📦'}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">
+                  {CONFIRM[lang] || CONFIRM.ms}
+                </div>
+                <div className="font-black text-emerald-900 text-sm leading-tight truncate">
+                  {name}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={onCancel}
+                className="flex-1 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs active:scale-95 transition"
+              >
+                {NO[lang] || NO.ms}
+              </button>
+              <button
+                onClick={onConfirm}
+                className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs active:scale-95 transition shadow-md"
+              >
+                ✓ {YES[lang] || YES.ms}
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </>
   )
 }
 
