@@ -544,10 +544,12 @@ function WorldPageInner() {
   const musalla = buildings.find(b => b.templateId === 'musalla')
   const isRTL = lang === 'ar'
 
-  // Lock Phaser cell taps whenever any React overlay is visible, so that clicks
-  // on modal buttons (Bismillah confirm, Upgrade dialog, Onboarding, etc.) don't
-  // simultaneously trigger a tile hit-zone underneath them.
-  const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding
+  // Lock Phaser cell taps + sidebar clicks whenever any React overlay is
+  // visible, so that clicks on modal buttons don't simultaneously trigger a
+  // tile hit-zone or a sidebar variant tile underneath them. Includes ALL
+  // types of overlays that block gameplay.
+  const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
+                      !!moveConfirmation || !!landmarkCelebration
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -672,9 +674,11 @@ function WorldPageInner() {
         <div className="w-16" /> {/* balance for centering */}
       </div>
 
-      {/* Sidebar — Build menu */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 pointer-events-none">
-        <div className="pointer-events-auto bg-white/90 backdrop-blur rounded-2xl border-2 border-white/60 shadow-xl p-3">
+      {/* Sidebar — Build menu. When any modal overlay is open, we lower the
+          sidebar into pointer-events-none so tapping popup buttons above it
+          never leaks into a sidebar variant tile / category tab below. */}
+      <div className={`absolute bottom-0 left-0 right-0 p-3 z-30 ${overlayOpen ? 'pointer-events-none' : ''}`}>
+        <div className={`bg-white/90 backdrop-blur rounded-2xl border-2 border-white/60 shadow-xl p-3 ${overlayOpen ? 'pointer-events-none opacity-70' : 'pointer-events-auto'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-4 h-4 text-emerald-700" />
             <div className="text-xs font-black uppercase tracking-wider text-emerald-900">

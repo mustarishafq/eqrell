@@ -3905,3 +3905,86 @@ agent_communication:
       
       **CONCLUSION:**
       The pointer-events fix is PARTIALLY working (ChildSheet ✅) but FAILING for RewardShopSheet and DeviceSettingsSheet (❌). This is a CRITICAL issue that blocks production deployment.
+
+  - agent: "testing"
+    message: |
+      🔍 WORLD PAGE TESTING — Musalla Upgrade Flow + Z-Index Verification (2026-01-25)
+      
+      Tested EQrel World /world page with focus on Musalla upgrade popup flow and z-index verification.
+      
+      **TEST ENVIRONMENT:**
+      - URL: http://localhost:3000/world?childId=test-child-a-91d56f89
+      - Session: test-session-91d56f89 (Test Parent)
+      - Viewport: 1920×900
+      - Language: Malay (ms)
+      - Test child has: Musalla L1 at (17,17) + 3 rumah_kayu (meets upgrade requirement)
+      
+      **TEST RESULTS:**
+      
+      ✅ TEST 3 (P1): Cleaned Landmarks - PASS
+      - No masjid_landmark found in world ✅
+      - No surau found in world ✅
+      - Only 4 buildings present: musalla + 3 rumah_kayu
+      - Landmark cleanup migration working correctly
+      
+      ❌ TEST 1 (P0): Musalla Upgrade Popup Flow - CRITICAL FAILURE
+      - Musalla found at screen position (1269.6, 658.6) ✅
+      - Clicked on Musalla successfully ✅
+      - **BuildingInfoCard popup DID NOT APPEAR** ❌
+      - No "Naik Taraf" button visible ❌
+      - No upgrade flow could be tested ❌
+      
+      ⚠️ TEST 2 (P0): Popup Z-Index - CANNOT TEST
+      - Cannot test z-index because popup doesn't appear
+      - Sidebar not dimmed (opacity remains 1.0)
+      - Sidebar click did not trigger action (good)
+      
+      **ROOT CAUSE ANALYSIS:**
+      
+      User reported: "tekan musalla tiada popup naik" (tapping Musalla doesn't show popup)
+      
+      My testing CONFIRMS this bug. When clicking on the Musalla:
+      1. The click is registered (no errors in console)
+      2. The Phaser scene detects the building correctly
+      3. BUT the BuildingInfoCard React component does NOT render
+      
+      Possible causes:
+      1. **Cell-tap event not firing**: WorldScene.js may not be emitting the 'cell-tap' event
+      2. **Event handler not registered**: page.js handleCanvasEvent may not be receiving the event
+      3. **upgradeTarget state not set**: setUpgradeTarget may not be called
+      4. **Render condition failing**: BuildingInfoCard may have a condition preventing render
+      
+      **CODE INSPECTION:**
+      
+      Looking at WorldScene.js (lines 761-785), the tap detection logic:
+      - Uses pointerdown/pointerup to detect taps
+      - Checks moved < 15px && dt < 500ms
+      - Emits 'cell-tap' event with col, row, screenX, screenY
+      
+      Looking at page.js (lines 504-519), the cell-tap handler:
+      - Finds building by checking grid coordinates
+      - Sets upgradeTarget with building + anchor
+      
+      **HYPOTHESIS:**
+      The Musalla has a 2×2 footprint, but the tap detection may be checking only the anchor cell (17,17) instead of the full footprint. When clicking on the visual center of the Musalla, the click might land on cell (18,18) which doesn't match the anchor.
+      
+      **VERIFICATION NEEDED:**
+      1. Add console.log to WorldScene.js pointerup handler to see if tap is detected
+      2. Add console.log to page.js cell-tap handler to see if event is received
+      3. Check if the building lookup logic correctly handles multi-tile buildings
+      4. Verify the Musalla's actual grid position vs visual position
+      
+      **SCREENSHOTS:**
+      - world_initial.png: Shows Musalla at center with golden sacred zone
+      - musalla_card_initial.png: Shows world after click (no popup visible)
+      - z_index_test.png: Shows sidebar still visible (no dimming)
+      
+      **IMPACT:**
+      This is a CRITICAL P0 bug that completely blocks the Musalla upgrade feature. Users cannot upgrade their Musalla from L1 to L2 (Masjid) because the upgrade popup never appears.
+      
+      **RECOMMENDATION:**
+      Main agent should:
+      1. Debug the tap detection and event flow
+      2. Add logging to trace where the event chain breaks
+      3. Fix the BuildingInfoCard rendering issue
+      4. Re-test the full upgrade flow after fix
