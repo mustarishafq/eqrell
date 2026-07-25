@@ -947,6 +947,14 @@ async function handleRoute(request, { params }) {
 
       // Helper: fetch-or-seed world state for this child
       const loadOrSeed = async () => {
+        // One-time migration: strip any auto-placed 'masjid_landmark' buildings
+        // that may exist from the previous auto-placement rule. We removed
+        // that landmark to avoid naming conflict with Musalla upgrade path.
+        // Idempotent — no-op after first pass since we $pull matching entries.
+        await worldsCol.updateOne(
+          { childId },
+          { $pull: { buildings: { templateId: 'masjid_landmark' } } }
+        )
         let world = await worldsCol.findOne({ childId }, { projection: { _id: 0 } })
         if (!world) {
           // Seed with Musalla NOT yet built — anak akan trigger ritual bina Musalla
@@ -1001,17 +1009,21 @@ async function handleRoute(request, { params }) {
       }
 
       // ─── Landmark auto-placement ─────────────────────────────────
-      // After every successful build, if the child has crossed a milestone
-      // (5 user-placed buildings → Surau, 10 → Masjid), auto-place the
-      // landmark at the first free candidate cell around the Musalla. We
-      // COUNT only user-placed buildings, so Musalla + past auto-landmarks
-      // don't inflate the count.
+      // After every successful build, if the child has crossed a milestone,
+      // auto-place the milestone landmark at the first free candidate cell
+      // around the Musalla.
+      //
+      // Design note (2026-07-25): We previously ALSO auto-placed a 3×3
+      // "Masjid Kampung" landmark at 10 buildings. This was removed because
+      // its name and mosque-shape clashed with the Musalla upgrade path
+      // (Musalla → Masjid at L2 → Jami' Masjid at L3), causing children to
+      // think their upgrade had landed at the wrong location. The Surau
+      // milestone at 5 buildings stays — a small humble prayer hall is
+      // visually distinct from the ornate Musalla and reinforces the
+      // pedagogy of "your ummah earns landmarks as it grows".
       const AUTO_LANDMARKS = [
-        { templateId: 'surau',           tileSize: { w: 2, h: 2 }, milestone: 5,
-          // Candidate anchors relative to Musalla (positive = right/down)
+        { templateId: 'surau', tileSize: { w: 2, h: 2 }, milestone: 5,
           candidates: [ {dx: -3, dy: -3}, {dx:  5, dy: -3}, {dx: -3, dy:  5}, {dx:  5, dy:  5}, {dx: -3, dy:  1}, {dx:  5, dy:  1} ] },
-        { templateId: 'masjid_landmark', tileSize: { w: 3, h: 3 }, milestone: 10,
-          candidates: [ {dx:  5, dy: -3}, {dx: -4, dy: -3}, {dx:  5, dy:  5}, {dx: -4, dy:  5}, {dx:  5, dy:  1}, {dx: -4, dy:  1} ] },
       ]
       // Overlap check for a candidate (x,y,w,h) against every existing building
       // AND the musalla's reserved 4×4 zone (RESERVED map, defined below).
