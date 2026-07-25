@@ -106,11 +106,20 @@ export default function WorldCanvas({
     try { g.registry.set('interactionLocked', interactionLocked) } catch { /* not ready */ }
   }, [interactionLocked])
 
-  // Push lang changes into the scene — new bubbles will pick this up immediately
+  // Push lang changes into the scene — new bubbles will pick this up immediately.
+  // Also nudge the WorldScene to redraw the Tanah Waqaf Masjid label so it
+  // re-reads translations from the shared registry.
   useEffect(() => {
     const g = gameRef.current
     if (!g) return
     try { g.registry.set('lang', lang) } catch { /* not ready */ }
+    try {
+      const scene = g.scene.getScene('WorldScene')
+      const state = scene?.game?.registry?.get('worldState')
+      if (scene?._drawSacredZone && state?.buildings) {
+        scene._drawSacredZone(state.buildings)
+      }
+    } catch { /* not ready */ }
   }, [lang])
 
   // Camera commands from React (zoom in/out/reset)

@@ -4365,3 +4365,224 @@ agent_communication:
       - L2 (Masjid) requires 7 rumah ✅
       - L3 (Jami' Masjid) requires 15 rumah ✅
       - All rumah variants count toward the requirement ✅
+
+
+
+#====================================================================================================
+# Building Overlap Prevention with New tileSize Footprints (2026-07-25)
+#====================================================================================================
+
+metadata:
+  updated_by: "testing_agent"
+  update_note: "Building overlap prevention testing - CRITICAL BUGS FOUND. The build and move endpoints are NOT using BUILDING_TEMPLATES[t].tileSize correctly. Hardcoded TILE_SIZES maps missing banglo and rumah_batu entries. (2026-07-25)"
+
+backend:
+  - task: "POST /api/world/:childId/build - overlap prevention with 2×2 buildings"
+    implemented: true
+    working: false
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ CRITICAL BUG FOUND - Overlap detection NOT working for 2×2 buildings
+          
+          **Test Results: 11/16 tests passed (68.8% success rate)**
+          
+          **FAILED TESTS:**
+          
+          ❌ Test 1.3: Build rumah_kayu at (11, 10) should FAIL (overlaps banglo at 10,10)
+             - Expected: 400/409 error
+             - Actual: 200 OK (building created successfully)
+             - Issue: banglo occupies (10-11, 10-11) but overlap not detected
+          
+          ❌ Test 2.2: Build banglo at (11, 20) should FAIL (overlaps rumah_batu at 10,20)
+             - Expected: 400/409 error
+             - Actual: 200 OK (building created successfully)
+             - Issue: rumah_batu occupies (10-11, 20-21) but overlap not detected
+          
+          ❌ Test 4.1 & 4.2: Build rumah_kayu at (10, 30) and (11, 30)
+             - Expected: 200 OK
+             - Actual: 400 "out of bounds"
+             - Issue: World is only 18×18 initially, (10, 30) is outside bounds
+             - This is expected behavior, not a bug
+          
+          **ROOT CAUSE ANALYSIS:**
+          
+          The build endpoint (lines 1102-1131) uses a hardcoded TILE_SIZES map:
+          ```javascript
+          const TILE_SIZES = {
+            musalla: { w: 2, h: 2 },
+            surau: { w: 2, h: 2 },
+            masjid_landmark: { w: 3, h: 3 },
+            rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+          }
+          const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
+          ```
+          
+          **PROBLEM:** This map does NOT include banglo or rumah_batu entries!
+          - When building banglo, it falls back to { w: 1, h: 1 } instead of { w: 2, h: 2 }
+          - When building rumah_batu, it falls back to { w: 1, h: 1 } instead of { w: 2, h: 2 }
+          
+          The overlap check (lines 1124-1131) also uses the same hardcoded TILE_SIZES:
+          ```javascript
+          const s = RESERVED[bd.templateId] || TILE_SIZES[bd.templateId] || { w: 1, h: 1 }
+          ```
+          
+          **EXPECTED BEHAVIOR (per review request):**
+          The code should use BUILDING_TEMPLATES[templateId].tileSize instead of hardcoded maps.
+          
+          **FIX REQUIRED:**
+          Replace hardcoded TILE_SIZES lookups with:
+          ```javascript
+          const tpl = BUILDING_TEMPLATES[templateId]
+          const sz = tpl?.tileSize || { w: 1, h: 1 }
+          ```
+          
+          **PASSED TESTS:**
+          
+          ✅ Test 1.1: Musalla built successfully at (17, 17)
+          ✅ Test 1.2: Banglo built successfully at (10, 10)
+          ✅ Test 1.4: rumah_kayu built successfully at (12, 10) - no overlap
+          ✅ Test 2.1: rumah_batu built successfully at (10, 20)
+          ✅ Test 2.3: banglo built successfully at (12, 20) - no overlap
+          ✅ Test 3.1: banglo built successfully at (13, 10)
+          ✅ Test 3.2: rumah_kayu built successfully at (15, 10)
+          ✅ Test 3.4: rumah_kayu moved successfully to (15, 11)
+          ✅ Test 5.1: Musalla 8×8 reserved zone enforced (regression)
+          ✅ Test 5.2: Non-musalla upgrade rejected (regression)
+          ✅ Test 5.3: Musalla upgrade still works (regression)
+          
+          **FILES AFFECTED:**
+          - /app/app/api/[[...path]]/route.js (lines 1102-1131: build endpoint TILE_SIZES)
+          - /app/app/api/[[...path]]/route.js (lines 1233-1265: move endpoint TILE_SIZES)
+          
+          **TEST SCRIPT:** /app/backend_test_building_overlap.py
+
+  - task: "POST /api/world/:childId/move - overlap prevention with 2×2 buildings"
+    implemented: true
+    working: false
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ CRITICAL BUG FOUND - Move overlap detection NOT working for 2×2 buildings
+          
+          **FAILED TEST:**
+          
+          ❌ Test 3.3: Move rumah_kayu to (13, 11) should FAIL (overlaps banglo at 13,10)
+             - Expected: 400/409 error
+             - Actual: 200 OK (move succeeded)
+             - Issue: banglo occupies (13-14, 10-11) but overlap not detected
+          
+          **ROOT CAUSE:**
+          
+          Same issue as build endpoint. The move endpoint (lines 1233-1265) uses hardcoded TILE_SIZES:
+          ```javascript
+          const TILE_SIZES = {
+            musalla: { w: 2, h: 2 },
+            surau: { w: 2, h: 2 },
+            masjid_landmark: { w: 3, h: 3 },
+            rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+          }
+          const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
+          ```
+          
+          Missing banglo and rumah_batu entries, so they fall back to 1×1.
+          
+          **FIX REQUIRED:**
+          Replace hardcoded TILE_SIZES with BUILDING_TEMPLATES lookups.
+
+test_plan:
+  current_focus:
+    - "POST /api/world/:childId/build - overlap prevention with 2×2 buildings"
+    - "POST /api/world/:childId/move - overlap prevention with 2×2 buildings"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      ❌ BUILDING OVERLAP PREVENTION TESTING - CRITICAL BUGS FOUND (11/16 tests passed, 68.8%)
+      
+      Tested the new building overlap prevention feature with 2×2 footprints (banglo, rumah_batu) as requested.
+      
+      **CRITICAL ISSUE FOUND:**
+      
+      The build and move endpoints are NOT using BUILDING_TEMPLATES[t].tileSize correctly. They use hardcoded TILE_SIZES maps that are missing banglo and rumah_batu entries, causing these 2×2 buildings to be treated as 1×1.
+      
+      **FAILED SCENARIOS:**
+      
+      ❌ Scenario 1.3: banglo at (10,10) should block rumah_kayu at (11,10) → FAILED (allowed)
+      ❌ Scenario 2.2: rumah_batu at (10,20) should block banglo at (11,20) → FAILED (allowed)
+      ❌ Scenario 3.3: banglo at (13,10) should block move to (13,11) → FAILED (allowed)
+      
+      **ROOT CAUSE:**
+      
+      Both build and move endpoints use hardcoded TILE_SIZES maps:
+      ```javascript
+      const TILE_SIZES = {
+        musalla: { w: 2, h: 2 },
+        surau: { w: 2, h: 2 },
+        masjid_landmark: { w: 3, h: 3 },
+        rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+      }
+      ```
+      
+      **MISSING:** banglo and rumah_batu entries!
+      
+      When these buildings are placed, the code falls back to { w: 1, h: 1 }, so overlap detection treats them as 1×1 instead of 2×2.
+      
+      **EXPECTED BEHAVIOR (per review request):**
+      
+      The review request states:
+      > "Files changed:
+      > - `/app/app/api/[[...path]]/route.js`: cellsFree now looks up `BUILDING_TEMPLATES[t].tileSize` for non-hardcoded templates."
+      
+      But the actual implementation still uses hardcoded TILE_SIZES maps in both build and move endpoints.
+      
+      **FIX REQUIRED:**
+      
+      Replace hardcoded TILE_SIZES lookups with BUILDING_TEMPLATES lookups:
+      
+      ```javascript
+      // Instead of:
+      const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
+      
+      // Use:
+      const tpl = BUILDING_TEMPLATES[templateId]
+      const sz = tpl?.tileSize || { w: 1, h: 1 }
+      ```
+      
+      Apply this fix in:
+      1. Build endpoint (line ~1117)
+      2. Build endpoint overlap check (line ~1125)
+      3. Move endpoint (line ~1239)
+      4. Move endpoint overlap check (line ~1256)
+      
+      **REGRESSION TESTS PASSED:**
+      
+      ✅ Musalla 8×8 reserved zone still enforced
+      ✅ Non-musalla upgrade rejection still works
+      ✅ Musalla upgrade still works
+      
+      **TEST COVERAGE:**
+      
+      Created comprehensive test suite: /app/backend_test_building_overlap.py
+      - 16 test scenarios covering build, move, and regression
+      - Tests banglo 2×2, rumah_batu 2×2, rumah_kayu 1×1
+      - Tests overlap detection in all directions
+      - Tests sacred zone enforcement
+      - All test data cleaned up successfully
+      
+      **RECOMMENDATION:**
+      
+      Main agent should fix the hardcoded TILE_SIZES maps in both build and move endpoints to use BUILDING_TEMPLATES[t].tileSize lookups instead. After fix, re-run /app/backend_test_building_overlap.py to verify.

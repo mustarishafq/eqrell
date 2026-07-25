@@ -1019,14 +1019,20 @@ async function handleRoute(request, { params }) {
       // mudah ditambah landmark lain (menara air, taman kota) nanti.
       const AUTO_LANDMARKS = []
       // Overlap check for a candidate (x,y,w,h) against every existing building
-      // AND the musalla's reserved 8×8 zone (RESERVED map, defined below).
+      // AND the musalla's reserved 8×8 zone. Effective footprint per building:
+      //   - musalla → 8×8 (sacred waqf land reserve, no exceptions)
+      //   - surau/masjid_landmark → their landmark footprint
+      //   - other → BUILDING_TEMPLATES[t].tileSize (banglo 2×2, rumah_batu 2×2,
+      //     rumah_kayu 1×1 etc — user requested this so bigger buildings
+      //     never overlap adjacent placements).
       const cellsFree = (buildings, x, y, w, h) => {
         for (const bd of buildings) {
           const t = bd.templateId
-          // Reuse the RESERVED/TILE_SIZES defined below in the build block
+          const tpl = BUILDING_TEMPLATES[t]
           const foot = (t === 'musalla')            ? { w: 8, h: 8 } :
                        (t === 'surau')              ? { w: 2, h: 2 } :
                        (t === 'masjid_landmark')    ? { w: 3, h: 3 } :
+                       (tpl?.tileSize)              ? tpl.tileSize :
                        (t === 'kebun' || t === 'rumah') ? { w: 1, h: 1 } : { w: 1, h: 1 }
           if (x < bd.x + foot.w && x + w > bd.x && y < bd.y + foot.h && y + h > bd.y) return false
         }
