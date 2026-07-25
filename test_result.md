@@ -3988,3 +3988,109 @@ agent_communication:
       2. Add logging to trace where the event chain breaks
       3. Fix the BuildingInfoCard rendering issue
       4. Re-test the full upgrade flow after fix
+
+
+  - agent: "testing"
+    message: |
+      🎉 MUSALLA UPGRADE POPUP FIX VERIFIED — Re-test Complete (2026-07-25)
+      
+      Re-tested the Musalla upgrade popup flow after the main agent's fix. The fix successfully resolved the primary bug!
+      
+      **TEST ENVIRONMENT:**
+      - URL: http://localhost:3000/world?childId=test-child-a-91d56f89
+      - Session: test-session-91d56f89 (Test Parent)
+      - Viewport: 1920×900
+      - Language: Malay (ms)
+      - Test child has: Musalla L1 at (17,17) + 3 rumah_kayu buildings
+      
+      **THE FIX:**
+      Main agent removed the `!isSacred` guard that was preventing `enableBuildingDrag()` from being called on sacred buildings (Musalla). Now:
+      1. `enableBuildingDrag()` is called for ALL buildings including Musalla
+      2. Inside the function, `setInteractive()` is called for all buildings
+      3. Tap handlers (pointerdown/pointerup) are attached to all buildings
+      4. Only `setDraggable()` is skipped for sacred buildings (isSacred=true)
+      
+      **TEST RESULTS:**
+      
+      ✅ TEST 1 (P0): Musalla Tap Opens BuildingInfoCard — PASS
+      - Musalla found at screen position (960.0, 498.0) ✓
+      - Clicked on Musalla successfully ✓
+      - BuildingInfoCard popup APPEARED in collapsed state ✓
+      - 'Lebih' (More) button visible: 1 instance ✓
+      - Musalla title visible: 1 instance ✓
+      - Level badge (L1) visible: 1 instance ✓
+      - **PRIMARY BUG FIXED!** The popup now appears when tapping Musalla!
+      
+      ✅ TEST 2 (P0): Expand Card Shows Reflection & Requirements — PASS
+      - Clicked 'Lebih' button to expand card ✓
+      - Reflection text appeared: "Masjid rumah setiap orang bertaqwa" — Tabrani ✓
+      - Requirements panel appeared: "🔒 PERLUKAN LAGI BANGUNAN" ✓
+      - Shows: "🏠 Rumah 0 / 3" (Need 3 houses to upgrade) ✓
+      - Card expansion animation working correctly ✓
+      
+      ⚠️ TEST 3 (P0): Full Upgrade Flow — BLOCKED BY REQUIREMENTS
+      - Upgrade button did NOT appear (expected, requirements not met)
+      - Test world has 3 'rumah_kayu' buildings, but upgrade requires 3 'rumah' buildings
+      - **SEPARATE ISSUE FOUND:** Upgrade requirements check for exact templateId match ('rumah'), not rumah variants ('rumah_kayu', 'rumah_batu', etc.)
+      - This is a design/logic issue, not related to the tap detection fix
+      
+      ✅ TEST 4 (P0): Z-Index — Sidebar Blocked When Popup Open — PASS
+      - BuildingInfoCard opened successfully ✓
+      - Attempted to click 'Rumah Kayu' tile in sidebar ✓
+      - Playwright error: "<div class="absolute inset-0 z-[92]"></div> intercepts pointer events" ✓
+      - **This is CORRECT behavior!** The click-catcher overlay is blocking sidebar clicks ✓
+      - Sidebar is properly blocked when popup is open ✓
+      
+      **DIAGNOSTIC FINDINGS:**
+      
+      Ran detailed diagnostic test to verify the fix:
+      - Musalla container.interactive: True ✓
+      - Musalla container.inputEnabled: True ✓
+      - Musalla container.draggable: False ✓ (correct for sacred buildings)
+      - Musalla hasPointerDownListener: True ✓
+      - Musalla hasPointerUpListener: True ✓
+      - Cell-tap event fired: {'col': 17, 'row': 17, 'screenX': 960, 'screenY': 498} ✓
+      - Event listeners attached: ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'dragstart', 'drag', 'dragend'] ✓
+      
+      **BUILDINGINFO CARD DESIGN:**
+      
+      The BuildingInfoCard has TWO states:
+      1. **COLLAPSED** (default): Shows icon, name, level badge, villagers count, date, and "▼ Lebih" button
+      2. **EXPANDED**: Shows reflection text + upgrade button (or requirements panel if not met)
+      
+      This is why my initial test failed — I was looking for "Naik Taraf" button in the collapsed state, but it only appears after clicking "Lebih" to expand.
+      
+      **SEPARATE ISSUE IDENTIFIED:**
+      
+      Upgrade Requirements Logic Bug:
+      - The `upgradeRequires` check in BuildingInfoCard uses exact templateId match
+      - Musalla upgrade requires `rumah: 3`, which checks for buildings with templateId='rumah'
+      - Test world has 3 'rumah_kayu' buildings, which are NOT counted
+      - **RECOMMENDATION:** Update the requirements logic to recognize rumah variants:
+        - rumah_kayu (Wooden House)
+        - rumah_batu (Stone House)
+        - rumah_kampung (Village House)
+        - banglo (Bungalow)
+      - OR: Change the requirement to check for ANY building in the 'Rumah' category
+      
+      **SCREENSHOTS:**
+      - test1_collapsed_card.png: BuildingInfoCard in collapsed state with "Lebih" button
+      - test2_expanded_card.png: BuildingInfoCard expanded showing reflection + requirements panel
+      - test4_z_index.png: Popup open with sidebar blocked (z-index working correctly)
+      
+      **IMPACT:**
+      
+      ✅ PRIMARY BUG FIXED: Musalla tap now opens BuildingInfoCard popup
+      ✅ Z-INDEX WORKING: Sidebar properly blocked when popup is open
+      ⚠️ SECONDARY ISSUE: Upgrade requirements don't recognize rumah variants (separate bug)
+      
+      **CONCLUSION:**
+      
+      The main agent's fix successfully resolved the critical P0 bug where tapping Musalla did not open the popup. The tap detection, event flow, and z-index are all working correctly now. The upgrade flow cannot be fully tested due to a separate issue with the requirements logic not recognizing rumah variants, but this is a different bug unrelated to the tap detection fix.
+      
+      **RECOMMENDATION FOR MAIN AGENT:**
+      
+      1. ✅ Musalla tap detection fix is COMPLETE and WORKING
+      2. ⚠️ Consider updating upgrade requirements logic to recognize building variants (e.g., rumah_kayu should count toward 'rumah' requirement)
+      3. ✅ Z-index fix is working correctly
+      4. ✅ No further action needed for the tap detection issue
