@@ -1098,12 +1098,20 @@ async function handleRoute(request, { params }) {
         await loadOrSeed()
         const world = await worldsCol.findOne({ childId })
         const buildings = world?.buildings || []
-        // Bounds check: cell (and its footprint) must fit within current dynamic bounds
+        // Bounds check: cell (and its footprint) must fit within current dynamic bounds.
+        // TILE_SIZES = legacy hardcoded fallback for musalla/surau/masjid_landmark
+        // (which don't live in BUILDING_TEMPLATES with matching keys). For all
+        // other templates (banglo 2×2, rumah_batu 2×2, rumah_kayu 1×1, etc.)
+        // we look up BUILDING_TEMPLATES[t].tileSize.
         const TILE_SIZES = {
           musalla: { w: 2, h: 2 },
           surau: { w: 2, h: 2 },
           masjid_landmark: { w: 3, h: 3 },
-          rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+        }
+        const footFor = (tid) => {
+          if (TILE_SIZES[tid]) return TILE_SIZES[tid]
+          const tpl = BUILDING_TEMPLATES[tid]
+          return tpl?.tileSize || { w: 1, h: 1 }
         }
         // Sacred reserved footprint — musalla pre-reserves 8×8 (large buffer
         // so the tall Jami' Masjid L3 with 2 minarets doesn't visually block
@@ -1114,15 +1122,16 @@ async function handleRoute(request, { params }) {
           surau: { w: 2, h: 2 },
           masjid_landmark: { w: 3, h: 3 },
         }
-        const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
+        const sz = footFor(templateId)
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + sz.w > b.maxX || y + sz.h > b.maxY) {
           return err('out of bounds', 400)
         }
         // Reserved-zone overlap: reject if this placement overlaps any
-        // building's RESERVED footprint (musalla's 4×4 sacred zone).
+        // building's RESERVED footprint (musalla's 8×8 sacred zone) or its
+        // regular tile footprint (banglo 2×2 etc.).
         for (const bd of buildings) {
-          const s = RESERVED[bd.templateId] || TILE_SIZES[bd.templateId] || { w: 1, h: 1 }
+          const s = RESERVED[bd.templateId] || footFor(bd.templateId)
           const overlapsX = x < bd.x + s.w && x + sz.w > bd.x
           const overlapsY = y < bd.y + s.h && y + sz.h > bd.y
           if (overlapsX && overlapsY) {
@@ -1227,16 +1236,20 @@ async function handleRoute(request, { params }) {
           return err('Landmark cannot be moved', 400)
         }
 
-        // Simple footprint check — treat all non-musalla buildings as 1x1 for now,
-        // matching current template sizes. Overlap detection tests all cells.
-        // (Musalla is 2x2, so we skip its own id AND allow moving next to it.)
+        // Footprint lookup — musalla/surau/masjid_landmark use hardcoded
+        // legacy sizes; everything else (banglo 2×2, rumah_batu 2×2, etc.)
+        // pulls its tileSize from BUILDING_TEMPLATES.
         const TILE_SIZES = {
           musalla: { w: 2, h: 2 },
           surau: { w: 2, h: 2 },
           masjid_landmark: { w: 3, h: 3 },
-          rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
         }
-        const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
+        const footFor = (tid) => {
+          if (TILE_SIZES[tid]) return TILE_SIZES[tid]
+          const tpl = BUILDING_TEMPLATES[tid]
+          return tpl?.tileSize || { w: 1, h: 1 }
+        }
+        const targetSize = footFor(target.templateId)
         // Dynamic bounds — matches lib/worldEngine.js. Musalla stays centered.
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + targetSize.w > b.maxX || y + targetSize.h > b.maxY) {
@@ -1253,7 +1266,7 @@ async function handleRoute(request, { params }) {
         }
         for (const b of buildings) {
           if (b.id === buildingId) continue
-          const s = RESERVED[b.templateId] || TILE_SIZES[b.templateId] || { w: 1, h: 1 }
+          const s = RESERVED[b.templateId] || footFor(b.templateId)
           for (let dx = 0; dx < targetSize.w; dx++) {
             for (let dy = 0; dy < targetSize.h; dy++) {
               const tx = x + dx, ty = y + dy
