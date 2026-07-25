@@ -47,6 +47,12 @@ const L = {
   more:         { ms: 'Lebih', en: 'More', id: 'Selengkapnya', ar: 'المزيد' },
   needsMore:    { ms: 'Perlukan lagi bangunan', en: 'Needs more buildings', id: 'Perlu bangunan lagi', ar: 'يحتاج مبانٍ إضافية' },
   needForUpgrade:{ ms: 'Untuk naik taraf ke', en: 'To upgrade to', id: 'Untuk naik ke', ar: 'للترقية إلى' },
+  autoUpgradeInfo:{
+    ms: 'Naik taraf automatik apabila cukup rumah — tak perlu tekan apa-apa!',
+    en: 'Auto-upgrades when enough houses are built — no button needed!',
+    id: 'Naik otomatis saat cukup rumah — tidak perlu tekan tombol!',
+    ar: 'ترقية تلقائية عند اكتمال البيوت — بدون ضغط أي زر!',
+  },
   reqRumah:     { ms: '🏠 Rumah', en: '🏠 Houses', id: '🏠 Rumah', ar: '🏠 منازل' },
   reqKebun:     { ms: '🌴 Kebun', en: '🌴 Orchards', id: '🌴 Kebun', ar: '🌴 بساتين' },
   reqTernakan:  { ms: '🐄 Ternakan', en: '🐄 Livestock', id: '🐄 Ternak', ar: '🐄 ماشية' },
@@ -118,6 +124,7 @@ function WorldPageInner() {
   // Landmark celebration: shown when the server auto-places a Surau (@5)
   // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
   const [landmarkCelebration, setLandmarkCelebration] = useState(null)
+  const [autoUpgradeCelebration, setAutoUpgradeCelebration] = useState(null)
   // Move confirmation: shown after the child drops a building on a new cell.
   // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
   // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
@@ -336,6 +343,12 @@ function WorldPageInner() {
           // so the child sees "Kampung anda telah dianugerahkan..." pop up.
           if (Array.isArray(data.newLandmarks) && data.newLandmarks.length > 0) {
             setTimeout(() => setLandmarkCelebration(data.newLandmarks[0]), 2800)
+          }
+          // If the server AUTO-UPGRADED the Musalla (7 rumah → Masjid, 15
+          // rumah → Jami' Masjid), queue a pedagogical celebration popup
+          // so the child understands their houses/jemaah made the mosque grow.
+          if (data.autoUpgrade) {
+            setTimeout(() => setAutoUpgradeCelebration(data.autoUpgrade), 3000)
           }
         } else {
           haptic.locked()
@@ -556,7 +569,7 @@ function WorldPageInner() {
   // tile hit-zone or a sidebar variant tile underneath them. Includes ALL
   // types of overlays that block gameplay.
   const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
-                      !!moveConfirmation || !!landmarkCelebration
+                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -822,6 +835,14 @@ function WorldPageInner() {
             onClose={() => setLandmarkCelebration(null)}
           />
         )}
+        {autoUpgradeCelebration && (
+          <AutoUpgradeCelebrationOverlay
+            key={`upg-${autoUpgradeCelebration.buildingId}-${autoUpgradeCelebration.toLevel}`}
+            upgrade={autoUpgradeCelebration}
+            lang={lang}
+            onClose={() => setAutoUpgradeCelebration(null)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Upgrade dialog */}
@@ -1076,6 +1097,109 @@ const LandmarkCelebrationOverlay = ({ landmark, lang, onClose }) => {
           </div>
           <div className="text-sm text-emerald-800/80 leading-relaxed">
             {sub}
+          </div>
+          <div className="text-[10px] text-emerald-700/60 mt-4 uppercase tracking-wider">
+            {lang === 'ar' ? 'انقر للمتابعة' : lang === 'en' ? 'Tap to continue' : lang === 'id' ? 'Ketuk untuk lanjut' : 'Tekan untuk teruskan'}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AutoUpgradeCelebrationOverlay — pedagogical popup that fires when the
+// server auto-upgrades the Musalla (L1→L2 at 7 rumah, L2→L3 at 15 rumah).
+// The message frames the growth as a DIRECT consequence of the child's
+// habit-building: "your rumah grew, your jemaah grew, so the mosque grew".
+// This teaches contribution to religion development (deen) — a core pedagogy
+// goal of EQrel. Auto-dismiss after 6s. Tap to dismiss earlier.
+// ═══════════════════════════════════════════════════════════════════════════
+const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
+  const isRTL = lang === 'ar'
+  useEffect(() => {
+    const timer = setTimeout(onClose, 6500)
+    return () => clearTimeout(timer)
+  }, [onClose])
+  const HEADLINES = {
+    2: {
+      ms: 'MasyaAllah! Musalla dinaik taraf menjadi Masjid!',
+      en: 'MashaAllah! Your Musalla has grown into a Masjid!',
+      id: 'MasyaAllah! Musalla naik menjadi Masjid!',
+      ar: 'ما شاء الله! تطوّر المصلى إلى مسجد!',
+    },
+    3: {
+      ms: 'Alhamdulillah! Masjid dinaik taraf menjadi Jami\u2019 Masjid!',
+      en: 'Alhamdulillah! Your Masjid has grown into a Grand Mosque!',
+      id: 'Alhamdulillah! Masjid naik menjadi Masjid Jami\u2019!',
+      ar: 'الحمد لله! تطوّر مسجدكم إلى جامع!',
+    },
+  }
+  const REASONS = {
+    2: {
+      ms: (n) => `Kamu sudah bina ${n} buah rumah. Jemaah semakin ramai — Allah gembira melihat komuniti kamu berkembang!`,
+      en: (n) => `You've built ${n} homes. The jamaah grows — Allah is pleased with your growing community!`,
+      id: (n) => `Kamu sudah membangun ${n} rumah. Jemaah makin banyak — Allah senang melihat komunitas kamu berkembang!`,
+      ar: (n) => `لقد بنيتَ ${n} بيوت. الجماعة تنمو — الله يحبّ نموّ مجتمعكم!`,
+    },
+    3: {
+      ms: (n) => `Kamu sudah bina ${n} buah rumah — kampung ini kini komuniti besar. Jami\u2019 Masjid dibina untuk menyatukan semua ahli jemaah!`,
+      en: (n) => `You've built ${n} homes — a full community now. A Grand Mosque unites all your jamaah!`,
+      id: (n) => `Kamu sudah membangun ${n} rumah — komunitas besar sekarang. Masjid Jami\u2019 menyatukan semua jemaah!`,
+      ar: (n) => `لقد بنيتَ ${n} بيتًا — مجتمع كامل الآن. الجامع يجمع كلّ الجماعة!`,
+    },
+  }
+  const CONTRIB = {
+    ms: 'Kamu menyumbang kepada pembangunan agama! 🌱',
+    en: 'You are contributing to building the deen! 🌱',
+    id: 'Kamu berkontribusi pada pembangunan agama! 🌱',
+    ar: 'أنت تسهم في بناء الدين! 🌱',
+  }
+  const level = upgrade.toLevel
+  const rumahCount = upgrade.rumahCount || 0
+  const headline = HEADLINES[level]?.[lang] || HEADLINES[level]?.ms
+  const reason = (REASONS[level]?.[lang] || REASONS[level]?.ms)?.(rumahCount)
+  const contrib = CONTRIB[lang] || CONTRIB.ms
+  const icon = level === 3 ? '🕌' : '🕋'
+  const tierLabel = level === 3
+    ? ({ ms: 'JAMI\u2019 MASJID · L3', en: 'GRAND MOSQUE · L3', id: 'MASJID JAMI\u2019 · L3', ar: 'جامع · L3' }[lang] || 'JAMI\u2019 MASJID · L3')
+    : ({ ms: 'MASJID · L2', en: 'MASJID · L2', id: 'MASJID · L2', ar: 'مسجد · L2' }[lang] || 'MASJID · L2')
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="absolute inset-0 z-[96] flex items-center justify-center p-6 cursor-pointer"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(13,91,78,0.65) 0%, rgba(0,0,0,0.8) 100%)' }}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
+      <motion.div
+        initial={{ scale: 0.5, y: 40, rotate: -6 }}
+        animate={{ scale: 1, y: 0, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+        className="max-w-md w-full bg-gradient-to-br from-amber-50 via-emerald-50 to-teal-50 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl relative overflow-hidden"
+      >
+        <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
+          backgroundImage: 'repeating-conic-gradient(from 0deg, transparent 0deg 10deg, rgba(255,183,3,0.35) 10deg 20deg)',
+        }} />
+        <div className="relative">
+          <motion.div
+            className="text-7xl mb-2"
+            animate={{ y: [0, -6, 0], rotate: [0, 3, -3, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          >
+            {icon}
+          </motion.div>
+          <div className="text-xs uppercase tracking-widest font-black text-amber-700 mb-2">
+            ⭐ AUTO UPGRADE · {tierLabel}
+          </div>
+          <div className="font-black text-emerald-900 text-lg mb-3 leading-snug">
+            {headline}
+          </div>
+          <div className="text-sm text-emerald-800/90 leading-relaxed mb-3">
+            {reason}
+          </div>
+          <div className="text-sm font-bold text-emerald-700 leading-relaxed">
+            {contrib}
           </div>
           <div className="text-[10px] text-emerald-700/60 mt-4 uppercase tracking-wider">
             {lang === 'ar' ? 'انقر للمتابعة' : lang === 'en' ? 'Tap to continue' : lang === 'id' ? 'Ketuk untuk lanjut' : 'Tekan untuk teruskan'}
@@ -1397,6 +1521,21 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuil
                           </div>
                         )
                       })}
+                      {/* Musalla is auto-upgraded on the server the moment the
+                          rumah threshold is crossed — kids never press an
+                          upgrade button. This banner tells them so they don't
+                          hunt for one. */}
+                      {t.id === 'musalla' && (
+                        <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1 mt-1 border border-emerald-200 leading-snug">
+                          ⭐ {l('autoUpgradeInfo', lang)}
+                        </div>
+                      )}
+                    </div>
+                  ) : t.id === 'musalla' ? (
+                    // Requirements met but not yet auto-upgraded (edge case):
+                    // show a friendly waiting message instead of a manual button.
+                    <div className="text-center text-xs font-bold text-emerald-600 py-1">
+                      ⭐ {l('autoUpgradeInfo', lang)}
                     </div>
                   ) : (
                     <button

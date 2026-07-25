@@ -1149,12 +1149,47 @@ async function handleRoute(request, { params }) {
         // client can play a celebratory overlay.
         const afterInsert = [...buildings, newBuilding]
         const { placed: newLandmarks, buildings: withLandmarks } = await tryPlaceLandmarks(afterInsert)
-        if (newLandmarks.length > 0) {
-          // Replace buildings array entirely so both the new building AND the
-          // landmark(s) are saved atomically.
+        let finalBuildings = newLandmarks.length > 0 ? withLandmarks : afterInsert
+
+        // ── AUTO-UPGRADE MUSALLA ──────────────────────────────────
+        // Once rumah count crosses the required threshold (7 for L2, 15 for L3),
+        // the musalla auto-upgrades — kid doesn't need to press any button.
+        // Teaches the pedagogical loop: "the more houses/jemaah, the bigger
+        // the mosque". Returned metadata triggers a celebratory notification
+        // on the client with contextual language explaining the growth.
+        let autoUpgrade = null
+        const musallaBd = finalBuildings.find(b => b.templateId === 'musalla')
+        if (musallaBd) {
+          // Count rumah variants (all fall under 'rumah' category).
+          const rumahCount = finalBuildings.filter(b => {
+            const tpl = BUILDING_TEMPLATES[b.templateId]
+            return tpl?.category === 'rumah'
+          }).length
+          const curLvl = musallaBd.level || 1
+          const nextLvl = curLvl + 1
+          const AUTO_REQS = { 2: 7, 3: 15 }
+          if (nextLvl <= 3 && AUTO_REQS[nextLvl] && rumahCount >= AUTO_REQS[nextLvl]) {
+            // Bump musalla level in the finalBuildings array so persistence
+            // reflects the new level (same source-of-truth write below).
+            finalBuildings = finalBuildings.map(b =>
+              b.id === musallaBd.id ? { ...b, level: nextLvl } : b
+            )
+            autoUpgrade = {
+              buildingId: musallaBd.id,
+              fromLevel: curLvl,
+              toLevel: nextLvl,
+              rumahCount,
+              levelName: nextLvl === 2 ? 'Masjid' : 'Jami\u2019 Masjid',
+            }
+          }
+        }
+
+        // Persist: use full replace if we auto-upgraded OR placed landmarks,
+        // else the cheaper $push (just the one new building).
+        if (autoUpgrade || newLandmarks.length > 0) {
           await worldsCol.updateOne(
             { childId },
-            { $set: { buildings: withLandmarks, updatedAt: new Date() } }
+            { $set: { buildings: finalBuildings, updatedAt: new Date() } }
           )
         } else {
           await worldsCol.updateOne(
@@ -1162,7 +1197,7 @@ async function handleRoute(request, { params }) {
             { $push: { buildings: newBuilding }, $set: { updatedAt: new Date() } }
           )
         }
-        return json({ ok: true, building: newBuilding, newLandmarks })
+        return json({ ok: true, building: newBuilding, newLandmarks, autoUpgrade })
       }
 
       // POST /world/:childId/upgrade → level up by building id
