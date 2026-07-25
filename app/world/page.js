@@ -1229,14 +1229,23 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuil
   const nextName = getBuildingName(building.templateId, nextLevel, lang)
   const isRTL = lang === 'ar'
 
-  // Check progressive-unlock requirements for upgrade
+  // Check progressive-unlock requirements for upgrade.
+  // Requirement key 'rumah' means ANY house variant in the 'rumah' category —
+  // rumah_kayu, rumah_batu, rumah_kampung, banglo. Falling back to exact
+  // templateId match was a bug: children build variants (rumah_kayu etc),
+  // never the abstract 'rumah', so requirements never met visually.
+  // Server-side logic uses the same category-based counting.
   const reqs = t.upgradeRequires?.[nextLevel] || null
   let reqMet = true
   const reqStatus = []
   if (reqs) {
-    for (const [tid, need] of Object.entries(reqs)) {
-      const have = allBuildings.filter(b => b.templateId === tid).length
-      reqStatus.push({ tid, have, need, met: have >= need })
+    for (const [catOrId, need] of Object.entries(reqs)) {
+      const have = allBuildings.filter(b => {
+        const tpl = BUILDING_TEMPLATES[b.templateId]
+        const cat = tpl?.category || b.templateId
+        return cat === catOrId || b.templateId === catOrId
+      }).length
+      reqStatus.push({ tid: catOrId, have, need, met: have >= need })
       if (have < need) reqMet = false
     }
   }
