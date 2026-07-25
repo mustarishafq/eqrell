@@ -9,7 +9,7 @@ import { haptic } from '@/lib/feedback'
 import { useLang } from '@/lib/i18n/LangProvider'
 import audio, { installAutoPrime, isMuted, toggleMuted, bismillah, alhamdulillah } from '@/lib/audio'
 import {
-  BUILDING_TEMPLATES, BUILDING_LIST, MUSALLA_ANCHOR,
+  BUILDING_TEMPLATES, BUILDING_LIST, BUILDING_CATEGORIES, getVariantsForCategory, MUSALLA_ANCHOR,
   ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE, getCurrentBounds,
 } from '@/lib/worldEngine'
 
@@ -101,6 +101,10 @@ function WorldPageInner() {
   // Camera command (zoom in/out/center) sent to Phaser via WorldCanvas prop
   const [cameraCommand, setCameraCommand] = useState(null)
   // Drag-from-sidebar state — { templateId, pointerX, pointerY } while dragging
+  // Currently active category tab in the bottom sidebar (default: rumah for
+  // fastest access to the most-built type). "ibadah" only shows the Musalla
+  // upgrade path (via the info card, not the sidebar).
+  const [activeCategory, setActiveCategory] = useState('rumah')
   const [buildDrag, setBuildDrag] = useState(null)
   // Celebratory toast shown when the world progressively expands (5/10/15 buildings)
   const [expandToast, setExpandToast] = useState(null)
@@ -604,34 +608,76 @@ function WorldPageInner() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-2" style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
-            {BUILDING_LIST.map(t => {
+
+          {/* Category tabs — visible only after Musalla is built (before that
+              the sidebar shows only the Musalla ritual entry).  */}
+          {hasMusalla && (
+            <div className="flex gap-1 mb-2 overflow-x-auto pb-1 -mx-1 px-1">
+              {BUILDING_CATEGORIES.filter(c => c.id !== 'ibadah').map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 text-xs font-black transition-all active:scale-95
+                    ${activeCategory === cat.id
+                      ? 'bg-emerald-500 text-white border-emerald-600 shadow-md'
+                      : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'}`}
+                >
+                  <span className="text-base leading-none">{cat.icon}</span>
+                  <span>{cat.name[lang] || cat.name.ms}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Variant grid — either the Musalla entry (pre-mosque) OR the active category's variants */}
+          <div
+            className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto"
+            style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+          >
+            {(!hasMusalla
+              ? [BUILDING_TEMPLATES.musalla]
+              : getVariantsForCategory(activeCategory)
+            ).map(t => {
               const isBuilt = buildings.some(b => b.templateId === t.id)
               const isLocked = t.id !== 'musalla' && !hasMusalla
               const isMusallaFirst = t.id === 'musalla' && !isBuilt
               const isDisabled = isLocked || (t.id === 'musalla' && isBuilt)
-              // Drag-to-place handler — starts on pointerdown when enabled
+              // Age-appropriate unlock (K2 gated): standard variants unlock
+              // after 2 built in the category, premium after 5. For now we
+              // default to K2 progression — future work: read the actual
+              // child's ageBand from profile and disable gating for K1 (3-6).
+              const isK2 = true
+              const catCount = buildings.filter(b => BUILDING_TEMPLATES[b.templateId]?.category === t.category).length
+              const tierLocked = isK2 && (
+                (t.tier === 'standard' && catCount < 2) ||
+                (t.tier === 'premium'  && catCount < 5)
+              )
+              const finalLocked = isDisabled || tierLocked
               const startDrag = (e) => {
-                if (isDisabled) return
+                if (finalLocked) return
                 e.preventDefault()
                 const p = e.touches?.[0] || e
                 setBuildDrag({ templateId: t.id, pointerX: p.clientX, pointerY: p.clientY })
                 haptic.select()
               }
+              const tierBadge = t.tier === 'premium' ? '💎' : t.tier === 'standard' ? '⭐' : ''
               return (
                 <button
                   key={t.id}
                   onPointerDown={startDrag}
                   onTouchStart={startDrag}
-                  disabled={isDisabled}
+                  disabled={finalLocked}
                   style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
                   className={`relative rounded-xl border-2 p-2 text-left transition-all active:scale-95
-                    ${isLocked ? 'opacity-40 border-gray-200 bg-gray-50' :
+                    ${finalLocked ? 'opacity-40 border-gray-200 bg-gray-50' :
                       isMusallaFirst ? 'border-amber-400 bg-amber-50 animate-pulse' :
                       buildDrag?.templateId === t.id ? 'border-emerald-500 bg-emerald-100 scale-105' :
                       'border-emerald-300 bg-white hover:bg-emerald-50/60'}`}
                 >
-                  <div className="text-2xl leading-none mb-1">{t.icon}</div>
+                  <div className="text-2xl leading-none mb-1 flex items-center justify-between">
+                    <span>{t.icon}</span>
+                    {tierBadge && <span className="text-[10px]">{tierBadge}</span>}
+                  </div>
                   <div className="text-[10px] font-black text-emerald-900 leading-tight">
                     {t.name[lang] || t.name.ms}
                   </div>
@@ -642,6 +688,9 @@ function WorldPageInner() {
                     <div className="absolute -top-1.5 -right-1.5 bg-amber-400 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
                       {l('start', lang)}
                     </div>
+                  )}
+                  {tierLocked && !isDisabled && (
+                    <div className="absolute inset-0 flex items-center justify-center text-lg bg-white/40 rounded-xl">🔒</div>
                   )}
                   {isLocked && <div className="absolute inset-0 flex items-center justify-center text-xl">🔒</div>}
                 </button>
