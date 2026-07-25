@@ -999,6 +999,84 @@ async function handleRoute(request, { params }) {
         }
       }
 
+      // ─── Landmark auto-placement ─────────────────────────────────
+      // After every successful build, if the child has crossed a milestone
+      // (5 user-placed buildings → Surau, 10 → Masjid), auto-place the
+      // landmark at the first free candidate cell around the Musalla. We
+      // COUNT only user-placed buildings, so Musalla + past auto-landmarks
+      // don't inflate the count.
+      const AUTO_LANDMARKS = [
+        { templateId: 'surau',           tileSize: { w: 2, h: 2 }, milestone: 5,
+          // Candidate anchors relative to Musalla (positive = right/down)
+          candidates: [ {dx: -3, dy: -3}, {dx:  5, dy: -3}, {dx: -3, dy:  5}, {dx:  5, dy:  5}, {dx: -3, dy:  1}, {dx:  5, dy:  1} ] },
+        { templateId: 'masjid_landmark', tileSize: { w: 3, h: 3 }, milestone: 10,
+          candidates: [ {dx:  5, dy: -3}, {dx: -4, dy: -3}, {dx:  5, dy:  5}, {dx: -4, dy:  5}, {dx:  5, dy:  1}, {dx: -4, dy:  1} ] },
+      ]
+      // Overlap check for a candidate (x,y,w,h) against every existing building
+      // AND the musalla's reserved 4×4 zone (RESERVED map, defined below).
+      const cellsFree = (buildings, x, y, w, h) => {
+        for (const bd of buildings) {
+          const t = bd.templateId
+          // Reuse the RESERVED/TILE_SIZES defined below in the build block
+          const foot = (t === 'musalla')            ? { w: 4, h: 4 } :
+                       (t === 'surau')              ? { w: 2, h: 2 } :
+                       (t === 'masjid_landmark')    ? { w: 3, h: 3 } :
+                       (t === 'kebun' || t === 'rumah') ? { w: 1, h: 1 } : { w: 1, h: 1 }
+          if (x < bd.x + foot.w && x + w > bd.x && y < bd.y + foot.h && y + h > bd.y) return false
+        }
+        return true
+      }
+      const tryPlaceLandmarks = async (buildings) => {
+        const musalla = buildings.find(b => b.templateId === 'musalla')
+        if (!musalla) return { placed: [], buildings }
+        // Count ONLY user-placed buildings (exclude musalla + past landmarks)
+        const userCount = buildings.filter(b => b.templateId !== 'musalla' && b.templateId !== 'surau' && b.templateId !== 'masjid_landmark').length
+        const bounds = worldBoundsFor(buildings)
+        const placed = []
+        for (const lm of AUTO_LANDMARKS) {
+          const already = buildings.some(b => b.templateId === lm.templateId)
+          if (already || userCount < lm.milestone) continue
+          // Try each candidate anchor, first-free wins
+          let target = null
+          for (const c of lm.candidates) {
+            const x = musalla.x + c.dx
+            const y = musalla.y + c.dy
+            if (x < bounds.minX || y < bounds.minY || x + lm.tileSize.w > bounds.maxX || y + lm.tileSize.h > bounds.maxY) continue
+            if (!cellsFree(buildings, x, y, lm.tileSize.w, lm.tileSize.h)) continue
+            target = { x, y }
+            break
+          }
+          // Fallback: scan outward in a spiral from musalla until we find a free cell
+          if (!target) {
+            outer: for (let r = 3; r <= 12; r++) {
+              for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                  if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+                  const x = musalla.x + dx
+                  const y = musalla.y + dy
+                  if (x < bounds.minX || y < bounds.minY || x + lm.tileSize.w > bounds.maxX || y + lm.tileSize.h > bounds.maxY) continue
+                  if (!cellsFree(buildings, x, y, lm.tileSize.w, lm.tileSize.h)) continue
+                  target = { x, y }
+                  break outer
+                }
+              }
+            }
+          }
+          if (!target) continue
+          const landmarkBuilding = {
+            id: `lm-${lm.templateId}-${Date.now()}`,
+            templateId: lm.templateId,
+            x: target.x, y: target.y,
+            level: 1,
+            placedAt: new Date(),
+            isAutoLandmark: true,
+          }
+          buildings = [...buildings, landmarkBuilding]
+          placed.push(landmarkBuilding)
+        }
+        return { placed, buildings }
+      }
+
       if (action === 'build' && method === 'POST') {
         const body = await request.json().catch(() => ({}))
         const { templateId, x, y } = body
@@ -1009,11 +1087,21 @@ async function handleRoute(request, { params }) {
         const world = await worldsCol.findOne({ childId })
         const buildings = world?.buildings || []
         // Bounds check: cell (and its footprint) must fit within current dynamic bounds
-        const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
+        const TILE_SIZES = {
+          musalla: { w: 2, h: 2 },
+          surau: { w: 2, h: 2 },
+          masjid_landmark: { w: 3, h: 3 },
+          rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+        }
         // Sacred reserved footprint — musalla pre-reserves 4×4 for future
         // upgrade to Masjid (3×3) and Jami' Masjid (4×4), so no other
-        // building can occupy the growth zone.
-        const RESERVED = { musalla: { w: 4, h: 4 } }
+        // building can occupy the growth zone. Auto-landmarks (Surau/Masjid)
+        // reserve their own exact footprint so user builds can't overlap.
+        const RESERVED = {
+          musalla: { w: 4, h: 4 },
+          surau: { w: 2, h: 2 },
+          masjid_landmark: { w: 3, h: 3 },
+        }
         const sz = TILE_SIZES[templateId] || { w: 1, h: 1 }
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + sz.w > b.maxX || y + sz.h > b.maxY) {
@@ -1033,11 +1121,27 @@ async function handleRoute(request, { params }) {
           id: `bld-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`,
           templateId, x, y, level: 1, placedAt: new Date(),
         }
-        await worldsCol.updateOne(
-          { childId },
-          { $push: { buildings: newBuilding }, $set: { updatedAt: new Date() } }
-        )
-        return json({ ok: true, building: newBuilding })
+        // Optimistically compute buildings AFTER the new insert, then decide
+        // whether any milestone landmarks should also be auto-placed. This
+        // keeps landmark placement authoritative on the server (no client
+        // trust needed) and returns the new landmarks in the response so the
+        // client can play a celebratory overlay.
+        const afterInsert = [...buildings, newBuilding]
+        const { placed: newLandmarks, buildings: withLandmarks } = await tryPlaceLandmarks(afterInsert)
+        if (newLandmarks.length > 0) {
+          // Replace buildings array entirely so both the new building AND the
+          // landmark(s) are saved atomically.
+          await worldsCol.updateOne(
+            { childId },
+            { $set: { buildings: withLandmarks, updatedAt: new Date() } }
+          )
+        } else {
+          await worldsCol.updateOne(
+            { childId },
+            { $push: { buildings: newBuilding }, $set: { updatedAt: new Date() } }
+          )
+        }
+        return json({ ok: true, building: newBuilding, newLandmarks })
       }
 
       // POST /world/:childId/upgrade → level up by building id
@@ -1085,11 +1189,20 @@ async function handleRoute(request, { params }) {
         const target = buildings.find(b => b.id === buildingId)
         if (!target) return err('building not found', 404)
         if (target.templateId === 'musalla') return err('Musalla cannot be moved', 400)
+        // Auto-landmarks (Surau, Masjid) are also sacred + fixed positions.
+        if (target.templateId === 'surau' || target.templateId === 'masjid_landmark') {
+          return err('Landmark cannot be moved', 400)
+        }
 
         // Simple footprint check — treat all non-musalla buildings as 1x1 for now,
         // matching current template sizes. Overlap detection tests all cells.
         // (Musalla is 2x2, so we skip its own id AND allow moving next to it.)
-        const TILE_SIZES = { musalla: { w: 2, h: 2 }, rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 } }
+        const TILE_SIZES = {
+          musalla: { w: 2, h: 2 },
+          surau: { w: 2, h: 2 },
+          masjid_landmark: { w: 3, h: 3 },
+          rumah: { w: 1, h: 1 }, kebun: { w: 1, h: 1 },
+        }
         const targetSize = TILE_SIZES[target.templateId] || { w: 1, h: 1 }
         // Dynamic bounds — matches lib/worldEngine.js. Musalla stays centered.
         const b = worldBoundsFor(buildings)
@@ -1100,7 +1213,11 @@ async function handleRoute(request, { params }) {
         // the sacred RESERVED zone: even though the musalla itself is 2×2,
         // it reserves a 4×4 footprint for future upgrades — no other
         // building may move into that sacred growth area.
-        const RESERVED = { musalla: { w: 4, h: 4 } }
+        const RESERVED = {
+          musalla: { w: 4, h: 4 },
+          surau: { w: 2, h: 2 },
+          masjid_landmark: { w: 3, h: 3 },
+        }
         for (const b of buildings) {
           if (b.id === buildingId) continue
           const s = RESERVED[b.templateId] || TILE_SIZES[b.templateId] || { w: 1, h: 1 }

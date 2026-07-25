@@ -108,6 +108,9 @@ function WorldPageInner() {
   const [buildDrag, setBuildDrag] = useState(null)
   // Celebratory toast shown when the world progressively expands (5/10/15 buildings)
   const [expandToast, setExpandToast] = useState(null)
+  // Landmark celebration: shown when the server auto-places a Surau (@5)
+  // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
+  const [landmarkCelebration, setLandmarkCelebration] = useState(null)
   // Audio mute preference (persisted in localStorage). We mirror to React state
   // so the header toggle re-renders on change. Initialised via effect (SSR-safe).
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -270,9 +273,16 @@ function WorldPageInner() {
           body: JSON.stringify({ templateId: payload.templateId, x: payload.x, y: payload.y }),
         })
         if (r.ok) {
+          const data = await r.json().catch(() => ({}))
           haptic.ihsan()
           setRitual({ phase: 'alhamdulillah', templateId: payload.templateId })
           await load()
+          // If the server auto-placed a milestone landmark (Surau @ 5, Masjid
+          // @ 10), queue a celebratory overlay AFTER the alhamdulillah dismiss
+          // so the child sees "Kampung anda telah dianugerahkan..." pop up.
+          if (Array.isArray(data.newLandmarks) && data.newLandmarks.length > 0) {
+            setTimeout(() => setLandmarkCelebration(data.newLandmarks[0]), 2800)
+          }
         } else {
           haptic.locked()
           setRitual(null)
@@ -715,6 +725,14 @@ function WorldPageInner() {
         {ritual?.phase === 'alhamdulillah' && (
           <AlhamdulillahOverlay templateId={ritual.templateId} lang={lang} />
         )}
+        {landmarkCelebration && (
+          <LandmarkCelebrationOverlay
+            key={landmarkCelebration.id}
+            landmark={landmarkCelebration}
+            lang={lang}
+            onClose={() => setLandmarkCelebration(null)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Upgrade dialog */}
@@ -888,6 +906,93 @@ const AlhamdulillahOverlay = ({ templateId, lang }) => {
           {ISLAMIC_PHRASES.alhamdulillah.meaning[lang]}
         </div>
       </div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LandmarkCelebrationOverlay — full-screen "🕌 Alhamdulillah!" moment that
+// fires when the ummah earns its milestone landmark (Surau @ 5 buildings,
+// Masjid @ 10). Auto-dismisses after 4s. Tappable to dismiss earlier.
+// ═══════════════════════════════════════════════════════════════════════════
+const LandmarkCelebrationOverlay = ({ landmark, lang, onClose }) => {
+  const t = BUILDING_TEMPLATES[landmark.templateId] || {}
+  const isRTL = lang === 'ar'
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4500)
+    return () => clearTimeout(timer)
+  }, [onClose])
+  // Special headline copy in each language — celebratory not ritualistic.
+  const HEADLINES = {
+    surau: {
+      ms: 'Alhamdulillah! Kampung anda telah dianugerahkan sebuah Surau!',
+      en: 'Alhamdulillah! Your village has earned a Surau!',
+      id: 'Alhamdulillah! Kampung kamu telah dianugerahkan Surau!',
+      ar: 'الحمد لله! لقد نالت قريتكم مصلى!',
+    },
+    masjid_landmark: {
+      ms: 'MasyaAllah! Kampung anda sudah cukup besar untuk sebuah Masjid!',
+      en: 'MashaAllah! Your village is big enough for a Mosque!',
+      id: 'MasyaAllah! Kampung kamu sudah cukup besar untuk Masjid!',
+      ar: 'ما شاء الله! قريتكم كبيرة كفايةً لمسجد!',
+    },
+  }
+  const SUBS = {
+    surau: {
+      ms: 'Setiap kali kamu tunaikan solat & habit, kampung ini akan terus membesar. Teruskan!',
+      en: 'Every prayer & habit you complete grows your village. Keep going!',
+      id: 'Setiap salat & habit yang kamu selesaikan menumbuhkan kampung ini. Terus semangat!',
+      ar: 'كل صلاة وعادة تكملها تنمّي قريتكم. استمرّ!',
+    },
+    masjid_landmark: {
+      ms: 'Sekarang azan boleh berkumandang di kampung kamu. Ajaklah lebih ramai jamaah!',
+      en: 'The adhan can now echo through your village. Invite more jamaah!',
+      id: 'Azan kini berkumandang di kampung kamu. Ajak lebih banyak jamaah!',
+      ar: 'صار الأذان يُرفع في قريتكم. ادعُ المزيد من الجماعة!',
+    },
+  }
+  const headline = HEADLINES[landmark.templateId]?.[lang] || HEADLINES[landmark.templateId]?.ms
+  const sub = SUBS[landmark.templateId]?.[lang] || SUBS[landmark.templateId]?.ms
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="absolute inset-0 z-[95] flex items-center justify-center p-6 cursor-pointer"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(13,91,78,0.55) 0%, rgba(0,0,0,0.75) 100%)' }}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
+      <motion.div
+        initial={{ scale: 0.5, y: 40, rotate: -6 }}
+        animate={{ scale: 1, y: 0, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+        className="max-w-md w-full bg-gradient-to-br from-amber-50 via-emerald-50 to-teal-50 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl relative overflow-hidden"
+      >
+        {/* Sunburst backdrop */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
+          backgroundImage: 'repeating-conic-gradient(from 0deg, transparent 0deg 10deg, rgba(255,183,3,0.3) 10deg 20deg)',
+        }} />
+        <div className="relative">
+          <motion.div
+            className="text-7xl mb-2"
+            animate={{ y: [0, -6, 0] }}
+            transition={{ duration: 1.6, repeat: Infinity }}
+          >
+            {t.icon || '🕌'}
+          </motion.div>
+          <div className="text-xs uppercase tracking-widest font-black text-amber-700 mb-2">
+            {landmark.templateId === 'surau' ? 'MILESTONE · 5' : 'MILESTONE · 10'}
+          </div>
+          <div className="font-black text-emerald-900 text-lg mb-3 leading-snug">
+            {headline}
+          </div>
+          <div className="text-sm text-emerald-800/80 leading-relaxed">
+            {sub}
+          </div>
+          <div className="text-[10px] text-emerald-700/60 mt-4 uppercase tracking-wider">
+            {lang === 'ar' ? 'انقر للمتابعة' : lang === 'en' ? 'Tap to continue' : lang === 'id' ? 'Ketuk untuk lanjut' : 'Tekan untuk teruskan'}
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   )
 }
