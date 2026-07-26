@@ -993,20 +993,41 @@ async function handleRoute(request, { params }) {
       }
 
       // POST /world/:childId/build → append single building
-      // Dynamic world bounds: matches lib/worldEngine.js getWorldBounds().
-      // World starts 18×18 and expands to 24/30/36 based on building count,
-      // centered on Musalla's actual position.
+      // Dynamic world bounds: matches lib/worldEngine.js getCurrentBounds().
+      // World is a CIRCULAR island (2026-07-26 update) whose radius grows
+      // with building count. Radii: 10 (start) → 13 (5+) → 16 (10+) → 19 (15+).
+      // Rectangle bounds still returned for iteration + backward compat.
       const worldBoundsFor = (buildings) => {
         const musalla = (buildings || []).find(b => b.templateId === 'musalla')
         const mx = musalla ? musalla.x : 17
         const my = musalla ? musalla.y : 17
         const count = (buildings || []).length
-        const size = count >= 15 ? 36 : count >= 10 ? 30 : count >= 5 ? 24 : 18
-        const half = Math.floor(size / 2)
+        const radius = count >= 15 ? 19 : count >= 10 ? 16 : count >= 5 ? 13 : 10
+        const center = { x: mx + 3.5, y: my + 3.5 }   // heart of the island
         return {
-          minX: mx - half + 1, maxX: mx + half + 1,
-          minY: my - half + 1, maxY: my + half + 1,
+          minX: Math.floor(center.x - radius - 1),
+          maxX: Math.ceil(center.x + radius + 1),
+          minY: Math.floor(center.y - radius - 1),
+          maxY: Math.ceil(center.y + radius + 1),
+          center, radius,
         }
+      }
+      // Every cell of a candidate footprint must sit inside the circle.
+      // Uses Euclidean grid distance from the island's heart (musalla zone
+      // center). Same formula as isCellInWorld() in worldEngine.js.
+      const cellInCircle = (x, y, center, radius) => {
+        const dx = x - center.x + 0.5
+        const dy = y - center.y + 0.5
+        return (dx * dx + dy * dy) <= (radius + 0.5) * (radius + 0.5)
+      }
+      const footprintInCircle = (x, y, w, h, bounds) => {
+        if (!bounds.center || bounds.radius == null) return true
+        for (let dx = 0; dx < w; dx++) {
+          for (let dy = 0; dy < h; dy++) {
+            if (!cellInCircle(x + dx, y + dy, bounds.center, bounds.radius)) return false
+          }
+        }
+        return true
       }
 
       // ─── Landmark auto-placement ─────────────────────────────────
@@ -1126,6 +1147,12 @@ async function handleRoute(request, { params }) {
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + sz.w > b.maxX || y + sz.h > b.maxY) {
           return err('out of bounds', 400)
+        }
+        // ── Circular island membership ──────────────────────────
+        // The world is a round island — every cell of the footprint must sit
+        // inside the circle centered on the Musalla's sacred zone.
+        if (!footprintInCircle(x, y, sz.w, sz.h, b)) {
+          return err('outside island', 400)
         }
         // Reserved-zone overlap: reject if this placement overlaps any
         // building's RESERVED footprint (musalla's 8×8 sacred zone) or its
@@ -1289,6 +1316,10 @@ async function handleRoute(request, { params }) {
         const b = worldBoundsFor(buildings)
         if (x < b.minX || y < b.minY || x + targetSize.w > b.maxX || y + targetSize.h > b.maxY) {
           return err('out of bounds', 400)
+        }
+        // Circular island — footprint must be within the round world.
+        if (!footprintInCircle(x, y, targetSize.w, targetSize.h, b)) {
+          return err('outside island', 400)
         }
         // Overlap check (exclude the moving building itself). Also enforce
         // the sacred RESERVED zone: musalla reserves 8×8 (large buffer so

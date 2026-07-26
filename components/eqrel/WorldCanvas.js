@@ -133,7 +133,7 @@ export default function WorldCanvas({
       const next = Math.min(2.5, cam.zoom * 1.15)
       scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
     } else if (cameraCommand.action === 'zoomOut') {
-      const next = Math.max(0.5, cam.zoom / 1.15)
+      const next = Math.max(0.3, cam.zoom / 1.15)
       scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
     } else if (cameraCommand.action === 'center') {
       // Center on Musalla's actual position (falls back to anchor)
