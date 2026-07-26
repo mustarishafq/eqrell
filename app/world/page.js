@@ -1930,6 +1930,15 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
   const rumahProgress = Math.min(1, rumahCount / 15)
   const overallPct = Math.round(((musallaProgress + buildingProgress + rumahProgress) / 3) * 100)
   const readyToHijrah = overallPct >= 100
+  // Local UI state: which island is being tapped (for zoom-in transition)
+  // and which locked island shows the "coming soon" tooltip.
+  const [enteringId, setEnteringId] = useState(null)
+  const [lockedTooltipId, setLockedTooltipId] = useState(null)
+  useEffect(() => {
+    if (!lockedTooltipId) return
+    const t = setTimeout(() => setLockedTooltipId(null), 2600)
+    return () => clearTimeout(t)
+  }, [lockedTooltipId])
   const L = {
     title:      { ms: 'Peta Kepulauan Iman', en: 'Islands of Iman Map',       id: 'Peta Kepulauan Iman', ar: 'خريطة جزر الإيمان' },
     subtitle:   {
@@ -1967,170 +1976,194 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
       id: 'Ketuk untuk masuk',
       ar: 'اضغط للدخول',
     },
+    lockedTooltip: {
+      ms: 'Kena lengkapkan Pulau Impianku dulu sebelum buka pulau ini!',
+      en: 'Complete My Dream Island first to unlock this one!',
+      id: 'Selesaikan Pulau Impianku dulu untuk membuka pulau ini!',
+      ar: 'أكمل جزيرة أحلامي أولاً لفتح هذه الجزيرة!',
+    },
   }
   const tr = (k, ...args) => {
     const v = L[k]?.[lang] || L[k]?.ms
     return typeof v === 'function' ? v(...args) : v
   }
-  // ─── 7 waypoints along a winding treasure-hunt journey ─────────────
-  // Coordinates in % of the CANVAS (between header + footer). Pulau
-  // Impianku sits at the FOREGROUND (bottom-front, larger) as the start
-  // of the journey; 6 locked islands snake upward in a hand-drawn zigzag.
   const WAYPOINTS = [
-    { id: 'pulau_impianku', x: 50, y: 78, size: 200, locked: false },
-    { id: 'locked_1',       x: 22, y: 66, size: 96,  locked: true },
-    { id: 'locked_2',       x: 74, y: 55, size: 96,  locked: true },
-    { id: 'locked_3',       x: 26, y: 44, size: 92,  locked: true },
-    { id: 'locked_4',       x: 76, y: 32, size: 92,  locked: true },
-    { id: 'locked_5',       x: 30, y: 20, size: 92,  locked: true },
-    { id: 'locked_6',       x: 72, y: 10, size: 92,  locked: true },
+    { id: 'pulau_impianku', x: 50, y: 76, size: 200, locked: false },
+    { id: 'locked_1',       x: 20, y: 62, size: 96,  locked: true },
+    { id: 'locked_2',       x: 76, y: 52, size: 96,  locked: true },
+    { id: 'locked_3',       x: 24, y: 40, size: 92,  locked: true },
+    { id: 'locked_4',       x: 78, y: 28, size: 92,  locked: true },
+    { id: 'locked_5',       x: 28, y: 16, size: 92,  locked: true },
+    { id: 'locked_6',       x: 72, y: 8,  size: 92,  locked: true },
   ]
-  // Cubic-quadratic path for the treasure-map dotted line.
   const pathD = WAYPOINTS.map((w, i) => {
     if (i === 0) return `M ${w.x} ${w.y}`
     const prev = WAYPOINTS[i - 1]
     const midX = (prev.x + w.x) / 2
     return `Q ${midX} ${prev.y}, ${w.x} ${w.y}`
   }).join(' ')
+  // Zoom-in transition when child taps Pulau Impianku — expand the island
+  // then fire the callback so the world scene reveal feels like descent.
+  const handleEnterActive = (id) => {
+    if (enteringId) return
+    setEnteringId(id)
+    setTimeout(() => onSelectIsland(id), 900)
+  }
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[85] flex flex-col overflow-hidden"
+      // FIXED positioning + top z-index — blocks ALL underlying world
+      // interactions (user: "pressing anything at this pages still occurs
+      // the info of the house build"). Now behaves as a true page.
+      className="fixed inset-0 z-[200] flex flex-col overflow-hidden pointer-events-auto"
       dir={isRTL ? 'rtl' : 'ltr'}
+      onClick={(e) => e.stopPropagation()}
     >
-      {/* Sea background — tiled full-screen from user asset */}
+      {/* Sea covers the WHOLE viewport (no gaps top/bottom) */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: 'url(/assets/archipelago/sea.webp)',
-          backgroundSize: '600px auto',
+          backgroundSize: 'clamp(320px, 60vmin, 720px) auto',
           backgroundRepeat: 'repeat',
         }}
       />
-      {/* Subtle vignette to focus the eye on the journey */}
       <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,30,60,0.5) 100%)',
+        background: 'radial-gradient(ellipse at 50% 45%, transparent 30%, rgba(0,20,45,0.55) 100%)',
       }} />
 
-      {/* Header */}
-      <div className="relative z-20 px-4 pt-3 pb-2 text-center flex-shrink-0">
+      {/* Header — floats over map, uses safe-area-inset for notched phones */}
+      <div className="relative z-20 px-3 pt-[max(env(safe-area-inset-top),12px)] pb-2 text-center flex-shrink-0">
         <motion.div
           initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.1, type: 'spring', damping: 20 }}
-          className="inline-block bg-amber-950/80 backdrop-blur border-2 border-amber-400/70 rounded-full px-4 py-1.5 shadow-lg"
+          transition={{ delay: 0.05, type: 'spring', damping: 20 }}
+          className="inline-block bg-amber-950/85 backdrop-blur border-2 border-amber-400/70 rounded-full px-4 py-1.5 shadow-lg"
         >
           <div className="text-amber-300 text-[11px] uppercase tracking-widest font-black drop-shadow-md">
             🗺️ {tr('title')}
           </div>
         </motion.div>
-        <div className="text-white/90 text-[11px] max-w-md mx-auto leading-tight mt-2 drop-shadow-md font-medium">
+        <div className="text-white/95 text-[11px] max-w-md mx-auto leading-tight mt-1.5 drop-shadow-md font-medium px-2">
           {tr('subtitle')}
         </div>
       </div>
 
-      {/* Journey canvas — dashed path + island assets */}
+      {/* Journey canvas — dashed path + islands */}
       <div className="relative flex-1 min-h-0">
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path
-            d={pathD}
-            stroke="rgba(255, 235, 150, 0.9)"
-            strokeWidth="0.55"
-            strokeDasharray="1.5 1.3"
-            fill="none"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-            style={{ filter: 'drop-shadow(0 0 8px rgba(255,220,120,0.6))' }}
-          />
+          <path d={pathD} stroke="rgba(255, 235, 150, 0.9)" strokeWidth="0.55" strokeDasharray="1.5 1.3"
+            fill="none" strokeLinecap="round" vectorEffect="non-scaling-stroke"
+            style={{ filter: 'drop-shadow(0 0 8px rgba(255,220,120,0.6))' }} />
         </svg>
 
         {WAYPOINTS.map((wp) => {
           const isActive = !wp.locked
-          const src = isActive
-            ? '/assets/archipelago/pulau_impian.webp'
-            : '/assets/archipelago/lock_island.webp'
+          const isEntering = enteringId === wp.id
+          const src = isActive ? '/assets/archipelago/pulau_impian.webp' : '/assets/archipelago/lock_island.webp'
           return (
-            <div
-              key={wp.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${wp.x}%`, top: `${wp.y}%` }}
-            >
+            <div key={wp.id} className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${wp.x}%`, top: `${wp.y}%` }}>
               {isActive ? (
                 <motion.button
-                  onClick={() => onSelectIsland(wp.id)}
+                  onClick={() => handleEnterActive(wp.id)}
                   initial={{ scale: 0.6, opacity: 0, y: 30 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  transition={{ type: 'spring', stiffness: 180, damping: 18, delay: 0.2 }}
+                  animate={isEntering
+                    ? { scale: 4, opacity: 0, y: -100 }
+                    : { scale: 1, opacity: 1, y: 0 }}
+                  transition={{
+                    type: isEntering ? 'tween' : 'spring',
+                    stiffness: 180, damping: 18,
+                    duration: isEntering ? 0.9 : 0.5,
+                    delay: isEntering ? 0 : 0.15,
+                    ease: isEntering ? 'easeIn' : undefined,
+                  }}
                   className="relative block group active:scale-95 transition-transform"
-                  style={{ width: `min(${wp.size}px, 42vmin)` }}
+                  style={{ width: 'clamp(150px, 44vmin, 260px)' }}
                   aria-label={tr('pulauImpianku')}
                 >
-                  {/* Golden pulsing halo behind the island */}
                   <motion.div
-                    className="absolute inset-x-0 top-1/4 h-3/4 rounded-full bg-amber-300/30 blur-3xl pointer-events-none"
-                    animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.8, 0.4] }}
+                    className="absolute inset-x-0 top-1/4 h-3/4 rounded-full bg-amber-300/40 blur-3xl pointer-events-none"
+                    animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.85, 0.4] }}
                     transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                   />
-                  {/* Gentle bob animation on the island itself */}
                   <motion.img
-                    src={src}
-                    alt={tr('pulauImpianku')}
+                    src={src} alt={tr('pulauImpianku')}
                     className="relative w-full h-auto object-contain drop-shadow-2xl"
-                    animate={{ y: [0, -6, 0] }}
+                    animate={{ y: [0, -5, 0] }}
                     transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
                     draggable={false}
                   />
-                  {/* Nameplate — sits below the island with title, stats & CTA */}
-                  <div className="text-center -mt-4 relative z-10">
-                    <div className="inline-block bg-black/75 backdrop-blur border-2 border-amber-400/70 rounded-2xl px-4 py-1.5 shadow-2xl">
+                  {/* Nameplate positioned FLUSH with the island bottom (no gap).
+                      Uses absolute + bottom for consistent anchoring across
+                      viewports (user: "text tak position betul dekat pulau"). */}
+                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-4 w-max max-w-[90vw] z-10">
+                    <div className="bg-black/80 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-4 py-1.5 shadow-2xl">
                       <div className="flex items-center justify-center gap-1.5 mb-0.5">
                         <span className="bg-amber-300 text-amber-900 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">
                           ⭐ {tr('active')}
                         </span>
                       </div>
-                      <div className="text-amber-200 font-black text-sm drop-shadow leading-tight">
+                      <div className="text-amber-200 font-black text-sm drop-shadow leading-tight text-center">
                         {tr('pulauImpianku')}
                       </div>
-                      <div className="text-white/85 text-[10px] mt-0.5">
+                      <div className="text-white/85 text-[10px] mt-0.5 text-center">
                         {tr('stats', musallaLevel, rumahCount, totalBuildings)}
                       </div>
-                      <div className="text-emerald-300 text-[9px] mt-0.5 font-bold italic animate-pulse">
+                      <div className="text-emerald-300 text-[9px] mt-0.5 font-bold italic animate-pulse text-center">
                         👆 {tr('tapToEnter')}
                       </div>
                     </div>
                   </div>
                 </motion.button>
               ) : (
-                <motion.div
+                <motion.button
+                  onClick={() => setLockedTooltipId(wp.id)}
                   initial={{ scale: 0.7, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 0.85 }}
-                  transition={{ delay: 0.3 + (wp.x + wp.y) * 0.005 }}
+                  animate={{ scale: 1, opacity: 0.9 }}
+                  transition={{ delay: 0.2 + wp.y * 0.005 }}
                   className="relative block"
-                  style={{ width: `min(${wp.size}px, 22vmin)` }}
+                  style={{ width: 'clamp(72px, 20vmin, 140px)' }}
+                  aria-label={tr('locked')}
                 >
-                  <img
-                    src={src}
-                    alt={tr('locked')}
-                    className="w-full h-auto object-contain drop-shadow-xl"
-                    draggable={false}
-                  />
+                  <img src={src} alt={tr('locked')}
+                    className="w-full h-auto object-contain drop-shadow-xl" draggable={false} />
                   <div className="text-center mt-0.5">
-                    <div className="inline-block bg-slate-900/70 backdrop-blur border border-slate-500/50 rounded-full px-2 py-0.5">
-                      <div className="text-white/70 text-[9px] font-black uppercase tracking-wider">
+                    <div className="inline-block bg-slate-900/75 backdrop-blur border border-slate-500/50 rounded-full px-2 py-0.5">
+                      <div className="text-white/80 text-[9px] font-black uppercase tracking-wider">
                         🔒 {tr('comingSoon')}
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                  {/* Tap tooltip appears above the island for 2.6s */}
+                  <AnimatePresence>
+                    {lockedTooltipId === wp.id && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.9 }}
+                        className="absolute left-1/2 -translate-x-1/2 -top-3 -translate-y-full z-20 pointer-events-none"
+                      >
+                        <div className="bg-amber-950/95 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-3 py-2 shadow-2xl max-w-[70vw] w-max">
+                          <div className="text-amber-100 text-[11px] font-bold text-center leading-snug">
+                            🔒 {tr('lockedTooltip')}
+                          </div>
+                        </div>
+                        {/* Arrow pointer */}
+                        <div className="w-3 h-3 bg-amber-950/95 border-r-2 border-b-2 border-amber-400/80 rotate-45 mx-auto -mt-1.5" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
               )}
             </div>
           )
         })}
       </div>
 
-      {/* Progress footer */}
-      <div className="relative z-20 px-4 pb-4 pt-2 flex-shrink-0">
+      {/* Progress footer with safe-area bottom padding for iPhone home bar */}
+      <div className="relative z-20 px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-2 flex-shrink-0">
         <div className="max-w-md mx-auto">
-          <div className="bg-black/60 backdrop-blur border-2 border-amber-400/60 rounded-2xl px-4 py-2.5 shadow-2xl">
+          <div className="bg-black/70 backdrop-blur border-2 border-amber-400/70 rounded-2xl px-4 py-2.5 shadow-2xl">
             <div className="flex items-center justify-between mb-1.5">
               <div className="text-amber-200 text-[10px] uppercase tracking-wider font-black">
                 {tr('pulauImpianku')}
@@ -2138,18 +2171,17 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
               <div className="text-amber-300 text-base font-black">{overallPct}%</div>
             </div>
             <div className="relative w-full h-2.5 bg-slate-900/70 rounded-full overflow-hidden border border-slate-500/40">
-              <div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
-                style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }}
-              />
+              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
+                style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }} />
             </div>
-            <div className="text-white/80 text-[10px] mt-1.5 leading-tight text-center">
+            <div className="text-white/85 text-[10px] mt-1.5 leading-tight text-center">
               {readyToHijrah ? `🎉 ${tr('hijrahReady')}` : tr('progressLabel')}
             </div>
           </div>
           <button
-            onClick={() => onSelectIsland('pulau_impianku')}
-            className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-emerald-500 text-amber-950 font-black py-3 active:scale-95 shadow-2xl text-base border-2 border-amber-200"
+            onClick={() => handleEnterActive('pulau_impianku')}
+            disabled={!!enteringId}
+            className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-emerald-500 text-amber-950 font-black py-3 active:scale-95 shadow-2xl text-base border-2 border-amber-200 disabled:opacity-70"
           >
             🏝️ {tr('enter')}
           </button>
