@@ -1988,13 +1988,13 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
     return typeof v === 'function' ? v(...args) : v
   }
   const WAYPOINTS = [
-    { id: 'pulau_impianku', x: 50, y: 76, size: 200, locked: false },
-    { id: 'locked_1',       x: 20, y: 62, size: 96,  locked: true },
+    { id: 'pulau_impianku', x: 50, y: 78, size: 200, locked: false },
+    { id: 'locked_1',       x: 22, y: 63, size: 96,  locked: true },
     { id: 'locked_2',       x: 76, y: 52, size: 96,  locked: true },
-    { id: 'locked_3',       x: 24, y: 40, size: 92,  locked: true },
-    { id: 'locked_4',       x: 78, y: 28, size: 92,  locked: true },
-    { id: 'locked_5',       x: 28, y: 16, size: 92,  locked: true },
-    { id: 'locked_6',       x: 72, y: 8,  size: 92,  locked: true },
+    { id: 'locked_3',       x: 26, y: 38, size: 92,  locked: true },
+    { id: 'locked_4',       x: 74, y: 26, size: 92,  locked: true },
+    { id: 'locked_5',       x: 30, y: 14, size: 92,  locked: true },
+    { id: 'locked_6',       x: 72, y: 4,  size: 92,  locked: true },
   ]
   const pathD = WAYPOINTS.map((w, i) => {
     if (i === 0) return `M ${w.x} ${w.y}`
@@ -2122,18 +2122,15 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
                   animate={{ scale: 1, opacity: 0.9 }}
                   transition={{ delay: 0.2 + wp.y * 0.005 }}
                   className="relative block"
-                  style={{ width: 'clamp(72px, 20vmin, 140px)' }}
+                  style={{ width: 'clamp(64px, 18vmin, 120px)' }}
                   aria-label={tr('locked')}
                 >
                   <img src={src} alt={tr('locked')}
                     className="w-full h-auto object-contain drop-shadow-xl" draggable={false} />
-                  <div className="text-center mt-0.5">
-                    <div className="inline-block bg-slate-900/75 backdrop-blur border border-slate-500/50 rounded-full px-2 py-0.5">
-                      <div className="text-white/80 text-[9px] font-black uppercase tracking-wider">
-                        🔒 {tr('comingSoon')}
-                      </div>
-                    </div>
-                  </div>
+                  {/* No persistent pill label — asset sudah ada padlock icon
+                      visible, dan tap → tooltip. This removes overlap on
+                      neighboring islands (user feedback: NANTI DIBUKA pills
+                      "sticks out sideways covering neighboring islands"). */}
                   {/* Tap tooltip appears above the island for 2.6s */}
                   <AnimatePresence>
                     {lockedTooltipId === wp.id && (
@@ -2141,14 +2138,13 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
                         initial={{ opacity: 0, y: 6, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -4, scale: 0.9 }}
-                        className="absolute left-1/2 -translate-x-1/2 -top-3 -translate-y-full z-20 pointer-events-none"
+                        className="absolute left-1/2 -translate-x-1/2 -top-2 -translate-y-full z-20 pointer-events-none"
                       >
-                        <div className="bg-amber-950/95 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-3 py-2 shadow-2xl max-w-[70vw] w-max">
+                        <div className="bg-amber-950/95 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-3 py-2 shadow-2xl max-w-[60vw] w-max">
                           <div className="text-amber-100 text-[11px] font-bold text-center leading-snug">
                             🔒 {tr('lockedTooltip')}
                           </div>
                         </div>
-                        {/* Arrow pointer */}
                         <div className="w-3 h-3 bg-amber-950/95 border-r-2 border-b-2 border-amber-400/80 rotate-45 mx-auto -mt-1.5" />
                       </motion.div>
                     )}
