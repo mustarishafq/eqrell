@@ -147,6 +147,7 @@ const ParentDashboard = () => {
   const [rewardShopOpen, setRewardShopOpen] = useState(false)
   const [pendingRewardCount, setPendingRewardCount] = useState(0)
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false)
+  const [demeritChild, setDemeritChild] = useState(null)   // child pending demerit modal
   const [streak, setStreak] = useState({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
 
   // Fetch family streak
@@ -508,6 +509,17 @@ const ParentDashboard = () => {
                   >
                     🧒 {t.kid_mode_btn}
                   </button>
+                  {/* ═══ RED DEMERIT BUTTON — parent flags bad behavior ═══
+                      Tap opens DemeritModal (pick 1-5 clouds). Backend adds
+                      demeritCount → black clouds appear in the child's world.
+                      Child clears clouds via Istighfar (10× Astaghfirullah). */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDemeritChild(child) }}
+                    className="mt-1 px-2 py-0.5 rounded-full bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-extrabold uppercase tracking-wider border border-red-300 active:scale-95 flex items-center gap-1"
+                    aria-label={`Demerit ${child.nickname}`}
+                  >
+                    ⛈️ {(t.demerit_btn) || 'Perilaku Buruk'}
+                  </button>
                 </div>
               )
             })}
@@ -806,7 +818,154 @@ const ParentDashboard = () => {
           </>
         )}
       </AnimatePresence>
+
+      {/* ═══ DEMERIT MODAL — parent flags bad behavior, adds N clouds ═══ */}
+      <AnimatePresence>
+        {demeritChild && (
+          <DemeritModal
+            child={demeritChild}
+            lang={lang}
+            onClose={() => setDemeritChild(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DemeritModal — parent's tool to flag bad behavior. Picks a quantity of
+// black clouds (1-5) to add to the child's world. Backend increments
+// demeritCount by delta. Child clears clouds via Istighfar loop (10× per
+// cloud). All copy passes through inline i18n so toggle bahasa flips live.
+// ═══════════════════════════════════════════════════════════════════════════
+const DemeritModal = ({ child, lang, onClose }) => {
+  const [qty, setQty] = useState(1)
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+  const isRTL = lang === 'ar'
+  const L = {
+    title: {
+      ms: 'Perilaku Buruk', en: 'Bad Behavior', id: 'Perilaku Buruk', ar: 'سلوك سيء',
+    },
+    sub: {
+      ms: (name) => `Berapa awan hitam untuk ${name}?`,
+      en: (name) => `How many dark clouds for ${name}?`,
+      id: (name) => `Berapa awan hitam untuk ${name}?`,
+      ar: (name) => `كم عدد السحب السوداء لـ ${name}؟`,
+    },
+    hint: {
+      ms: 'Anak boleh hilangkan awan dengan istighfar 10 kali per awan',
+      en: 'Child can clear each cloud by saying Astaghfirullah 10 times',
+      id: 'Anak dapat menghilangkan awan dengan istighfar 10 kali per awan',
+      ar: 'يمكن للطفل إزالة كل سحابة بالاستغفار عشر مرات',
+    },
+    qtyLabel: { ms: 'Bilangan Awan', en: 'Cloud Count', id: 'Jumlah Awan', ar: 'عدد السحب' },
+    confirm: { ms: 'Sahkan', en: 'Confirm', id: 'Sahkan', ar: 'تأكيد' },
+    cancel: { ms: 'Batal', en: 'Cancel', id: 'Batal', ar: 'إلغاء' },
+    done: {
+      ms: 'Sudah ditambah. Ajak anak beristighfar bersama.',
+      en: 'Added. Encourage your child to seek forgiveness together.',
+      id: 'Sudah ditambahkan. Ajak anak beristighfar bersama.',
+      ar: 'تمت الإضافة. شجّع طفلك على الاستغفار.',
+    },
+  }
+  const tr = (k) => {
+    const v = L[k][lang] || L[k].ms
+    return typeof v === 'function' ? v(child.nickname) : v
+  }
+  const submit = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await fetch(`/api/world/${child.id}/demerit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ delta: qty }),
+      })
+      setDone(true)
+      setTimeout(onClose, 1800)
+    } catch (e) { onClose() }
+  }
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90]"
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+        dir={isRTL ? 'rtl' : 'ltr'}
+        className="fixed inset-0 z-[91] flex items-center justify-center p-6 pointer-events-none"
+      >
+        <div className="max-w-sm w-full bg-white rounded-3xl p-6 shadow-2xl pointer-events-auto">
+          {!done ? (
+            <>
+              <div className="text-center mb-4">
+                <div className="text-5xl mb-2">⛈️</div>
+                <div className="text-xs uppercase tracking-widest font-black text-red-600 mb-1">
+                  {tr('title')}
+                </div>
+                <div className="text-sm text-eq-ink/80 leading-snug">{tr('sub')}</div>
+              </div>
+
+              {/* Quantity stepper */}
+              <div className="mb-1 text-xs font-bold text-eq-ink/70">{tr('qtyLabel')}</div>
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <button
+                  onClick={() => setQty(Math.max(1, qty - 1))}
+                  className="w-11 h-11 rounded-full bg-red-100 hover:bg-red-200 text-red-800 text-xl font-black active:scale-95"
+                >−</button>
+                <div className="min-w-16 text-center">
+                  <div className="text-3xl font-black text-red-800">{qty}</div>
+                  <div className="text-[10px] text-red-800/70">
+                    {qty === 1 ? '🌩️' : qty === 2 ? '🌩️🌩️' : qty === 3 ? '🌩️🌩️🌩️' : '🌩️'.repeat(Math.min(qty, 5))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQty(Math.min(5, qty + 1))}
+                  className="w-11 h-11 rounded-full bg-red-100 hover:bg-red-200 text-red-800 text-xl font-black active:scale-95"
+                >+</button>
+              </div>
+
+              <p className="text-[11px] text-eq-ink/60 mb-4 text-center leading-tight">
+                🤲 {tr('hint')}
+              </p>
+
+              <button
+                onClick={submit}
+                disabled={submitting}
+                className="w-full rounded-2xl bg-red-500 hover:bg-red-600 text-white font-black py-3 active:scale-95 disabled:opacity-60 mb-2"
+              >
+                {submitting ? '...' : tr('confirm')}
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full rounded-2xl bg-transparent text-eq-ink/70 font-bold py-2 text-sm"
+              >
+                {tr('cancel')}
+              </button>
+            </>
+          ) : (
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-center py-4"
+            >
+              <div className="text-5xl mb-3">🤲</div>
+              <div className="text-sm text-eq-ink/80 leading-relaxed">
+                {tr('done')}
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    </>
   )
 }
 

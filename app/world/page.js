@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { haptic } from '@/lib/feedback'
 import { useLang } from '@/lib/i18n/LangProvider'
-import audio, { installAutoPrime, isMuted, toggleMuted, bismillah, alhamdulillah } from '@/lib/audio'
+import audio, { installAutoPrime, isMuted, toggleMuted, bismillah, alhamdulillah, astaghfirullah } from '@/lib/audio'
 import {
   BUILDING_TEMPLATES, BUILDING_LIST, BUILDING_CATEGORIES, getVariantsForCategory, MUSALLA_ANCHOR,
   ISLAMIC_PHRASES, getBuildingName, WORLD_SIZE, getCurrentBounds,
@@ -133,6 +133,10 @@ function WorldPageInner() {
   // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
   // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
   const [moveConfirmation, setMoveConfirmation] = useState(null)
+  // Istighfar overlay — opens when child taps a black cloud. Requires
+  // 10 completions of Astaghfirullah (with 3s cooldown between each tap)
+  // to clear one demerit → one cloud fades from the sky.
+  const [istighfarOpen, setIstighfarOpen] = useState(false)
   // Audio mute preference (persisted in localStorage). We mirror to React state
   // so the header toggle re-renders on change. Initialised via effect (SSR-safe).
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -663,8 +667,35 @@ function WorldPageInner() {
 
       {/* ═══ CLOUD OVERLAY — visualizes demeritCount by darkening the sky ═══
           Each demerit adds a semi-opaque grey layer + drift animation.
-          Istighfar reduces demeritCount via /demerit endpoint, sky clears. */}
-      <CloudOverlay demeritCount={worldState?.demeritCount || 0} lang={lang} />
+          Tapping ANY cloud opens IstighfarModal — 10× Astaghfirullah clears
+          one cloud (backend decrements demeritCount by 1 via /demerit endpoint). */}
+      <CloudOverlay
+        demeritCount={worldState?.demeritCount || 0}
+        lang={lang}
+        onOpenIstighfar={() => setIstighfarOpen(true)}
+      />
+      {/* ═══ ISTIGHFAR MODAL — child's path to remove a black cloud ═══ */}
+      <AnimatePresence>
+        {istighfarOpen && (worldState?.demeritCount || 0) > 0 && (
+          <IstighfarModal
+            lang={lang}
+            onClose={() => setIstighfarOpen(false)}
+            onComplete={async () => {
+              // Decrement demeritCount by 1 on server, then refetch.
+              try {
+                await fetch(`/api/world/${childId}/demerit`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ delta: -1 }),
+                })
+                await load()
+              } catch (e) { /* swallow */ }
+              setIstighfarOpen(false)
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ═══ WORLD EXPANSION TOAST — celebrates progressive growth ═══
           When the buildings count crosses 5/10/15, the world enlarges and a
@@ -1424,51 +1455,267 @@ const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
 // Uses layered blurred CSS shapes for depth (no Phaser overhead).
 // 0 demerit = clear sky, 10+ = heavy storm.
 // ═══════════════════════════════════════════════════════════════════════════
-const CloudOverlay = ({ demeritCount, lang }) => {
+const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
   if (!demeritCount || demeritCount <= 0) return null
   const clouds = Math.min(demeritCount, 10)
   // Overall darkening intensity (0 → 0.5 max)
   const darken = Math.min(0.5, demeritCount * 0.05)
+  // i18n for the CTA that appears once clouds accumulate. All text piped
+  // through this map so the toggle bahasa switches copy live.
+  const CTA = {
+    ms: '🤲 Ketuk awan untuk beristighfar',
+    en: '🤲 Tap a cloud to say Astaghfirullah',
+    id: '🤲 Ketuk awan untuk beristighfar',
+    ar: '🤲 اضغط على السحاب للاستغفار',
+  }
   return (
+    // pointer-events-none on the wrapper so the world underneath still receives
+    // pans/zooms — only the interactive elements below enable pointer events.
     <div className="absolute inset-0 pointer-events-none z-[20] overflow-hidden">
       {/* Sky darkening layer */}
       <div className="absolute inset-0 transition-opacity duration-1000" style={{
         background: `rgba(20, 20, 30, ${darken})`,
       }} />
-      {/* Individual cloud puffs — slow drift */}
+      {/* Individual cloud puffs — slow drift, tappable to open Istighfar */}
       {[...Array(clouds)].map((_, i) => {
         const size = 120 + (i % 4) * 40
         const yPos = 5 + (i * 7) % 40   // spread top portion of screen
         const startX = -(i * 15) % 100
         const duration = 40 + (i % 5) * 8  // 40-72s drift
         return (
-          <motion.div
+          <motion.button
             key={i}
             initial={{ x: `${startX - 20}vw` }}
             animate={{ x: `${startX + 120}vw` }}
             transition={{ duration, repeat: Infinity, ease: 'linear' }}
-            className="absolute rounded-full"
+            onClick={onOpenIstighfar}
+            aria-label="Astaghfirullah"
+            className="absolute rounded-full pointer-events-auto cursor-pointer active:scale-95 transition-transform"
             style={{
               top: `${yPos}%`,
               width: size,
               height: size * 0.55,
               background: 'radial-gradient(ellipse, rgba(45,50,65,0.85) 0%, rgba(45,50,65,0.35) 60%, transparent 100%)',
               filter: 'blur(12px)',
+              border: 'none',
+              padding: 0,
             }}
           />
         )
       })}
-      {/* Hint text — shows only when clouds start appearing */}
-      {clouds >= 3 && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-none">
-          <div className="bg-black/50 backdrop-blur text-white/90 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
-            🤲 {l('cloudsMsg', lang)}
-          </div>
-        </div>
-      )}
+      {/* CTA hint — clickable button that also opens the Istighfar modal.
+          Shows as soon as ANY cloud is present so kids know the way out. */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-auto">
+        <button
+          onClick={onOpenIstighfar}
+          className="bg-black/60 backdrop-blur text-white/95 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5 active:scale-95 hover:bg-black/70 transition"
+        >
+          {CTA[lang] || CTA.ms}
+        </button>
+      </div>
     </div>
   )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IstighfarModal — pedagogical cleanse loop.
+// Mekanik: anak buat istighfar 10 kali untuk hilangkan 1 awan hitam. Setiap
+// tap ada cooldown 3 saat (elak spam), audio Astaghfirullah dimainkan, dan
+// counter progres nampak jelas. Selepas 10, backend dipanggil untuk kurangkan
+// demeritCount by 1, popup pedagogi ("MashaAllah") ditunjuk, kemudian tutup.
+// Pahala di sisi Allah — tiada reward material (per user spec).
+// ═══════════════════════════════════════════════════════════════════════════
+const IstighfarModal = ({ lang, onClose, onComplete }) => {
+  const [count, setCount] = useState(0)
+  const [cooldownEnd, setCooldownEnd] = useState(0)   // Date.now() when cooldown ends
+  const [now, setNow] = useState(Date.now())
+  const [showDone, setShowDone] = useState(false)
+  const TOTAL = 10
+  const COOLDOWN_MS = 3000
+  // Tick 60fps for smooth cooldown ring
+  useEffect(() => {
+    if (showDone) return
+    const id = setInterval(() => setNow(Date.now()), 100)
+    return () => clearInterval(id)
+  }, [showDone])
+  const isRTL = lang === 'ar'
+  const remaining = Math.max(0, cooldownEnd - now)
+  const inCooldown = remaining > 0
+  const cooldownPct = inCooldown ? 1 - remaining / COOLDOWN_MS : 1
+  // i18n copy
+  const L = {
+    title: {
+      ms: 'Mohon Ampun kepada Allah',
+      en: 'Seek Forgiveness from Allah',
+      id: 'Memohon Ampun kepada Allah',
+      ar: 'الاستغفار من الله',
+    },
+    sub: {
+      ms: 'Baca Astaghfirullah 10 kali untuk hilangkan 1 awan hitam',
+      en: 'Recite Astaghfirullah 10 times to clear 1 dark cloud',
+      id: 'Baca Astaghfirullah 10 kali untuk menghilangkan 1 awan hitam',
+      ar: 'قل أستغفر الله ١٠ مرات لإزالة سحابة سوداء',
+    },
+    meaning: {
+      ms: 'Aku memohon ampun kepada Allah',
+      en: 'I seek forgiveness from Allah',
+      id: 'Aku memohon ampun kepada Allah',
+      ar: 'أستغفر الله',
+    },
+    button: { ms: 'Astaghfirullah', en: 'Astaghfirullah', id: 'Astaghfirullah', ar: 'أستغفر الله' },
+    wait: {
+      ms: 'Sabar sekejap ya...',
+      en: 'Wait a moment...',
+      id: 'Sabar sebentar ya...',
+      ar: 'انتظر لحظة...',
+    },
+    doneTitle: {
+      ms: 'MashaAllah! Allah Maha Pengampun',
+      en: 'MashaAllah! Allah is Most Forgiving',
+      id: 'MashaAllah! Allah Maha Pengampun',
+      ar: 'ما شاء الله! الله غفور',
+    },
+    doneSub: {
+      ms: 'Bila kita minta ampun dengan ikhlas, Allah akan ampunkan',
+      en: 'When we sincerely seek forgiveness, Allah forgives us',
+      id: 'Ketika kita meminta ampun dengan ikhlas, Allah mengampuni',
+      ar: 'حين نستغفر بإخلاص، يغفر الله لنا',
+    },
+    close: { ms: 'Tutup', en: 'Close', id: 'Tutup', ar: 'إغلاق' },
+    progress: { ms: 'Jumlah', en: 'Count', id: 'Jumlah', ar: 'العدد' },
+  }
+  const tr = (k) => L[k][lang] || L[k].ms
+  const onTap = () => {
+    if (inCooldown || showDone) return
+    astaghfirullah()
+    const next = count + 1
+    setCount(next)
+    if (next >= TOTAL) {
+      setShowDone(true)
+      setTimeout(() => { onComplete() }, 2600)
+    } else {
+      setCooldownEnd(Date.now() + COOLDOWN_MS)
+    }
+  }
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[100] flex items-center justify-center p-6"
+      dir={isRTL ? 'rtl' : 'ltr'}
+      style={{ background: 'rgba(6, 30, 40, 0.88)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+        className="max-w-md w-full bg-white rounded-3xl p-6 text-center shadow-2xl"
+      >
+        {!showDone ? (
+          <>
+            <div className="text-xs uppercase tracking-widest font-black text-emerald-600 mb-1">
+              {tr('title')}
+            </div>
+            <div className="font-serif text-3xl text-emerald-900 my-3" dir="rtl">
+              أَسْتَغْفِرُ اللَّه
+            </div>
+            <div className="text-sm text-emerald-700/80 mb-1">Astaghfirullah</div>
+            <div className="text-xs text-emerald-800/60 mb-4">{tr('meaning')}</div>
+
+            {/* Progress ring — visual + text */}
+            <div className="relative mx-auto w-32 h-32 mb-4">
+              <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" strokeWidth="8" />
+                <circle
+                  cx="50" cy="50" r="45" fill="none" stroke="#10b981" strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 45}
+                  strokeDashoffset={2 * Math.PI * 45 * (1 - count / TOTAL)}
+                  style={{ transition: 'stroke-dashoffset 400ms cubic-bezier(0.4, 0, 0.2, 1)' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="text-3xl font-black text-emerald-800">{count}</div>
+                <div className="text-xs text-emerald-700/70">/ {TOTAL}</div>
+              </div>
+            </div>
+
+            {/* Big Astaghfirullah button with cooldown ring */}
+            <button
+              onClick={onTap}
+              disabled={inCooldown}
+              className={`relative w-full rounded-2xl font-black py-4 text-lg overflow-hidden transition ${
+                inCooldown
+                  ? 'bg-emerald-200 text-emerald-500 cursor-not-allowed'
+                  : 'bg-emerald-500 text-white active:scale-95 hover:bg-emerald-600'
+              }`}
+            >
+              {/* Cooldown progress fill (green wipe) */}
+              {inCooldown && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-emerald-400/70 pointer-events-none"
+                  style={{ width: `${cooldownPct * 100}%`, transition: 'width 100ms linear' }}
+                />
+              )}
+              <span className="relative z-10">
+                {inCooldown ? (
+                  <span className="flex items-center justify-center gap-2">
+                    ⏳ {tr('wait')}
+                  </span>
+                ) : (
+                  <>🤲 {tr('button')}</>
+                )}
+              </span>
+            </button>
+            {tr('sub') && (
+              <div className="text-[11px] text-emerald-800/60 mt-3">{tr('sub')}</div>
+            )}
+            <button
+              onClick={onClose}
+              className="mt-3 text-xs text-emerald-700/70 hover:text-emerald-900 font-bold"
+            >
+              {tr('close')}
+            </button>
+          </>
+        ) : (
+          // ─── Completion pedagogy ─────────────────────────────
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 250, damping: 20 }}
+          >
+            <div className="relative mx-auto mb-3 h-24 w-24 flex items-center justify-center">
+              <motion.span
+                className="absolute top-0 left-0 text-2xl"
+                animate={{ scale: [0.8, 1.3, 0.8], rotate: [0, 20, 0] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+              >✨</motion.span>
+              <motion.span
+                className="absolute top-2 right-0 text-xl"
+                animate={{ scale: [1.2, 0.8, 1.2], rotate: [0, -25, 0] }}
+                transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+              >✨</motion.span>
+              <motion.span
+                className="absolute bottom-0 right-2 text-lg"
+                animate={{ scale: [0.9, 1.4, 0.9] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
+              >✨</motion.span>
+              <div className="text-5xl">🤲</div>
+            </div>
+            <div className="text-lg font-black text-emerald-900 mb-2">
+              {tr('doneTitle')}
+            </div>
+            <div className="text-sm text-emerald-800/80 leading-relaxed">
+              {tr('doneSub')}
+            </div>
+          </motion.div>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CloudOverlay — dark clouds appear as demeritCount grows.
+// (Active implementation is defined above with cloud-tap → Istighfar wiring.)
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MoveConfirmCard — LIGHTWEIGHT floating popover that appears next to the
