@@ -4896,3 +4896,140 @@ agent_communication:
       - All test data cleaned up successfully
       
       **NO ISSUES FOUND.** The Musalla auto-upgrade feature is working perfectly as specified in the review request.
+
+
+
+#====================================================================================================
+# Kebun Template Updates - 2×2 tileSize + New Variants (2026-07-26)
+#====================================================================================================
+
+metadata:
+  updated_by: "testing_agent"
+  update_note: "Kebun template updates smoke test complete - ALL TESTS PASSED (16/16). New kebun variants (kebun_delima, kebun_tin) with 2×2 tileSize working correctly. Overlap detection verified. (2026-07-26)"
+
+backend:
+  - task: "Kebun template updates - 2×2 tileSize for all kebun variants"
+    implemented: true
+    working: true
+    file: "/app/lib/worldEngine.js, /app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (16/16) - 100% success rate
+          
+          Tested the kebun template updates as requested in the review:
+          
+          **CHANGES VERIFIED:**
+          
+          1. ✅ kebun_sayur is now hidden: true (backward-compat only, filtered from sidebar)
+          2. ✅ NEW kebun_delima (Pomegranate, 45 mata, 2×2 tileSize) - builds successfully
+          3. ✅ NEW kebun_tin (Fig, 35 mata, 2×2 tileSize) - builds successfully
+          4. ✅ All kebun variants now have tileSize: { w:2, h:2 }:
+             - kebun_kurma (25 mata, was 30)
+             - kebun_tin (35 mata, NEW)
+             - kebun_delima (45 mata, NEW, replaces kebun_sayur)
+             - kebun_anggur (55 mata, was 50)
+             - kebun_zaitun (70 mata, unchanged)
+          5. ✅ Base kebun template tileSize changed to 2×2, cost 30→25
+          
+          **TEST SCENARIOS (all passed):**
+          
+          ✅ TEST 1: Build kebun_kurma at (10, 10) → 200 OK
+          ✅ TEST 2: Build kebun_delima at (11, 10) → 409 FAIL (overlap — kebun_kurma occupies 10-11, 10-11)
+          ✅ TEST 3: Build kebun_delima at (12, 10) → 200 OK (no overlap)
+          ✅ TEST 4: Build kebun_tin at (10, 12) → 200 OK
+          ✅ TEST 5: Build kebun_anggur at (11, 12) → 409 FAIL (overlap — kebun_tin occupies 10-11, 12-13)
+          ✅ TEST 6: Build kebun_anggur at (12, 12) → 200 OK (no overlap)
+          
+          **REGRESSION TESTS (all passed):**
+          
+          ✅ TEST 7-8: banglo 2×2 overlap still works
+             - banglo built at (14, 10) → 200 OK
+             - rumah_kayu at (15, 10) → 409 FAIL (overlap with banglo)
+          
+          ✅ TEST 9-10: rumah_batu 2×2 overlap still works
+             - rumah_batu built at (14, 14) → 200 OK
+             - banglo at (15, 14) → 409 FAIL (overlap with rumah_batu)
+          
+          ✅ TEST 11: rumah_kayu 1×1 still fits
+             - rumah_kayu built at (16, 10) → 200 OK
+          
+          ✅ TEST 12-16: Musalla auto-upgrade at 7 rumah still works
+             - Built 7 rumah total (banglo + rumah_batu + 5 rumah_kayu)
+             - 7th rumah triggered auto-upgrade L1 → L2 (Masjid)
+             - autoUpgrade metadata correct: fromLevel=1, toLevel=2, rumahCount=7
+             - Musalla verified at L2 after upgrade
+          
+          **KEY FINDINGS:**
+          
+          ✅ All kebun variants now correctly use 2×2 tileSize footprint
+          ✅ Overlap detection working correctly for all 2×2 kebun variants
+          ✅ New kebun_delima and kebun_tin variants build successfully
+          ✅ Cost changes reflected correctly (kebun_kurma 30→25, kebun_anggur 50→55)
+          ✅ footFor() helper in build endpoint correctly reads BUILDING_TEMPLATES[t].tileSize
+          ✅ No regressions: banglo/rumah_batu 2×2 overlap still works
+          ✅ No regressions: Musalla auto-upgrade at 7 rumah still works
+          ✅ No regressions: rumah_kayu 1×1 still fits in tight spaces
+          
+          **FILES TESTED:**
+          - /app/lib/worldEngine.js (lines 305-310: kebun variants with 2×2 tileSize)
+          - /app/app/api/[[...path]]/route.js (build endpoint footFor() helper)
+          
+          **TEST DATA:**
+          - Created fresh test family + child for each test run
+          - Built Musalla at (17, 17) as anchor
+          - Placed 4 kebun variants + 3 rumah variants + 5 additional rumah
+          - Verified overlap detection in all directions
+          - All test data cleaned up successfully after each run
+          
+          **TEST SCRIPT:** /app/backend_test_kebun_templates.py (16 comprehensive tests)
+          
+          NO ISSUES FOUND. All kebun template updates are working exactly as specified in the review request.
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 KEBUN TEMPLATE UPDATES SMOKE TEST COMPLETE - ALL TESTS PASSED (16/16)
+      
+      Quick backend smoke test completed as requested. All kebun template updates are working correctly:
+      
+      **NEW FEATURES VERIFIED:**
+      ✅ kebun_delima (Pomegranate, 45 mata, 2×2) - builds successfully
+      ✅ kebun_tin (Fig, 35 mata, 2×2) - builds successfully
+      ✅ All kebun variants now 2×2 tileSize (kebun_kurma, kebun_anggur, kebun_zaitun, kebun_delima, kebun_tin)
+      ✅ kebun_sayur hidden from sidebar (backward-compat only)
+      ✅ Cost changes: kebun_kurma 30→25, kebun_anggur 50→55
+      
+      **OVERLAP DETECTION VERIFIED:**
+      ✅ kebun_kurma at (10,10) blocks kebun_delima at (11,10) → 409 ✓
+      ✅ kebun_tin at (10,12) blocks kebun_anggur at (11,12) → 409 ✓
+      ✅ kebun_delima at (12,10) succeeds (no overlap) → 200 ✓
+      ✅ kebun_anggur at (12,12) succeeds (no overlap) → 200 ✓
+      
+      **REGRESSION TESTS PASSED:**
+      ✅ banglo/rumah_batu 2×2 overlap still works
+      ✅ Musalla auto-upgrade at 7 rumah still works
+      ✅ rumah_kayu 1×1 still fits in tight spaces
+      
+      **TEST COVERAGE:**
+      - 6 kebun-specific tests (new variants + overlap detection)
+      - 10 regression tests (banglo, rumah_batu, rumah_kayu, musalla auto-upgrade)
+      - All test data cleaned up successfully
+      
+      **FILES TESTED:**
+      - /app/lib/worldEngine.js (kebun variants with 2×2 tileSize)
+      - /app/app/api/[[...path]]/route.js (build endpoint footFor() helper)
+      
+      **TEST SCRIPT:** /app/backend_test_kebun_templates.py
+      
+      NO ISSUES FOUND. All kebun template updates are production-ready.
