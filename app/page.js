@@ -841,9 +841,13 @@ const ParentDashboard = () => {
 // ═══════════════════════════════════════════════════════════════════════════
 const DemeritModal = ({ child, lang, onClose }) => {
   const [qty, setQty] = useState(1)
+  const [mataDeduct, setMataDeduct] = useState(10)   // parent picks total mata to deduct
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const isRTL = lang === 'ar'
+  // Dropdown options for reward-point deduction. Kept low & educational so
+  // parents don't wipe out a week's earnings for one incident.
+  const MATA_OPTIONS = [5, 10, 20, 50, 100]
   const L = {
     title: {
       ms: 'Perilaku Buruk', en: 'Bad Behavior', id: 'Perilaku Buruk', ar: 'سلوك سيء',
@@ -855,12 +859,18 @@ const DemeritModal = ({ child, lang, onClose }) => {
       ar: (name) => `كم عدد السحب السوداء لـ ${name}؟`,
     },
     hint: {
-      ms: 'Setiap awan tolak 1 Mata Reward (Mata Bina tidak dikurangkan). Anak boleh hilangkan awan dengan istighfar 10 kali per awan.',
-      en: 'Each cloud deducts 1 Reward Point (Build Points untouched). Child clears clouds by saying Astaghfirullah 10× each.',
-      id: 'Setiap awan mengurangi 1 Poin Hadiah (Poin Bangun tidak dikurangi). Anak menghilangkan awan dengan istighfar 10 kali per awan.',
-      ar: 'كل سحابة تخصم نقطة مكافأة واحدة (نقاط البناء لا تُمس). يزيل الطفل كل سحابة بالاستغفار عشر مرات.',
+      ms: 'Mata Bina tidak dikurangkan. Anak boleh hilangkan awan dengan istighfar 10 kali per awan.',
+      en: 'Build Points untouched. Child clears clouds by saying Astaghfirullah 10× each.',
+      id: 'Poin Bangun tidak dikurangi. Anak menghilangkan awan dengan istighfar 10 kali per awan.',
+      ar: 'نقاط البناء لا تُمس. يزيل الطفل كل سحابة بالاستغفار عشر مرات.',
     },
     qtyLabel: { ms: 'Bilangan Awan', en: 'Cloud Count', id: 'Jumlah Awan', ar: 'عدد السحب' },
+    mataLabel: {
+      ms: 'Mata Reward untuk ditolak',
+      en: 'Reward Points to deduct',
+      id: 'Poin Hadiah yang dikurangi',
+      ar: 'نقاط المكافأة المخصومة',
+    },
     confirm: { ms: 'Sahkan', en: 'Confirm', id: 'Sahkan', ar: 'تأكيد' },
     cancel: { ms: 'Batal', en: 'Cancel', id: 'Batal', ar: 'إلغاء' },
     done: {
@@ -882,7 +892,7 @@ const DemeritModal = ({ child, lang, onClose }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ delta: qty }),
+        body: JSON.stringify({ delta: qty, mataDeduct }),
       })
       setDone(true)
       setTimeout(onClose, 1800)
@@ -914,7 +924,7 @@ const DemeritModal = ({ child, lang, onClose }) => {
                 <div className="text-sm text-eq-ink/80 leading-snug">{tr('sub')}</div>
               </div>
 
-              {/* Quantity stepper */}
+              {/* Cloud quantity stepper */}
               <div className="mb-1 text-xs font-bold text-eq-ink/70">{tr('qtyLabel')}</div>
               <div className="flex items-center justify-center gap-3 mb-4">
                 <button
@@ -924,13 +934,31 @@ const DemeritModal = ({ child, lang, onClose }) => {
                 <div className="min-w-16 text-center">
                   <div className="text-3xl font-black text-red-800">{qty}</div>
                   <div className="text-[10px] text-red-800/70">
-                    {qty === 1 ? '🌩️' : qty === 2 ? '🌩️🌩️' : qty === 3 ? '🌩️🌩️🌩️' : '🌩️'.repeat(Math.min(qty, 5))}
+                    {'🌩️'.repeat(Math.min(qty, 5))}
                   </div>
                 </div>
                 <button
                   onClick={() => setQty(Math.min(5, qty + 1))}
                   className="w-11 h-11 rounded-full bg-red-100 hover:bg-red-200 text-red-800 text-xl font-black active:scale-95"
                 >+</button>
+              </div>
+
+              {/* Mata reward deduction dropdown — parent decides magnitude.
+                  Kept as a native <select> for accessibility + max-child-safety
+                  (no fancy custom picker on parent-only screens). */}
+              <div className="mb-1 text-xs font-bold text-eq-ink/70 flex items-center gap-1">
+                <span>💰</span> {tr('mataLabel')}
+              </div>
+              <div className="mb-4">
+                <select
+                  value={mataDeduct}
+                  onChange={(e) => setMataDeduct(Number(e.target.value))}
+                  className="w-full rounded-2xl border-2 border-red-200 bg-red-50 px-4 py-3 text-lg font-black text-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  {MATA_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>−{opt} Mata Reward</option>
+                  ))}
+                </select>
               </div>
 
               <p className="text-[11px] text-eq-ink/60 mb-4 text-center leading-tight">

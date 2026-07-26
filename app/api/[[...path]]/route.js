@@ -1353,18 +1353,23 @@ async function handleRoute(request, { params }) {
         return json({ ok: true })
       }
 
-      // POST /world/:childId/demerit → adjust demerit count { delta }
-      // Positive delta = parent flagging bad behavior → adds dark clouds
-      // AND deducts mataReward (reward wallet) 1:1 per user spec. Build
-      // points (mataBina) are NEVER affected — those are earned through
-      // habits, and only spent constructing buildings.
-      // Negative delta = istighfar cleanse (child cleared a cloud) — only
-      // removes the cloud; does NOT refund mataReward (spiritual mechanic:
-      // seeking forgiveness clears the sin marker but doesn't restore
-      // what was already spent).
+      // POST /world/:childId/demerit → adjust demerit count { delta, mataDeduct? }
+      // Positive delta = parent flagging bad behavior → adds dark clouds.
+      // Optional `mataDeduct` (positive integer) tells us HOW MUCH mataReward
+      // to deduct — parent picks from a dropdown (5/10/20/50/100) in the
+      // DemeritModal. If mataDeduct omitted, falls back to delta itself (1:1).
+      // Build points (mataBina) are NEVER touched — those are earned through
+      // habits and only spent constructing buildings.
+      // Negative delta = istighfar cleanse — removes a cloud but does NOT
+      // refund mataReward (spiritual mechanic: seeking forgiveness clears
+      // the sin marker but doesn't restore what was already spent).
       if (action === 'demerit' && method === 'POST') {
         const body = await request.json().catch(() => ({}))
         const delta = Number(body.delta) || 0
+        // Clamp mata deduction to [0, 1000] to protect against garbage input.
+        const mataDeduct = delta > 0
+          ? Math.max(0, Math.min(1000, Number(body.mataDeduct ?? delta) || 0))
+          : 0
         await loadOrSeed()
         await worldsCol.updateOne(
           { childId },
@@ -1374,15 +1379,14 @@ async function handleRoute(request, { params }) {
           } }]
         )
         // Deduct mataReward on POSITIVE demerit only. Aggregation pipeline
-        // clamps at 0 so a child can never go negative (they just have
-        // clouds waiting to be istighfar'd).
+        // clamps at 0 so a child can never go negative.
         let mataReward = null
-        if (delta > 0) {
+        if (delta > 0 && mataDeduct > 0) {
           const db2 = await getDb()
           await db2.collection('children').updateOne(
             { id: childId },
             [{ $set: {
-              mataReward: { $max: [0, { $subtract: [{ $ifNull: ['$mataReward', 0] }, delta] }] },
+              mataReward: { $max: [0, { $subtract: [{ $ifNull: ['$mataReward', 0] }, mataDeduct] }] },
             } }]
           )
           const c = await db2.collection('children').findOne({ id: childId }, { projection: { mataReward: 1 } })
