@@ -1933,10 +1933,10 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
   const L = {
     title:      { ms: 'Peta Kepulauan Iman', en: 'Islands of Iman Map',       id: 'Peta Kepulauan Iman', ar: 'خريطة جزر الإيمان' },
     subtitle:   {
-      ms: 'Pilih pulau untuk masuk. Buat baik terus-menerus untuk buka pulau baharu.',
-      en: 'Choose an island to enter. Keep doing good deeds to unlock new islands.',
-      id: 'Pilih pulau untuk masuk. Terus berbuat baik untuk membuka pulau baru.',
-      ar: 'اختر جزيرة للدخول. استمر في فعل الخير لفتح جزر جديدة.',
+      ms: 'Ikuti laluan. Setiap pulau menanti kamu — buat baik untuk buka pulau seterusnya.',
+      en: 'Follow the path. Each island awaits — keep doing good to unlock the next.',
+      id: 'Ikuti jalur. Setiap pulau menunggu — terus berbuat baik untuk membuka pulau berikut.',
+      ar: 'اتبع المسار. كل جزيرة تنتظر — استمر في فعل الخير لفتح التالية.',
     },
     active:     { ms: 'AKTIF', en: 'ACTIVE', id: 'AKTIF', ar: 'نشط' },
     locked:     { ms: 'Terkunci', en: 'Locked', id: 'Terkunci', ar: 'مغلق' },
@@ -1966,119 +1966,238 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
     const v = L[k]?.[lang] || L[k]?.ms
     return typeof v === 'function' ? v(...args) : v
   }
-  const ISLANDS = [
-    { id: 'locked_1', angle: 30,  emoji: '🌫️' },
-    { id: 'locked_2', angle: 90,  emoji: '🌫️' },
-    { id: 'locked_3', angle: 150, emoji: '🌫️' },
-    { id: 'locked_4', angle: 210, emoji: '🌫️' },
-    { id: 'locked_5', angle: 270, emoji: '🌫️' },
-    { id: 'locked_6', angle: 330, emoji: '🌫️' },
+  // ─── 7 waypoints along a winding S-curve treasure-map journey ─────
+  // Coordinates normalized [0,100] % for both x and y so responsiveness
+  // is automatic. First waypoint (Pulau Impianku) is at the bottom-front
+  // (start of journey), 6 locked islands snake upward through the ocean.
+  // Coordinates authored to feel like a hand-drawn adventure map.
+  const WAYPOINTS = [
+    { id: 'pulau_impianku', x: 50, y: 82, size: 26, locked: false },
+    { id: 'locked_1',       x: 22, y: 68, size: 16, locked: true },
+    { id: 'locked_2',       x: 72, y: 56, size: 16, locked: true },
+    { id: 'locked_3',       x: 28, y: 44, size: 15, locked: true },
+    { id: 'locked_4',       x: 78, y: 32, size: 15, locked: true },
+    { id: 'locked_5',       x: 34, y: 22, size: 15, locked: true },
+    { id: 'locked_6',       x: 72, y: 12, size: 15, locked: true },
   ]
+  // Cubic path between waypoints — treasure map dotted line.
+  const pathD = WAYPOINTS.map((w, i) => {
+    if (i === 0) return `M ${w.x} ${w.y}`
+    const prev = WAYPOINTS[i - 1]
+    const midX = (prev.x + w.x) / 2
+    return `Q ${midX} ${prev.y}, ${w.x} ${w.y}`
+  }).join(' ')
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-[85] flex flex-col overflow-hidden"
       dir={isRTL ? 'rtl' : 'ltr'}
       style={{
-        background: 'radial-gradient(ellipse at center, #1e3a5f 0%, #0f2544 50%, #071229 100%)',
+        // Warm parchment-inspired tropical ocean — treasure map feel.
+        background: 'radial-gradient(ellipse at 50% 30%, #4a92c9 0%, #2a6da8 40%, #1a4c7f 100%)',
       }}
     >
-      <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
-        backgroundImage: 'repeating-linear-gradient(-45deg, transparent 0 40px, rgba(255,255,255,0.08) 40px 42px)',
+      {/* Parchment-style vignette + subtle noise for treasure-map aesthetic */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.35) 100%)',
       }} />
-      {[...Array(20)].map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-1 h-1 bg-white/70 rounded-full pointer-events-none"
-          style={{ left: `${(i * 47) % 100}%`, top: `${(i * 29) % 90}%` }}
-          animate={{ opacity: [0.3, 0.9, 0.3] }}
-          transition={{ duration: 2 + (i % 3), repeat: Infinity, delay: i * 0.15 }}
-        />
-      ))}
-      <div className="relative z-10 px-6 pt-4 pb-2 text-center">
-        <div className="text-amber-300 text-[10px] uppercase tracking-widest font-black mb-1">
+      {/* Wave ripples (SVG defs) */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+        <defs>
+          <pattern id="waves" x="0" y="0" width="120" height="24" patternUnits="userSpaceOnUse">
+            <path d="M0 12 Q 30 4 60 12 T 120 12" stroke="rgba(255,255,255,0.09)" strokeWidth="1.4" fill="none"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#waves)" />
+      </svg>
+
+      {/* Header — compact, floats over map */}
+      <div className="relative z-20 px-4 pt-3 pb-2 text-center flex-shrink-0">
+        <div className="text-amber-300 text-[10px] uppercase tracking-widest font-black mb-0.5 drop-shadow-md">
           🗺️ {tr('title')}
         </div>
-        <div className="text-white/80 text-xs max-w-md mx-auto leading-tight">
+        <div className="text-white/85 text-[11px] max-w-md mx-auto leading-tight drop-shadow">
           {tr('subtitle')}
         </div>
       </div>
-      <div className="relative flex-1 flex items-center justify-center">
-        {ISLANDS.map((island, i) => {
-          const rad = (island.angle - 90) * (Math.PI / 180)
-          const RX = 32
-          const RY = 30
-          const left = 50 + Math.cos(rad) * RX
-          const top = 50 + Math.sin(rad) * RY
+
+      {/* Journey canvas — flex-1 fills between header + footer, responsive.
+          Portrait vs landscape both work because we use % positioning. */}
+      <div className="relative flex-1 min-h-0">
+        {/* Treasure-map dashed path connecting all 7 waypoints */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path
+            d={pathD}
+            stroke="rgba(255, 220, 130, 0.85)"
+            strokeWidth="0.6"
+            strokeDasharray="1.8 1.4"
+            fill="none"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            style={{ filter: 'drop-shadow(0 0 6px rgba(255,220,130,0.4))' }}
+          />
+        </svg>
+
+        {/* Waypoint islands. Positioned in % so they scale for any orientation. */}
+        {WAYPOINTS.map((wp, i) => {
+          const isActive = !wp.locked
+          const isFirst = i === 0
           return (
             <div
-              key={island.id}
-              className="absolute w-24 h-24 -translate-x-1/2 -translate-y-1/2 opacity-60"
-              style={{ left: `${left}%`, top: `${top}%` }}
+              key={wp.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${wp.x}%`, top: `${wp.y}%` }}
             >
-              <div className="relative w-full h-full rounded-full bg-slate-700/50 backdrop-blur border border-slate-500/40 flex flex-col items-center justify-center overflow-hidden">
-                <div className="text-2xl mb-0.5 opacity-70">{island.emoji}</div>
-                <div className="text-[9px] text-white/60 font-bold uppercase tracking-wider">🔒 {tr('locked')}</div>
-                <div className="text-[8px] text-white/40 mt-0.5">{tr('comingSoon')}</div>
-              </div>
+              {isActive ? (
+                <motion.button
+                  onClick={() => onSelectIsland(wp.id)}
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  className="relative block group active:scale-95 transition-transform"
+                  style={{ width: `${wp.size * 3}vmin`, maxWidth: 220, minWidth: 140 }}
+                >
+                  {/* Pulsing water halo */}
+                  <motion.div
+                    className="absolute inset-0 rounded-full bg-amber-400/30 blur-2xl"
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.8, 0.4] }}
+                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                  <IslandShape size="lg" active />
+                  <div className="mt-1 text-center relative z-10">
+                    <div className="inline-block bg-amber-300 text-amber-900 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-md">
+                      ⭐ {tr('active')}
+                    </div>
+                    <div className="text-white font-black text-base mt-1 drop-shadow-lg">
+                      {tr('pulauImpianku')}
+                    </div>
+                    <div className="text-amber-100/90 text-[10px] mt-0.5 drop-shadow">
+                      {tr('stats', musallaLevel, rumahCount, totalBuildings)}
+                    </div>
+                  </div>
+                </motion.button>
+              ) : (
+                <div
+                  className="relative block opacity-70"
+                  style={{ width: `${wp.size * 2.4}vmin`, maxWidth: 140, minWidth: 84 }}
+                >
+                  <IslandShape size="sm" active={false} />
+                  <div className="mt-1 text-center">
+                    <div className="text-white/80 text-[9px] font-black uppercase tracking-wider drop-shadow">
+                      🔒 {tr('locked')}
+                    </div>
+                    <div className="text-white/60 text-[9px] mt-0.5">
+                      {tr('comingSoon')}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
-        <motion.button
-          onClick={() => onSelectIsland('pulau_impianku')}
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          className="relative z-10 group"
-        >
-          <motion.div
-            className="absolute inset-0 rounded-full bg-amber-400/40 blur-xl"
-            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.9, 0.5] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <div className="relative w-44 h-44 rounded-full bg-gradient-to-br from-emerald-300 via-emerald-400 to-teal-500 border-4 border-amber-400 shadow-2xl flex flex-col items-center justify-center group-active:scale-95 transition-transform overflow-hidden">
-            <div className="text-5xl mb-1 drop-shadow-lg">🕌</div>
-            <div className="flex gap-0.5 text-2xl -mt-1">
-              <span>🌴</span><span>🏠</span><span>🌴</span>
-            </div>
-            <div className="mt-1 text-[9px] text-amber-800 font-black uppercase tracking-widest bg-amber-200/70 px-2 py-0.5 rounded-full">
-              ⭐ {tr('active')}
-            </div>
-          </div>
-          <div className="mt-2 text-center">
-            <div className="text-white font-black text-lg">{tr('pulauImpianku')}</div>
-            <div className="text-white/70 text-[10px] mt-0.5">
-              {tr('stats', musallaLevel, rumahCount, totalBuildings)}
-            </div>
-          </div>
-        </motion.button>
       </div>
-      <div className="relative z-10 px-6 pb-6 pt-2 max-w-md mx-auto w-full">
-        <div className="bg-white/10 backdrop-blur border border-amber-400/40 rounded-2xl px-4 py-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-white/80 text-[10px] uppercase tracking-wider font-bold">
-              {tr('pulauImpianku')}
+
+      {/* Progress footer — sticky bottom, compact on mobile */}
+      <div className="relative z-20 px-4 pb-4 pt-2 flex-shrink-0">
+        <div className="max-w-md mx-auto">
+          <div className="bg-black/40 backdrop-blur border border-amber-400/50 rounded-2xl px-4 py-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-white/85 text-[10px] uppercase tracking-wider font-bold">
+                {tr('pulauImpianku')}
+              </div>
+              <div className="text-amber-300 text-sm font-black">{overallPct}%</div>
             </div>
-            <div className="text-amber-300 text-sm font-black">{overallPct}%</div>
+            <div className="relative w-full h-2.5 bg-slate-900/60 rounded-full overflow-hidden border border-slate-500/40">
+              <div
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
+                style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }}
+              />
+            </div>
+            <div className="text-white/70 text-[10px] mt-1.5 leading-tight text-center">
+              {readyToHijrah ? `🎉 ${tr('hijrahReady')}` : tr('progressLabel')}
+            </div>
           </div>
-          <div className="relative w-full h-2.5 bg-slate-900/60 rounded-full overflow-hidden border border-slate-500/40">
-            <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
-              style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }}
-            />
-          </div>
-          <div className="text-white/60 text-[10px] mt-1.5 leading-tight text-center">
-            {readyToHijrah ? `🎉 ${tr('hijrahReady')}` : tr('progressLabel')}
-          </div>
+          <button
+            onClick={() => onSelectIsland('pulau_impianku')}
+            className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-emerald-500 text-white font-black py-3 active:scale-95 shadow-xl text-base"
+          >
+            🏝️ {tr('enter')}
+          </button>
         </div>
-        <button
-          onClick={() => onSelectIsland('pulau_impianku')}
-          className="mt-3 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-emerald-500 text-white font-black py-3 active:scale-95 shadow-xl text-lg"
-        >
-          🏝️ {tr('enter')}
-        </button>
       </div>
     </motion.div>
+  )
+}
+
+// ─── IslandShape — hand-drawn tropical island rendered as inline SVG ─────
+// Organic sandy beach base + green top + palm trees. Two variants:
+//   • active — vibrant colors, 3 palm trees, tiny mosque dome
+//   • locked — desaturated + fog overlay, no landmarks
+const IslandShape = ({ size = 'lg', active = false }) => {
+  return (
+    <svg
+      viewBox="0 0 120 90"
+      className="w-full h-auto"
+      style={{ filter: active ? 'drop-shadow(0 6px 14px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))' }}
+    >
+      <defs>
+        <radialGradient id={`grd-sand-${active}`} cx="50%" cy="60%" r="70%">
+          <stop offset="0%" stopColor={active ? '#fde68a' : '#94a3b8'} />
+          <stop offset="60%" stopColor={active ? '#f59e0b' : '#64748b'} />
+          <stop offset="100%" stopColor={active ? '#b45309' : '#334155'} />
+        </radialGradient>
+        <radialGradient id={`grd-grass-${active}`} cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stopColor={active ? '#86efac' : '#6b7d92'} />
+          <stop offset="70%" stopColor={active ? '#22c55e' : '#4b5c72'} />
+          <stop offset="100%" stopColor={active ? '#166534' : '#334155'} />
+        </radialGradient>
+      </defs>
+      {/* Sandy beach base (irregular blob) */}
+      <path
+        d="M 12 68 Q 6 60 18 54 Q 10 44 26 42 Q 30 30 48 34 Q 52 24 68 30 Q 88 26 96 40 Q 112 44 108 58 Q 118 66 106 74 Q 100 84 82 82 Q 68 88 54 82 Q 36 88 22 80 Q 8 78 12 68 Z"
+        fill={`url(#grd-sand-${active})`}
+      />
+      {/* Green grass patch on top */}
+      <path
+        d="M 22 60 Q 20 46 34 44 Q 40 34 54 38 Q 62 32 74 40 Q 88 40 90 52 Q 96 60 86 66 Q 74 72 60 68 Q 44 74 32 68 Q 20 68 22 60 Z"
+        fill={`url(#grd-grass-${active})`}
+      />
+      {active && (
+        <>
+          {/* Central mosque dome */}
+          <ellipse cx="60" cy="52" rx="5" ry="4" fill="#fef3c7" />
+          <rect x="57" y="52" width="6" height="6" fill="#fef3c7" />
+          <circle cx="60" cy="48" r="3.5" fill="#fbbf24" />
+          <line x1="60" y1="45" x2="60" y2="41" stroke="#fbbf24" strokeWidth="0.6"/>
+          {/* Palm trees (3, scattered) */}
+          {[
+            { cx: 38, cy: 56 },
+            { cx: 82, cy: 54 },
+            { cx: 48, cy: 46 },
+          ].map((p, i) => (
+            <g key={i}>
+              <rect x={p.cx - 0.6} y={p.cy - 1} width="1.2" height="6" fill="#78350f" />
+              <ellipse cx={p.cx - 2.5} cy={p.cy - 2} rx="3" ry="1.4" fill="#16a34a" />
+              <ellipse cx={p.cx + 2.5} cy={p.cy - 2} rx="3" ry="1.4" fill="#16a34a" />
+              <ellipse cx={p.cx} cy={p.cy - 3.6} rx="1.6" ry="3" fill="#22c55e" />
+            </g>
+          ))}
+        </>
+      )}
+      {!active && (
+        <>
+          {/* Fog overlay for locked islands */}
+          <path
+            d="M 12 68 Q 6 60 18 54 Q 10 44 26 42 Q 30 30 48 34 Q 52 24 68 30 Q 88 26 96 40 Q 112 44 108 58 Q 118 66 106 74 Q 100 84 82 82 Q 68 88 54 82 Q 36 88 22 80 Q 8 78 12 68 Z"
+            fill="rgba(180,190,210,0.55)"
+          />
+          {/* Padlock icon in center */}
+          <text x="60" y="60" fontSize="12" textAnchor="middle" opacity="0.85">🔒</text>
+        </>
+      )}
+      {/* Wave ring around beach (subtle) */}
+      <ellipse cx="60" cy="76" rx="52" ry="6" fill="rgba(255,255,255,0.18)" />
+    </svg>
   )
 }
 
