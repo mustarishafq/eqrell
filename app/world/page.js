@@ -147,15 +147,21 @@ function WorldPageInner() {
   // other 6 slots are locked/generic ("Coming Soon"). Selection lives in
   // localStorage so a mid-session refresh keeps them on the picked island.
   const [selectedIslandId, setSelectedIslandId] = useState(null)
+  // Archipelago is now the CANONICAL entry gate — every time the child
+  // navigates to /world (from the kid dashboard, from a fresh reload, from a
+  // deep link), they land on the map first (user: "dari dashboard anak jika
+  // tekan ke world harus navigate ke map dulu, bukan masuk world terus").
+  // We no longer auto-skip based on a persisted island choice; the
+  // localStorage entry is only kept as a "last-picked island" hint for
+  // future multi-island themes.
   const [archipelagoOpen, setArchipelagoOpen] = useState(true)
   useEffect(() => {
-    // Hydrate persisted island choice (SSR-safe)
+    // Read persisted island choice for downstream logic, but DO NOT
+    // auto-close the archipelago — force the kid to consciously "enter" a
+    // island each session so the map always feels like the entry gate.
     try {
       const saved = localStorage.getItem('eqrel-selected-island')
-      if (saved) {
-        setSelectedIslandId(saved)
-        setArchipelagoOpen(false)
-      }
+      if (saved) setSelectedIslandId(saved)
     } catch { /* noop */ }
   }, [])
   // Audio mute preference (persisted in localStorage). We mirror to React state
@@ -661,9 +667,12 @@ function WorldPageInner() {
               setSelectedIslandId(id)
               setArchipelagoOpen(false)
               try { localStorage.setItem('eqrel-selected-island', id) } catch { /* noop */ }
-              // Trigger a dramatic Phaser camera zoom-in the moment the
-              // archipelago fades — feels like descending onto the island.
-              setTimeout(() => setCameraCommand({ action: 'worldEnter', key: Date.now() }), 60)
+              // Fire the Phaser dolly-zoom on the SAME frame the archipelago
+              // begins its exit — no timeout gap — so the map's zoom-into-
+              // island and the world's zoom-into-Musalla read as one
+              // continuous camera flight (user: "action camera must
+              // continuety frictionless to enter the world").
+              setCameraCommand({ action: 'worldEnter', key: Date.now() })
             }}
           />
         )}
@@ -2028,19 +2037,36 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
     const midX = (prev.x + w.x) / 2
     return `Q ${midX} ${prev.y}, ${w.x} ${w.y}`
   }).join(' ')
-  // Zoom-in transition when child taps Pulau Impianku — expand the island
-  // then fire the callback so the world scene reveal feels like descent.
+  // ISLAND-CENTERED CAMERA ZOOM. On tap, we DO NOT scale the island itself —
+  // the island stays anchored in place and the entire archipelago container
+  // scales up (transform-origin locked to the island's on-screen position),
+  // simulating a camera dolly-zoom INTO the island. Phaser's worldEnter cam
+  // tween fires simultaneously so the map exit blends seamlessly into the
+  // world camera — one continuous frictionless zoom (user: "camera zoom in
+  // ke island bukan island datang close or become bigger, dan action camera
+  // must continuety frictionless to enter the world").
   const handleEnterActive = (id) => {
     if (enteringId || isLoadingWorld) return
     setEnteringId(id)
-    setTimeout(() => onSelectIsland(id), 900)
+    // Fire the callback immediately — parent closes the archipelago (which
+    // triggers our AnimatePresence exit scale-into-island) AND kicks the
+    // Phaser worldEnter tween on the same frame. No timeout gap = no
+    // visible cut between map camera and world camera.
+    onSelectIsland(id)
   }
   return (
     <motion.div
       initial={{ opacity: 0, scale: 1 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.35 }}
-      transition={{ duration: 0.65, ease: 'easeInOut' }}
+      // On exit, the ENTIRE map container scales up strongly with a
+      // transform-origin locked at the active island's on-screen position
+      // (50%, ~60% viewport) — so the island stays visually anchored while
+      // everything around it explodes outward. Combined with the Phaser
+      // camera's worldEnter tween firing on the same frame, the effect is
+      // one continuous camera zoom from the archipelago into the world.
+      exit={{ opacity: 0, scale: 6 }}
+      transition={{ duration: 0.9, ease: [0.65, 0, 0.35, 1] }}
+      style={{ transformOrigin: '50% 58%' }}
       // FIXED positioning + top z-index — blocks ALL underlying world
       // interactions (user: "pressing anything at this pages still occurs
       // the info of the house build"). Now behaves as a true page.
@@ -2113,15 +2139,17 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
                 <motion.button
                   onClick={() => handleEnterActive(wp.id)}
                   initial={{ scale: 0.6, opacity: 0, y: 30 }}
-                  animate={isEntering
-                    ? { scale: 4, opacity: 0, y: -100 }
-                    : { scale: 1, opacity: 1, y: 0 }}
+                  // Island stays STATIC on tap — the container-level scale
+                  // (transform-origin locked to this island's position)
+                  // provides the "camera zoom INTO the island" effect the
+                  // user asked for. The island itself must not grow, else
+                  // it looks like it's flying toward the camera instead of
+                  // the camera flying toward it.
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
                   transition={{
-                    type: isEntering ? 'tween' : 'spring',
+                    type: 'spring',
                     stiffness: 180, damping: 18,
-                    duration: isEntering ? 0.9 : 0.5,
-                    delay: isEntering ? 0 : 0.15,
-                    ease: isEntering ? 'easeIn' : undefined,
+                    delay: 0.15,
                   }}
                   className="relative block group active:scale-95 transition-transform"
                   style={{ width: 'clamp(120px, 34vmin, 200px)' }}

@@ -136,13 +136,16 @@ export default function WorldCanvas({
       const next = Math.max(0.3, cam.zoom / 1.15)
       scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
     } else if (cameraCommand.action === 'worldEnter') {
-      // Dramatic "descend onto the island" effect fired the moment the
-      // Archipelago map closes. Start from a wide, high-altitude view
-      // (zoom 0.35) and tween back to the natural 1.0 with a cinematic
-      // ease so it feels like a plane landing on Pulau Impianku.
-      // (User: "effect camera zooming to the world untuk masuk like
-      //  zooming to the island".)
-      try { cam.setZoom(0.35) } catch { /* not ready */ }
+      // Cinematic frictionless "descend onto the island" tween. Fired on
+      // the SAME frame that the Archipelago map begins its scale-into-
+      // island exit — the two zooms overlap so the child perceives one
+      // continuous camera dolly, from archipelago overview → island fills
+      // screen → world revealed → Musalla settles at natural zoom. Start
+      // wide (0.55), tween to 1.0 over 1.6s so the motion is still in
+      // progress AFTER the map finishes exiting at ~0.9s — no visible cut.
+      // (User: "action camera must continuety frictionless to enter the
+      //  world".)
+      try { cam.setZoom(0.55) } catch { /* not ready */ }
       // Center on Musalla (if present) so the descent lands on the mosque
       if (scene.originX != null) {
         const state = scene.game?.registry?.get('worldState')
@@ -156,11 +159,11 @@ export default function WorldCanvas({
           scrollX: sx - cam.width / (2 * 1.0),
           scrollY: sy - cam.height / (2 * 1.0),
           zoom: 1.0,
-          duration: 1100,
-          ease: 'Cubic.easeOut',
+          duration: 1600,
+          ease: 'Sine.easeInOut',
         })
       } else {
-        scene.tweens.add({ targets: cam, zoom: 1.0, duration: 1100, ease: 'Cubic.easeOut' })
+        scene.tweens.add({ targets: cam, zoom: 1.0, duration: 1600, ease: 'Sine.easeInOut' })
       }
     } else if (cameraCommand.action === 'center') {
       // Center on Musalla's actual position (falls back to anchor)
