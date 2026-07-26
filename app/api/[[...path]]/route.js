@@ -1354,6 +1354,14 @@ async function handleRoute(request, { params }) {
       }
 
       // POST /world/:childId/demerit → adjust demerit count { delta }
+      // Positive delta = parent flagging bad behavior → adds dark clouds
+      // AND deducts mataReward (reward wallet) 1:1 per user spec. Build
+      // points (mataBina) are NEVER affected — those are earned through
+      // habits, and only spent constructing buildings.
+      // Negative delta = istighfar cleanse (child cleared a cloud) — only
+      // removes the cloud; does NOT refund mataReward (spiritual mechanic:
+      // seeking forgiveness clears the sin marker but doesn't restore
+      // what was already spent).
       if (action === 'demerit' && method === 'POST') {
         const body = await request.json().catch(() => ({}))
         const delta = Number(body.delta) || 0
@@ -1365,8 +1373,27 @@ async function handleRoute(request, { params }) {
             updatedAt: new Date(),
           } }]
         )
+        // Deduct mataReward on POSITIVE demerit only. Aggregation pipeline
+        // clamps at 0 so a child can never go negative (they just have
+        // clouds waiting to be istighfar'd).
+        let mataReward = null
+        if (delta > 0) {
+          const db2 = await getDb()
+          await db2.collection('children').updateOne(
+            { id: childId },
+            [{ $set: {
+              mataReward: { $max: [0, { $subtract: [{ $ifNull: ['$mataReward', 0] }, delta] }] },
+            } }]
+          )
+          const c = await db2.collection('children').findOne({ id: childId }, { projection: { mataReward: 1 } })
+          mataReward = c?.mataReward ?? 0
+        }
         const updated = await worldsCol.findOne({ childId }, { projection: { demeritCount: 1 } })
-        return json({ ok: true, demeritCount: updated?.demeritCount || 0 })
+        return json({
+          ok: true,
+          demeritCount: updated?.demeritCount || 0,
+          ...(mataReward !== null ? { mataReward } : {}),
+        })
       }
     }
 

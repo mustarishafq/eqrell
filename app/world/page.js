@@ -1531,7 +1531,7 @@ const IstighfarModal = ({ lang, onClose, onComplete }) => {
   const [now, setNow] = useState(Date.now())
   const [showDone, setShowDone] = useState(false)
   const TOTAL = 10
-  const COOLDOWN_MS = 3000
+  const COOLDOWN_MS = 2000
   // Tick 60fps for smooth cooldown ring
   useEffect(() => {
     if (showDone) return

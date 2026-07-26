@@ -5046,3 +5046,176 @@ agent_communication:
       **TEST SCRIPT:** /app/backend_test_kebun_templates.py
       
       NO ISSUES FOUND. All kebun template updates are production-ready.
+
+
+#====================================================================================================
+# Demerit Endpoint - Mata Reward Deduction Feature (2026-01-26)
+#====================================================================================================
+
+metadata:
+  updated_by: "testing_agent"
+  update_note: "Demerit endpoint mata reward deduction testing complete - ALL TESTS PASSED (6/6). New feature deducts mataReward 1:1 when parent flags bad behavior (positive delta). Istighfar (negative delta) removes clouds but does NOT refund mataReward. mataBina (build points) are NEVER affected. (2026-01-26)"
+
+backend:
+  - task: "POST /api/world/:childId/demerit - Mata reward deduction on positive delta"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (6/6) - 100% success rate
+          
+          Tested the NEW mata reward deduction feature in POST /api/world/:childId/demerit endpoint.
+          
+          **FEATURE BEHAVIOR:**
+          
+          When parent flags bad behavior (positive delta):
+          1. ✅ Increases demeritCount in family_worlds collection by N (existing behavior)
+          2. ✅ **NEW**: Deducts child.mataReward by N in children collection (clamped at floor 0)
+          3. ✅ NEVER modifies child.mataBina (build points remain untouched)
+          4. ✅ Returns { ok: true, demeritCount: X, mataReward: Y } when delta > 0
+          
+          When child performs istighfar (negative delta):
+          1. ✅ Decreases demeritCount by N (removes clouds)
+          2. ✅ Does NOT refund mataReward (spiritual mechanic: forgiveness clears sin marker but doesn't restore what was spent)
+          3. ✅ Response does NOT include mataReward field for negative delta
+          
+          **TEST SCENARIOS (all passed):**
+          
+          ✅ TEST 1: Setup - Set mataReward=50, mataBina=30 for test child
+             - Child initialized with known state for testing
+          
+          ✅ TEST 2: Positive delta=3 → demeritCount=3, mataReward=47, mataBina=30
+             - Response includes demeritCount=3 and mataReward=47 (50-3)
+             - DB verified: mataReward=47, mataBina=30 (unchanged), demeritCount=3
+             - mataBina protection working correctly
+          
+          ✅ TEST 3: Clamp at zero (mataReward floor) - mataReward=2, delta=5 → mataReward=0
+             - Response shows mataReward=0 (not negative)
+             - DB verified: mataReward=0 (clamped at floor)
+             - Child cannot go into negative mataReward
+          
+          ✅ TEST 4: Negative delta=-1 (istighfar) → demeritCount=2, mataReward stays 47
+             - Response shows demeritCount=2 (decremented from 3)
+             - Response does NOT include mataReward field (correct for negative delta)
+             - DB verified: mataReward=47 (unchanged - istighfar does NOT refund)
+             - Spiritual mechanic working as designed
+          
+          ✅ TEST 5: mataBina protection - verify mataBina unchanged after multiple demerits
+             - Applied 3 demerits (delta=2 each) = 6 total deduction
+             - mataBina=50 (unchanged after all demerits)
+             - mataReward=94 (100-6, correctly deducted)
+             - Build points (mataBina) are NEVER affected by demerits
+          
+          ✅ TEST 6: Negative clamp on demeritCount - demeritCount=0, delta=-5 → demeritCount=0
+             - Response shows demeritCount=0 (clamped at floor)
+             - DB verified: demeritCount=0 (not negative)
+             - Cannot have negative cloud count
+          
+          **KEY FINDINGS:**
+          
+          ✅ Mata reward deduction working correctly (1:1 ratio with demerit delta)
+          ✅ mataReward clamped at floor 0 (cannot go negative)
+          ✅ mataBina (build points) NEVER affected by demerits (protection working)
+          ✅ Istighfar (negative delta) removes clouds but does NOT refund mataReward
+          ✅ Response includes mataReward field ONLY for positive delta
+          ✅ demeritCount clamped at floor 0 (cannot go negative)
+          ✅ All aggregation pipeline clamping logic working correctly
+          
+          **IMPLEMENTATION DETAILS VERIFIED:**
+          
+          Lines 1356-1397 in /app/app/api/[[...path]]/route.js:
+          - Line 1369-1375: demeritCount update with $max clamp at 0
+          - Line 1376-1390: mataReward deduction ONLY on positive delta
+          - Line 1382-1387: children.updateOne with $max clamp at 0 for mataReward
+          - Line 1388-1389: Fetch updated mataReward from DB
+          - Line 1392-1396: Response includes mataReward ONLY if delta > 0
+          
+          **SPIRITUAL MECHANIC CONFIRMED:**
+          
+          Per code comments (lines 1358-1364):
+          - Positive delta = parent flagging bad behavior → adds dark clouds AND deducts mataReward
+          - Build points (mataBina) are NEVER affected — those are earned through habits, only spent constructing buildings
+          - Negative delta = istighfar cleanse (child cleared a cloud) — only removes the cloud
+          - Istighfar does NOT refund mataReward (spiritual mechanic: seeking forgiveness clears the sin marker but doesn't restore what was already spent)
+          
+          **TEST DATA:**
+          - Created fresh test family + child via seed_test_family.py
+          - Set initial mataReward=50, mataBina=30 for controlled testing
+          - Applied various delta values (positive and negative)
+          - Verified DB state after each operation
+          - All test data cleaned up successfully after each run
+          
+          **TEST SCRIPT:** /app/backend_test_demerit_mata.py (6 comprehensive tests)
+          
+          NO ISSUES FOUND. The mata reward deduction feature is working exactly as specified in the review request.
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      🎉 DEMERIT ENDPOINT MATA REWARD DEDUCTION TESTING COMPLETE - ALL TESTS PASSED (6/6)
+      
+      Tested the NEW mata reward deduction feature in POST /api/world/:childId/demerit endpoint as requested.
+      
+      **FEATURE SUMMARY:**
+      
+      When parent flags bad behavior (positive delta):
+      ✅ Increases demeritCount by N (existing behavior)
+      ✅ **NEW**: Deducts mataReward by N (clamped at 0)
+      ✅ NEVER modifies mataBina (build points)
+      ✅ Returns { ok: true, demeritCount: X, mataReward: Y }
+      
+      When child performs istighfar (negative delta):
+      ✅ Decreases demeritCount by N (removes clouds)
+      ✅ Does NOT refund mataReward (spiritual mechanic)
+      ✅ Response does NOT include mataReward field
+      
+      **ALL TEST CASES PASSED:**
+      
+      ✅ TEST 1: Setup with mataReward=50, mataBina=30
+      ✅ TEST 2: Positive delta=3 → demeritCount=3, mataReward=47, mataBina=30 (unchanged)
+      ✅ TEST 3: Clamp at zero - mataReward=2, delta=5 → mataReward=0 (not negative)
+      ✅ TEST 4: Negative delta=-1 (istighfar) → demeritCount=2, mataReward stays 47 (no refund)
+      ✅ TEST 5: mataBina protection - mataBina unchanged after 3 demerits
+      ✅ TEST 6: Negative clamp on demeritCount - demeritCount=0, delta=-5 → demeritCount=0
+      
+      **KEY FINDINGS:**
+      
+      ✅ Mata reward deduction working correctly (1:1 ratio)
+      ✅ mataReward clamped at floor 0 (cannot go negative)
+      ✅ mataBina NEVER affected by demerits (protection working)
+      ✅ Istighfar removes clouds but does NOT refund mataReward
+      ✅ Response includes mataReward ONLY for positive delta
+      ✅ All aggregation pipeline clamping logic working correctly
+      
+      **SPIRITUAL MECHANIC CONFIRMED:**
+      
+      Per code comments (lines 1358-1364):
+      - Bad behavior → dark clouds + mataReward deduction
+      - Build points (mataBina) earned through habits, only spent on buildings
+      - Istighfar clears sin marker but doesn't restore what was spent
+      
+      **TEST COVERAGE:**
+      - 6 comprehensive test scenarios
+      - Positive delta, negative delta, clamping, mataBina protection
+      - Direct DB verification after each operation
+      - All test data cleaned up successfully
+      
+      **FILES TESTED:**
+      - /app/app/api/[[...path]]/route.js (lines 1356-1397: demerit endpoint)
+      
+      **TEST SCRIPT:** /app/backend_test_demerit_mata.py
+      
+      NO ISSUES FOUND. The mata reward deduction feature is production-ready and working exactly as specified.
+
