@@ -630,11 +630,13 @@ function WorldPageInner() {
       </div>
 
       {/* Beautiful loading splash — shown ONLY on first mount while world
-          data is being fetched. Cycles through motivational Islamic sayings
-          so kids feel invited into the world instead of staring at a blank
-          screen. */}
+          data is being fetched AND the archipelago is closed (archipelago
+          now doubles as the loading screen when it is open, per user
+          feedback: "island map will be the first pages of the world, it
+          become loading pages… go straight to the world without loading
+          anymore"). */}
       <AnimatePresence>
-        {loading && (
+        {loading && !archipelagoOpen && (
           <WorldLoadingScreen key="world-loading" lang={lang} />
         )}
       </AnimatePresence>
@@ -643,17 +645,25 @@ function WorldPageInner() {
           Shown first-visit and when the child taps 🗺️ in the world view.
           Only "Pulau Impianku" is playable; the other 6 slots are generic
           locked placeholders (nama/tema belum diputuskan). Selection is
-          persisted so a page refresh keeps the child on their island. */}
+          persisted so a page refresh keeps the child on their island.
+          Doubles as the loading screen — WorldCanvas renders behind it
+          as soon as worldState hydrates, so the transition into the world
+          is instantaneous (no second loading splash). */}
       <AnimatePresence>
         {archipelagoOpen && (
           <ArchipelagoMap
             key="archipelago"
             lang={lang}
             worldState={worldState}
+            isLoadingWorld={loading}
+            onBack={() => router.push('/kid')}
             onSelectIsland={(id) => {
               setSelectedIslandId(id)
               setArchipelagoOpen(false)
               try { localStorage.setItem('eqrel-selected-island', id) } catch { /* noop */ }
+              // Trigger a dramatic Phaser camera zoom-in the moment the
+              // archipelago fades — feels like descending onto the island.
+              setTimeout(() => setCameraCommand({ action: 'worldEnter', key: Date.now() }), 60)
             }}
           />
         )}
@@ -1918,7 +1928,7 @@ const IstighfarModal = ({ lang, onClose, onComplete }) => {
 // unlocking the next island (criteria: Musalla L3 + 30 buildings + 15
 // rumah minimum). Fully i18n across ms/en/id/ar including RTL Arabic.
 // ═══════════════════════════════════════════════════════════════════════════
-const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
+const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWorld = false }) => {
   const isRTL = lang === 'ar'
   const buildings = worldState?.buildings || []
   const musalla = buildings.find(b => b.templateId === 'musalla')
@@ -1982,19 +1992,35 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
       id: 'Selesaikan Pulau Impianku dulu untuk membuka pulau ini!',
       ar: 'أكمل جزيرة أحلامي أولاً لفتح هذه الجزيرة!',
     },
+    back:        { ms: 'Kembali', en: 'Back',       id: 'Kembali',      ar: 'رجوع' },
+    preparing:   {
+      ms: 'Menyediakan dunia kamu…',
+      en: 'Preparing your world…',
+      id: 'Menyiapkan duniamu…',
+      ar: 'نُهيّئ عالمك…',
+    },
+    zooming: {
+      ms: 'Turun ke pulau…',
+      en: 'Descending to island…',
+      id: 'Turun ke pulau…',
+      ar: 'الهبوط إلى الجزيرة…',
+    },
   }
   const tr = (k, ...args) => {
     const v = L[k]?.[lang] || L[k]?.ms
     return typeof v === 'function' ? v(...args) : v
   }
   const WAYPOINTS = [
-    { id: 'pulau_impianku', x: 50, y: 78, size: 200, locked: false },
-    { id: 'locked_1',       x: 22, y: 63, size: 96,  locked: true },
-    { id: 'locked_2',       x: 76, y: 52, size: 96,  locked: true },
-    { id: 'locked_3',       x: 26, y: 38, size: 92,  locked: true },
-    { id: 'locked_4',       x: 74, y: 26, size: 92,  locked: true },
-    { id: 'locked_5',       x: 30, y: 14, size: 92,  locked: true },
-    { id: 'locked_6',       x: 72, y: 4,  size: 92,  locked: true },
+    // Active island moved UP from y=78 → y=62 so its nameplate no longer
+    // overlaps the fixed progress footer at the bottom (user feedback).
+    // Other 6 locked islands re-flowed above to keep the S-curve trail.
+    { id: 'pulau_impianku', x: 50, y: 66, size: 200, locked: false },
+    { id: 'locked_1',       x: 22, y: 52, size: 96,  locked: true },
+    { id: 'locked_2',       x: 76, y: 42, size: 96,  locked: true },
+    { id: 'locked_3',       x: 26, y: 30, size: 92,  locked: true },
+    { id: 'locked_4',       x: 74, y: 20, size: 92,  locked: true },
+    { id: 'locked_5',       x: 30, y: 10, size: 88,  locked: true },
+    { id: 'locked_6',       x: 72, y: 3,  size: 88,  locked: true },
   ]
   const pathD = WAYPOINTS.map((w, i) => {
     if (i === 0) return `M ${w.x} ${w.y}`
@@ -2005,13 +2031,16 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
   // Zoom-in transition when child taps Pulau Impianku — expand the island
   // then fire the callback so the world scene reveal feels like descent.
   const handleEnterActive = (id) => {
-    if (enteringId) return
+    if (enteringId || isLoadingWorld) return
     setEnteringId(id)
     setTimeout(() => onSelectIsland(id), 900)
   }
   return (
     <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      initial={{ opacity: 0, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 1.35 }}
+      transition={{ duration: 0.65, ease: 'easeInOut' }}
       // FIXED positioning + top z-index — blocks ALL underlying world
       // interactions (user: "pressing anything at this pages still occurs
       // the info of the house build"). Now behaves as a true page.
@@ -2019,18 +2048,35 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
       dir={isRTL ? 'rtl' : 'ltr'}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Sea covers the WHOLE viewport (no gaps top/bottom) */}
+      {/* Sea covers the WHOLE viewport (no gaps, no looping/tiling — user
+          requested a clean "stretch to fit" background). Uses `cover` so the
+          image scales to fill the viewport while preserving aspect ratio. */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: 'url(/assets/archipelago/sea.webp)',
-          backgroundSize: 'clamp(320px, 60vmin, 720px) auto',
-          backgroundRepeat: 'repeat',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
         }}
       />
       <div className="absolute inset-0 pointer-events-none" style={{
         background: 'radial-gradient(ellipse at 50% 45%, transparent 30%, rgba(0,20,45,0.55) 100%)',
       }} />
+
+      {/* Back button — floats at top-left, returns kid to their dashboard.
+          Uses safe-area-inset so it clears iPhone notches. */}
+      {onBack && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onBack() }}
+          className="absolute z-30 top-[max(env(safe-area-inset-top),12px)] left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur border-2 border-amber-400/70 rounded-full px-3 py-1.5 text-amber-100 font-black text-xs shadow-xl active:scale-95"
+          aria-label={tr('back')}
+        >
+          <span className="text-base leading-none">{isRTL ? '→' : '←'}</span>
+          <span>{tr('back')}</span>
+        </button>
+      )}
 
       {/* Header — floats over map, uses safe-area-inset for notched phones */}
       <div className="relative z-20 px-3 pt-[max(env(safe-area-inset-top),12px)] pb-2 text-center flex-shrink-0">
@@ -2078,7 +2124,7 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
                     ease: isEntering ? 'easeIn' : undefined,
                   }}
                   className="relative block group active:scale-95 transition-transform"
-                  style={{ width: 'clamp(150px, 44vmin, 260px)' }}
+                  style={{ width: 'clamp(120px, 34vmin, 200px)' }}
                   aria-label={tr('pulauImpianku')}
                 >
                   <motion.div
@@ -2093,26 +2139,26 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
                     transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
                     draggable={false}
                   />
-                  {/* Nameplate positioned FLUSH with the island bottom (no gap).
-                      Uses absolute + bottom for consistent anchoring across
-                      viewports (user: "text tak position betul dekat pulau"). */}
-                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-4 w-max max-w-[90vw] z-10">
-                    <div className="bg-black/80 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-4 py-1.5 shadow-2xl">
-                      <div className="flex items-center justify-center gap-1.5 mb-0.5">
-                        <span className="bg-amber-300 text-amber-900 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">
-                          ⭐ {tr('active')}
-                        </span>
+                  {/* Nameplate sits ABOVE the island so it can't collide with
+                      the fixed progress footer at the bottom (user feedback:
+                      "text pulau aktif kena overlap dengan progress bar").
+                      Constrained width (max-w-[220px]) prevents it from
+                      spilling sideways into neighbouring locked islands.
+                      Positioned close to island crest with a downward arrow. */}
+                  <div className="absolute left-1/2 -translate-x-1/2 top-[6%] -translate-y-full w-max max-w-[220px] z-10 pointer-events-none">
+                    <div className="bg-black/85 backdrop-blur border-2 border-amber-400/80 rounded-2xl px-3 py-1 shadow-2xl">
+                      <div className="text-amber-200 font-black text-sm drop-shadow leading-tight text-center whitespace-nowrap">
+                        ⭐ {tr('pulauImpianku')}
                       </div>
-                      <div className="text-amber-200 font-black text-sm drop-shadow leading-tight text-center">
-                        {tr('pulauImpianku')}
-                      </div>
-                      <div className="text-white/85 text-[10px] mt-0.5 text-center">
+                      <div className="text-white/80 text-[10px] text-center whitespace-nowrap">
                         {tr('stats', musallaLevel, rumahCount, totalBuildings)}
                       </div>
                       <div className="text-emerald-300 text-[9px] mt-0.5 font-bold italic animate-pulse text-center">
                         👆 {tr('tapToEnter')}
                       </div>
                     </div>
+                    {/* Tiny pointer arrow linking nameplate to island crest */}
+                    <div className="w-3 h-3 bg-black/85 border-r-2 border-b-2 border-amber-400/80 rotate-45 mx-auto -mt-1.5" />
                   </div>
                 </motion.button>
               ) : (
@@ -2176,10 +2222,14 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
           </div>
           <button
             onClick={() => handleEnterActive('pulau_impianku')}
-            disabled={!!enteringId}
+            disabled={!!enteringId || isLoadingWorld}
             className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-emerald-500 text-amber-950 font-black py-3 active:scale-95 shadow-2xl text-base border-2 border-amber-200 disabled:opacity-70"
           >
-            🏝️ {tr('enter')}
+            {enteringId
+              ? `✨ ${tr('zooming')}`
+              : isLoadingWorld
+                ? `⏳ ${tr('preparing')}`
+                : `🏝️ ${tr('enter')}`}
           </button>
         </div>
       </div>

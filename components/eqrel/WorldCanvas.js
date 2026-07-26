@@ -135,6 +135,33 @@ export default function WorldCanvas({
     } else if (cameraCommand.action === 'zoomOut') {
       const next = Math.max(0.3, cam.zoom / 1.15)
       scene.tweens.add({ targets: cam, zoom: next, duration: 200 })
+    } else if (cameraCommand.action === 'worldEnter') {
+      // Dramatic "descend onto the island" effect fired the moment the
+      // Archipelago map closes. Start from a wide, high-altitude view
+      // (zoom 0.35) and tween back to the natural 1.0 with a cinematic
+      // ease so it feels like a plane landing on Pulau Impianku.
+      // (User: "effect camera zooming to the world untuk masuk like
+      //  zooming to the island".)
+      try { cam.setZoom(0.35) } catch { /* not ready */ }
+      // Center on Musalla (if present) so the descent lands on the mosque
+      if (scene.originX != null) {
+        const state = scene.game?.registry?.get('worldState')
+        const musalla = state?.buildings?.find(b => b.templateId === 'musalla')
+        const mx = musalla ? musalla.x : 17
+        const my = musalla ? musalla.y : 17
+        const sx = scene.originX + (mx - my) * TILE_W / 2
+        const sy = scene.originY + (mx + my) * TILE_H / 2
+        scene.tweens.add({
+          targets: cam,
+          scrollX: sx - cam.width / (2 * 1.0),
+          scrollY: sy - cam.height / (2 * 1.0),
+          zoom: 1.0,
+          duration: 1100,
+          ease: 'Cubic.easeOut',
+        })
+      } else {
+        scene.tweens.add({ targets: cam, zoom: 1.0, duration: 1100, ease: 'Cubic.easeOut' })
+      }
     } else if (cameraCommand.action === 'center') {
       // Center on Musalla's actual position (falls back to anchor)
       if (scene.originX != null) {
