@@ -129,6 +129,10 @@ function WorldPageInner() {
   // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
   const [landmarkCelebration, setLandmarkCelebration] = useState(null)
   const [autoUpgradeCelebration, setAutoUpgradeCelebration] = useState(null)
+  // Construction sequel — after the AutoUpgrade popup closes, show a 10s
+  // scaffolding + progress ceremony so kids see the "wow" moment of the
+  // Musalla physically becoming a bigger Masjid.
+  const [upgradeConstruction, setUpgradeConstruction] = useState(null)
   // Move confirmation: shown after the child drops a building on a new cell.
   // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
   // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
@@ -585,7 +589,7 @@ function WorldPageInner() {
   // tile hit-zone or a sidebar variant tile underneath them. Includes ALL
   // types of overlays that block gameplay.
   const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
-                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration
+                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration || !!upgradeConstruction
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -893,7 +897,24 @@ function WorldPageInner() {
             key={`upg-${autoUpgradeCelebration.buildingId}-${autoUpgradeCelebration.toLevel}`}
             upgrade={autoUpgradeCelebration}
             lang={lang}
-            onClose={() => setAutoUpgradeCelebration(null)}
+            onClose={() => {
+              // Chain into 10-second construction ceremony so the child sees
+              // the Masjid physically "being built" — creates the wow moment
+              // the user asked for (upgrade dari L1→L2 tak feel enough).
+              setUpgradeConstruction({
+                fromLevel: (autoUpgradeCelebration.toLevel || 2) - 1,
+                toLevel: autoUpgradeCelebration.toLevel,
+              })
+              setAutoUpgradeCelebration(null)
+            }}
+          />
+        )}
+        {upgradeConstruction && (
+          <UpgradeConstructionOverlay
+            key={`constr-${upgradeConstruction.toLevel}`}
+            upgrade={upgradeConstruction}
+            lang={lang}
+            onClose={() => setUpgradeConstruction(null)}
           />
         )}
       </AnimatePresence>
@@ -1358,7 +1379,9 @@ const WorldLoadingScreen = ({ lang = 'ms' }) => {
 const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
   const isRTL = lang === 'ar'
   useEffect(() => {
-    const timer = setTimeout(onClose, 6500)
+    // Extended to 5.5s so kids have time to read; construction overlay
+    // handles the follow-up 10-second wow moment when this closes.
+    const timer = setTimeout(onClose, 5500)
     return () => clearTimeout(timer)
   }, [onClose])
   const HEADLINES = {
@@ -1400,7 +1423,12 @@ const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
   const headline = HEADLINES[level]?.[lang] || HEADLINES[level]?.ms
   const reason = (REASONS[level]?.[lang] || REASONS[level]?.ms)?.(rumahCount)
   const contrib = CONTRIB[lang] || CONTRIB.ms
-  const icon = level === 3 ? '🕌' : '🕋'
+  // Show the ACTUAL upgraded building — Masjid L2 or Jami' Masjid L3 PNG,
+  // not the generic Kaabah emoji. Gives child a concrete "before/after"
+  // feel of what their Musalla just became.
+  const upgradedSprite = level === 3
+    ? '/assets/world/masjid_l3.webp'
+    : '/assets/world/masjid_l2.webp'
   const tierLabel = level === 3
     ? ({ ms: 'JAMI\u2019 MASJID · L3', en: 'GRAND MOSQUE · L3', id: 'MASJID JAMI\u2019 · L3', ar: 'جامع · L3' }[lang] || 'JAMI\u2019 MASJID · L3')
     : ({ ms: 'MASJID · L2', en: 'MASJID · L2', id: 'MASJID · L2', ar: 'مسجد · L2' }[lang] || 'MASJID · L2')
@@ -1422,12 +1450,19 @@ const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
           backgroundImage: 'repeating-conic-gradient(from 0deg, transparent 0deg 10deg, rgba(255,183,3,0.35) 10deg 20deg)',
         }} />
         <div className="relative">
+          {/* Actual upgraded masjid PNG — replaces the old 🕋 emoji so the
+              child sees precisely which building tier just came online. */}
           <motion.div
-            className="text-7xl mb-2"
-            animate={{ y: [0, -6, 0], rotate: [0, 3, -3, 0] }}
-            transition={{ duration: 1.8, repeat: Infinity }}
+            className="mx-auto mb-3 h-32 w-32 flex items-end justify-center"
+            animate={{ y: [0, -8, 0], rotate: [0, 2, -2, 0] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
           >
-            {icon}
+            <img
+              src={upgradedSprite}
+              alt={tierLabel}
+              className="max-h-32 max-w-32 object-contain drop-shadow-2xl"
+              draggable={false}
+            />
           </motion.div>
           <div className="text-xs uppercase tracking-widest font-black text-amber-700 mb-2">
             ⭐ AUTO UPGRADE · {tierLabel}
@@ -1443,6 +1478,125 @@ const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
           </div>
           <div className="text-[10px] text-emerald-700/60 mt-4 uppercase tracking-wider">
             {lang === 'ar' ? 'انقر للمتابعة' : lang === 'en' ? 'Tap to continue' : lang === 'id' ? 'Ketuk untuk lanjut' : 'Tekan untuk teruskan'}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UpgradeConstructionOverlay — 10-second construction ceremony that runs
+// AFTER the AutoUpgradeCelebration popup closes. Child sees a scaffolding
+// scene + progress bar counting up to 100% while the "old" Musalla morphs
+// into the "new" Masjid.
+// Timeline (10s total):
+//   0-2.5s : scaffolding zooms in, old asset shown, "Menaik taraf..." text
+//   2.5-8s : progress bar fills, sparks fly, "🔨🪚⚒️" bounce
+//   8-10s  : reveal — old fades, new upgraded PNG scales in with glow
+// ═══════════════════════════════════════════════════════════════════════════
+const UpgradeConstructionOverlay = ({ upgrade, lang, onClose }) => {
+  const isRTL = lang === 'ar'
+  const TOTAL_MS = 10000
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => {
+      const elapsed = Date.now() - start
+      const pct = Math.min(100, (elapsed / TOTAL_MS) * 100)
+      setProgress(pct)
+      if (elapsed >= TOTAL_MS) {
+        clearInterval(id)
+        setTimeout(onClose, 800)
+      }
+    }, 60)
+    return () => clearInterval(id)
+  }, [onClose])
+  const revealed = progress >= 80
+  const fromLevel = upgrade.fromLevel || 1
+  const toLevel = upgrade.toLevel || 2
+  const beforeSrc = fromLevel === 2 ? '/assets/world/masjid_l2.webp' : '/assets/world/musalla.webp'
+  const afterSrc  = toLevel === 3 ? '/assets/world/masjid_l3.webp'  : '/assets/world/masjid_l2.webp'
+  const L = {
+    building: { ms: 'Menaik taraf Musalla...', en: 'Upgrading the Musalla...', id: 'Meningkatkan Musalla...', ar: 'يجري ترقية المصلى...' },
+    almost:   { ms: 'Hampir siap!', en: 'Almost done!', id: 'Hampir selesai!', ar: 'كاد ينتهي!' },
+    done:     { ms: 'Alhamdulillah, siap!', en: 'Alhamdulillah, complete!', id: 'Alhamdulillah, selesai!', ar: 'الحمد لله، اكتمل!' },
+    subtitle: { ms: `Level ${fromLevel} → Level ${toLevel}`, en: `Level ${fromLevel} → Level ${toLevel}`, id: `Level ${fromLevel} → Level ${toLevel}`, ar: `المستوى ${fromLevel} ← المستوى ${toLevel}` },
+  }
+  const tr = (k) => L[k][lang] || L[k].ms
+  const label = progress >= 100 ? tr('done') : progress >= 80 ? tr('almost') : tr('building')
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[97] flex items-center justify-center p-6 pointer-events-none"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(6,63,54,0.75) 0%, rgba(0,0,0,0.85) 100%)' }}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+        className="max-w-md w-full bg-gradient-to-br from-amber-50 via-orange-50 to-emerald-50 border-4 border-amber-500 rounded-3xl p-6 text-center shadow-2xl relative overflow-hidden"
+      >
+        <div
+          className="absolute inset-0 opacity-25 pointer-events-none"
+          style={{
+            backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0px, #f59e0b 10px, transparent 10px, transparent 20px)',
+          }}
+        />
+        <div className="relative">
+          <div className="flex justify-center gap-3 mb-3 text-3xl">
+            <motion.span animate={{ y: [0, -6, 0], rotate: [0, -8, 0] }} transition={{ duration: 0.7, repeat: Infinity }}>🔨</motion.span>
+            <motion.span animate={{ y: [0, -6, 0], rotate: [0, 8, 0]  }} transition={{ duration: 0.7, repeat: Infinity, delay: 0.15 }}>🪚</motion.span>
+            <motion.span animate={{ y: [0, -6, 0], rotate: [0, -8, 0] }} transition={{ duration: 0.7, repeat: Infinity, delay: 0.3 }}>⚒️</motion.span>
+          </div>
+          <div className="relative mx-auto h-40 w-40 mb-4 flex items-end justify-center">
+            <motion.div
+              className="absolute inset-0 rounded-full bg-amber-200/50 blur-2xl"
+              animate={{ scale: [0.8, 1.15, 0.8], opacity: [0.6, 0.9, 0.6] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+            />
+            <motion.img
+              src={beforeSrc}
+              alt="before"
+              className="absolute max-h-40 max-w-40 object-contain"
+              animate={{ opacity: revealed ? 0 : 0.55, scale: revealed ? 0.9 : 1 }}
+              transition={{ duration: 0.6 }}
+              draggable={false}
+            />
+            <motion.img
+              src={afterSrc}
+              alt="after"
+              className="absolute max-h-40 max-w-40 object-contain drop-shadow-2xl"
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{
+                opacity: revealed ? 1 : 0,
+                scale: revealed ? 1 : 0.6,
+                y: revealed ? [0, -4, 0] : 0,
+              }}
+              transition={{ duration: 0.8, y: { duration: 1.6, repeat: Infinity } }}
+              draggable={false}
+            />
+          </div>
+          <div className="relative w-full h-4 bg-emerald-100 rounded-full overflow-hidden border border-emerald-300 mb-2">
+            <div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-400 via-emerald-400 to-emerald-600"
+              style={{ width: `${progress}%`, transition: 'width 60ms linear' }}
+            />
+            <motion.div
+              className="absolute inset-y-0 w-8 bg-white/30 blur-md"
+              animate={{ left: ['-10%', '110%'] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+            />
+          </div>
+          <div className="text-xs font-bold text-emerald-800 mb-3">
+            {Math.round(progress)}%
+          </div>
+          <div className="text-xs uppercase tracking-widest font-black text-amber-700 mb-1">
+            🚧 {tr('subtitle')}
+          </div>
+          <div className="text-base font-black text-emerald-900">
+            {label}
           </div>
         </div>
       </motion.div>
