@@ -956,6 +956,10 @@ const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
 const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) => {
   const t = BUILDING_TEMPLATES[templateId]
   const isRTL = lang === 'ar'
+  // Prefer the actual illustrated PNG over the fallback emoji so the child
+  // sees the exact building/orchard art they're about to construct — a
+  // stronger "Bismillah" moment than a generic 🏠 or 🌴 icon.
+  const spriteSrc = t?.spriteAsset
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -967,7 +971,18 @@ const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) 
         initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
         className="max-w-md w-full bg-white rounded-3xl p-6 text-center shadow-2xl"
       >
-        <div className="text-6xl mb-2">{t?.icon}</div>
+        {spriteSrc ? (
+          <div className="mx-auto mb-3 h-24 w-24 flex items-end justify-center">
+            <img
+              src={spriteSrc}
+              alt={t?.name?.[lang] || t?.name?.ms || templateId}
+              className="max-h-24 max-w-24 object-contain drop-shadow-md"
+              draggable={false}
+            />
+          </div>
+        ) : (
+          <div className="text-6xl mb-2">{t?.icon}</div>
+        )}
         <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
           {isUpgrade ? l('upgradeTitle', lang) : l('bermulaBina', lang)} {t?.name[lang] || t?.name.ms}
         </div>
@@ -1019,6 +1034,7 @@ const BuildingProgressOverlay = ({ lang = 'ms' }) => (
 const AlhamdulillahOverlay = ({ templateId, lang }) => {
   const t = BUILDING_TEMPLATES[templateId]
   const isRTL = lang === 'ar'
+  const spriteSrc = t?.spriteAsset
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
@@ -1026,7 +1042,35 @@ const AlhamdulillahOverlay = ({ templateId, lang }) => {
       dir={isRTL ? 'rtl' : 'ltr'}
     >
       <div className="max-w-md w-full bg-gradient-to-br from-amber-100 to-emerald-100 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl">
-        <div className="text-6xl mb-2">✨</div>
+        {spriteSrc ? (
+          // Real asset surrounded by celebratory sparkles — child sees exactly
+          // what they've just built rather than a generic ✨ emoji.
+          <div className="relative mx-auto mb-2 h-28 w-28 flex items-end justify-center">
+            <motion.span
+              className="absolute top-0 left-0 text-2xl"
+              animate={{ scale: [0.8, 1.2, 0.8], rotate: [0, 15, 0] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+            >✨</motion.span>
+            <motion.span
+              className="absolute top-2 right-0 text-xl"
+              animate={{ scale: [1.2, 0.8, 1.2], rotate: [0, -20, 0] }}
+              transition={{ duration: 2.1, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+            >✨</motion.span>
+            <motion.span
+              className="absolute bottom-0 right-2 text-lg"
+              animate={{ scale: [0.9, 1.3, 0.9] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+            >✨</motion.span>
+            <img
+              src={spriteSrc}
+              alt={t?.name?.[lang] || t?.name?.ms || templateId}
+              className="max-h-28 max-w-28 object-contain drop-shadow-lg"
+              draggable={false}
+            />
+          </div>
+        ) : (
+          <div className="text-6xl mb-2">✨</div>
+        )}
         <div className="text-xs uppercase tracking-widest font-black text-amber-600 mb-1">
           {t?.name[lang] || t?.name.ms} {l('siap', lang)}
         </div>
