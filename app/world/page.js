@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Sparkles, Package, Volume2, VolumeX } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -99,6 +99,10 @@ function WorldPageInner() {
   const { lang } = useLang()  // Follow user's global language toggle
   const [child, setChild] = useState(null)
   const [worldState, setWorldState] = useState(null)
+  // Ref that mirrors worldState — used to detect "first load" inside load()
+  // without adding worldState as a dependency of the useCallback (which would
+  // trigger a re-fetch on every state change and cause infinite loops).
+  const worldStateRef = useRef(null)
   const [loading, setLoading] = useState(true)
 
   // Onboarding shown ONLY once per child, persisted to localStorage
@@ -199,14 +203,22 @@ function WorldPageInner() {
   // ─── Load world ───────────────────────────────────────────
   const load = useCallback(async () => {
     if (!childId) return
-    setLoading(true)
+    // Only flip `loading` to true on the FIRST fetch (when we have no world
+    // state yet). Subsequent refreshes (after build/move/upgrade) MUST NOT
+    // unmount the WorldCanvas — that would destroy the Phaser game and reset
+    // camera scroll to the default Musalla-centered view. Instead we quietly
+    // refetch and setWorldState which nudges Phaser via registry sync.
+    // (User: "camera masih jump selepas popup alhamdulillah siap binaan
+    //  baru" — this was the root cause.)
+    const isFirstLoad = !worldStateRef.current
+    if (isFirstLoad) setLoading(true)
     try {
       const r = await fetch(`/api/world/${childId}`, { credentials: 'include' })
       if (r.ok) {
         const data = await r.json()
         setWorldState(data.world)
+        worldStateRef.current = data.world
         setChild(data.child)
-        // If no musalla yet, show onboarding (first visit)
         const hasMusalla = (data.world.buildings || []).some(b => b.templateId === 'musalla')
         if (!hasMusalla) {
           const seen = typeof window !== 'undefined' &&
@@ -214,7 +226,7 @@ function WorldPageInner() {
           if (!seen) setShowOnboarding(true)
         }
       }
-    } finally { setLoading(false) }
+    } finally { if (isFirstLoad) setLoading(false) }
   }, [childId])
   useEffect(() => { load() }, [load])
 
