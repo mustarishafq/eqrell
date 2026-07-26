@@ -1137,10 +1137,10 @@ const AutoUpgradeCelebrationOverlay = ({ upgrade, lang, onClose }) => {
   }
   const REASONS = {
     2: {
-      ms: (n) => `Kamu sudah bina ${n} buah rumah. Jemaah semakin ramai — Allah gembira melihat komuniti kamu berkembang!`,
-      en: (n) => `You've built ${n} homes. The jamaah grows — Allah is pleased with your growing community!`,
-      id: (n) => `Kamu sudah membangun ${n} rumah. Jemaah makin banyak — Allah senang melihat komunitas kamu berkembang!`,
-      ar: (n) => `لقد بنيتَ ${n} بيوت. الجماعة تنمو — الله يحبّ نموّ مجتمعكم!`,
+      ms: (n) => `Kamu sudah bina ${n} buah rumah. Jemaah semakin ramai — kampung kamu semakin diberkati dengan pembangunan agama!`,
+      en: (n) => `You've built ${n} homes. The jamaah grows — your community is filled with the blessings of a growing deen!`,
+      id: (n) => `Kamu sudah membangun ${n} rumah. Jemaah makin banyak — kampung kamu semakin diberkati oleh perkembangan agama!`,
+      ar: (n) => `لقد بنيتَ ${n} بيوت. الجماعة تنمو — قريتكم مباركة بنموّ الدين!`,
     },
     3: {
       ms: (n) => `Kamu sudah bina ${n} buah rumah — kampung ini kini komuniti besar. Jami\u2019 Masjid dibina untuk menyatukan semua ahli jemaah!`,
