@@ -1933,10 +1933,10 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
   const L = {
     title:      { ms: 'Peta Kepulauan Iman', en: 'Islands of Iman Map',       id: 'Peta Kepulauan Iman', ar: 'خريطة جزر الإيمان' },
     subtitle:   {
-      ms: 'Ikuti laluan. Setiap pulau menanti kamu — buat baik untuk buka pulau seterusnya.',
+      ms: 'Ikuti laluan. Setiap pulau menanti — buat baik untuk buka pulau seterusnya.',
       en: 'Follow the path. Each island awaits — keep doing good to unlock the next.',
-      id: 'Ikuti jalur. Setiap pulau menunggu — terus berbuat baik untuk membuka pulau berikut.',
-      ar: 'اتبع المسار. كل جزيرة تنتظر — استمر في فعل الخير لفتح التالية.',
+      id: 'Ikuti jalur. Setiap pulau menunggu — teruslah berbuat baik.',
+      ar: 'اتبع المسار. كل جزيرة تنتظر — استمر في فعل الخير.',
     },
     active:     { ms: 'AKTIF', en: 'ACTIVE', id: 'AKTIF', ar: 'نشط' },
     locked:     { ms: 'Terkunci', en: 'Locked', id: 'Terkunci', ar: 'مغلق' },
@@ -1961,26 +1961,31 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
       id: (m, r, b) => `Musalla L${m} · ${r} rumah · ${b} bangunan`,
       ar: (m, r, b) => `مصلى ل${m} · ${r} بيوت · ${b} مباني`,
     },
+    tapToEnter: {
+      ms: 'Tekan untuk masuk',
+      en: 'Tap to enter',
+      id: 'Ketuk untuk masuk',
+      ar: 'اضغط للدخول',
+    },
   }
   const tr = (k, ...args) => {
     const v = L[k]?.[lang] || L[k]?.ms
     return typeof v === 'function' ? v(...args) : v
   }
-  // ─── 7 waypoints along a winding S-curve treasure-map journey ─────
-  // Coordinates normalized [0,100] % for both x and y so responsiveness
-  // is automatic. First waypoint (Pulau Impianku) is at the bottom-front
-  // (start of journey), 6 locked islands snake upward through the ocean.
-  // Coordinates authored to feel like a hand-drawn adventure map.
+  // ─── 7 waypoints along a winding treasure-hunt journey ─────────────
+  // Coordinates in % of the CANVAS (between header + footer). Pulau
+  // Impianku sits at the FOREGROUND (bottom-front, larger) as the start
+  // of the journey; 6 locked islands snake upward in a hand-drawn zigzag.
   const WAYPOINTS = [
-    { id: 'pulau_impianku', x: 50, y: 82, size: 26, locked: false },
-    { id: 'locked_1',       x: 22, y: 68, size: 16, locked: true },
-    { id: 'locked_2',       x: 72, y: 56, size: 16, locked: true },
-    { id: 'locked_3',       x: 28, y: 44, size: 15, locked: true },
-    { id: 'locked_4',       x: 78, y: 32, size: 15, locked: true },
-    { id: 'locked_5',       x: 34, y: 22, size: 15, locked: true },
-    { id: 'locked_6',       x: 72, y: 12, size: 15, locked: true },
+    { id: 'pulau_impianku', x: 50, y: 78, size: 200, locked: false },
+    { id: 'locked_1',       x: 22, y: 66, size: 96,  locked: true },
+    { id: 'locked_2',       x: 74, y: 55, size: 96,  locked: true },
+    { id: 'locked_3',       x: 26, y: 44, size: 92,  locked: true },
+    { id: 'locked_4',       x: 76, y: 32, size: 92,  locked: true },
+    { id: 'locked_5',       x: 30, y: 20, size: 92,  locked: true },
+    { id: 'locked_6',       x: 72, y: 10, size: 92,  locked: true },
   ]
-  // Cubic path between waypoints — treasure map dotted line.
+  // Cubic-quadratic path for the treasure-map dotted line.
   const pathD = WAYPOINTS.map((w, i) => {
     if (i === 0) return `M ${w.x} ${w.y}`
     const prev = WAYPOINTS[i - 1]
@@ -1992,56 +1997,57 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-[85] flex flex-col overflow-hidden"
       dir={isRTL ? 'rtl' : 'ltr'}
-      style={{
-        // Warm parchment-inspired tropical ocean — treasure map feel.
-        background: 'radial-gradient(ellipse at 50% 30%, #4a92c9 0%, #2a6da8 40%, #1a4c7f 100%)',
-      }}
     >
-      {/* Parchment-style vignette + subtle noise for treasure-map aesthetic */}
+      {/* Sea background — tiled full-screen from user asset */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'url(/assets/archipelago/sea.webp)',
+          backgroundSize: '600px auto',
+          backgroundRepeat: 'repeat',
+        }}
+      />
+      {/* Subtle vignette to focus the eye on the journey */}
       <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.35) 100%)',
+        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,30,60,0.5) 100%)',
       }} />
-      {/* Wave ripples (SVG defs) */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
-        <defs>
-          <pattern id="waves" x="0" y="0" width="120" height="24" patternUnits="userSpaceOnUse">
-            <path d="M0 12 Q 30 4 60 12 T 120 12" stroke="rgba(255,255,255,0.09)" strokeWidth="1.4" fill="none"/>
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#waves)" />
-      </svg>
 
-      {/* Header — compact, floats over map */}
+      {/* Header */}
       <div className="relative z-20 px-4 pt-3 pb-2 text-center flex-shrink-0">
-        <div className="text-amber-300 text-[10px] uppercase tracking-widest font-black mb-0.5 drop-shadow-md">
-          🗺️ {tr('title')}
-        </div>
-        <div className="text-white/85 text-[11px] max-w-md mx-auto leading-tight drop-shadow">
+        <motion.div
+          initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.1, type: 'spring', damping: 20 }}
+          className="inline-block bg-amber-950/80 backdrop-blur border-2 border-amber-400/70 rounded-full px-4 py-1.5 shadow-lg"
+        >
+          <div className="text-amber-300 text-[11px] uppercase tracking-widest font-black drop-shadow-md">
+            🗺️ {tr('title')}
+          </div>
+        </motion.div>
+        <div className="text-white/90 text-[11px] max-w-md mx-auto leading-tight mt-2 drop-shadow-md font-medium">
           {tr('subtitle')}
         </div>
       </div>
 
-      {/* Journey canvas — flex-1 fills between header + footer, responsive.
-          Portrait vs landscape both work because we use % positioning. */}
+      {/* Journey canvas — dashed path + island assets */}
       <div className="relative flex-1 min-h-0">
-        {/* Treasure-map dashed path connecting all 7 waypoints */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
           <path
             d={pathD}
-            stroke="rgba(255, 220, 130, 0.85)"
-            strokeWidth="0.6"
-            strokeDasharray="1.8 1.4"
+            stroke="rgba(255, 235, 150, 0.9)"
+            strokeWidth="0.55"
+            strokeDasharray="1.5 1.3"
             fill="none"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
-            style={{ filter: 'drop-shadow(0 0 6px rgba(255,220,130,0.4))' }}
+            style={{ filter: 'drop-shadow(0 0 8px rgba(255,220,120,0.6))' }}
           />
         </svg>
 
-        {/* Waypoint islands. Positioned in % so they scale for any orientation. */}
-        {WAYPOINTS.map((wp, i) => {
+        {WAYPOINTS.map((wp) => {
           const isActive = !wp.locked
-          const isFirst = i === 0
+          const src = isActive
+            ? '/assets/archipelago/pulau_impian.webp'
+            : '/assets/archipelago/lock_island.webp'
           return (
             <div
               key={wp.id}
@@ -2051,153 +2057,105 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
               {isActive ? (
                 <motion.button
                   onClick={() => onSelectIsland(wp.id)}
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  initial={{ scale: 0.6, opacity: 0, y: 30 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 180, damping: 18, delay: 0.2 }}
                   className="relative block group active:scale-95 transition-transform"
-                  style={{ width: `${wp.size * 3}vmin`, maxWidth: 220, minWidth: 140 }}
+                  style={{ width: `min(${wp.size}px, 42vmin)` }}
+                  aria-label={tr('pulauImpianku')}
                 >
-                  {/* Pulsing water halo */}
+                  {/* Golden pulsing halo behind the island */}
                   <motion.div
-                    className="absolute inset-0 rounded-full bg-amber-400/30 blur-2xl"
-                    animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.8, 0.4] }}
+                    className="absolute inset-x-0 top-1/4 h-3/4 rounded-full bg-amber-300/30 blur-3xl pointer-events-none"
+                    animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.8, 0.4] }}
                     transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                   />
-                  <IslandShape size="lg" active />
-                  <div className="mt-1 text-center relative z-10">
-                    <div className="inline-block bg-amber-300 text-amber-900 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shadow-md">
-                      ⭐ {tr('active')}
-                    </div>
-                    <div className="text-white font-black text-base mt-1 drop-shadow-lg">
-                      {tr('pulauImpianku')}
-                    </div>
-                    <div className="text-amber-100/90 text-[10px] mt-0.5 drop-shadow">
-                      {tr('stats', musallaLevel, rumahCount, totalBuildings)}
+                  {/* Gentle bob animation on the island itself */}
+                  <motion.img
+                    src={src}
+                    alt={tr('pulauImpianku')}
+                    className="relative w-full h-auto object-contain drop-shadow-2xl"
+                    animate={{ y: [0, -6, 0] }}
+                    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                    draggable={false}
+                  />
+                  {/* Nameplate — sits below the island with title, stats & CTA */}
+                  <div className="text-center -mt-4 relative z-10">
+                    <div className="inline-block bg-black/75 backdrop-blur border-2 border-amber-400/70 rounded-2xl px-4 py-1.5 shadow-2xl">
+                      <div className="flex items-center justify-center gap-1.5 mb-0.5">
+                        <span className="bg-amber-300 text-amber-900 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">
+                          ⭐ {tr('active')}
+                        </span>
+                      </div>
+                      <div className="text-amber-200 font-black text-sm drop-shadow leading-tight">
+                        {tr('pulauImpianku')}
+                      </div>
+                      <div className="text-white/85 text-[10px] mt-0.5">
+                        {tr('stats', musallaLevel, rumahCount, totalBuildings)}
+                      </div>
+                      <div className="text-emerald-300 text-[9px] mt-0.5 font-bold italic animate-pulse">
+                        👆 {tr('tapToEnter')}
+                      </div>
                     </div>
                   </div>
                 </motion.button>
               ) : (
-                <div
-                  className="relative block opacity-70"
-                  style={{ width: `${wp.size * 2.4}vmin`, maxWidth: 140, minWidth: 84 }}
+                <motion.div
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 0.85 }}
+                  transition={{ delay: 0.3 + (wp.x + wp.y) * 0.005 }}
+                  className="relative block"
+                  style={{ width: `min(${wp.size}px, 22vmin)` }}
                 >
-                  <IslandShape size="sm" active={false} />
-                  <div className="mt-1 text-center">
-                    <div className="text-white/80 text-[9px] font-black uppercase tracking-wider drop-shadow">
-                      🔒 {tr('locked')}
-                    </div>
-                    <div className="text-white/60 text-[9px] mt-0.5">
-                      {tr('comingSoon')}
+                  <img
+                    src={src}
+                    alt={tr('locked')}
+                    className="w-full h-auto object-contain drop-shadow-xl"
+                    draggable={false}
+                  />
+                  <div className="text-center mt-0.5">
+                    <div className="inline-block bg-slate-900/70 backdrop-blur border border-slate-500/50 rounded-full px-2 py-0.5">
+                      <div className="text-white/70 text-[9px] font-black uppercase tracking-wider">
+                        🔒 {tr('comingSoon')}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )}
             </div>
           )
         })}
       </div>
 
-      {/* Progress footer — sticky bottom, compact on mobile */}
+      {/* Progress footer */}
       <div className="relative z-20 px-4 pb-4 pt-2 flex-shrink-0">
         <div className="max-w-md mx-auto">
-          <div className="bg-black/40 backdrop-blur border border-amber-400/50 rounded-2xl px-4 py-2.5">
+          <div className="bg-black/60 backdrop-blur border-2 border-amber-400/60 rounded-2xl px-4 py-2.5 shadow-2xl">
             <div className="flex items-center justify-between mb-1.5">
-              <div className="text-white/85 text-[10px] uppercase tracking-wider font-bold">
+              <div className="text-amber-200 text-[10px] uppercase tracking-wider font-black">
                 {tr('pulauImpianku')}
               </div>
-              <div className="text-amber-300 text-sm font-black">{overallPct}%</div>
+              <div className="text-amber-300 text-base font-black">{overallPct}%</div>
             </div>
-            <div className="relative w-full h-2.5 bg-slate-900/60 rounded-full overflow-hidden border border-slate-500/40">
+            <div className="relative w-full h-2.5 bg-slate-900/70 rounded-full overflow-hidden border border-slate-500/40">
               <div
                 className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
                 style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }}
               />
             </div>
-            <div className="text-white/70 text-[10px] mt-1.5 leading-tight text-center">
+            <div className="text-white/80 text-[10px] mt-1.5 leading-tight text-center">
               {readyToHijrah ? `🎉 ${tr('hijrahReady')}` : tr('progressLabel')}
             </div>
           </div>
           <button
             onClick={() => onSelectIsland('pulau_impianku')}
-            className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-emerald-500 text-white font-black py-3 active:scale-95 shadow-xl text-base"
+            className="mt-2.5 w-full rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-emerald-500 text-amber-950 font-black py-3 active:scale-95 shadow-2xl text-base border-2 border-amber-200"
           >
             🏝️ {tr('enter')}
           </button>
         </div>
       </div>
     </motion.div>
-  )
-}
-
-// ─── IslandShape — hand-drawn tropical island rendered as inline SVG ─────
-// Organic sandy beach base + green top + palm trees. Two variants:
-//   • active — vibrant colors, 3 palm trees, tiny mosque dome
-//   • locked — desaturated + fog overlay, no landmarks
-const IslandShape = ({ size = 'lg', active = false }) => {
-  return (
-    <svg
-      viewBox="0 0 120 90"
-      className="w-full h-auto"
-      style={{ filter: active ? 'drop-shadow(0 6px 14px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))' }}
-    >
-      <defs>
-        <radialGradient id={`grd-sand-${active}`} cx="50%" cy="60%" r="70%">
-          <stop offset="0%" stopColor={active ? '#fde68a' : '#94a3b8'} />
-          <stop offset="60%" stopColor={active ? '#f59e0b' : '#64748b'} />
-          <stop offset="100%" stopColor={active ? '#b45309' : '#334155'} />
-        </radialGradient>
-        <radialGradient id={`grd-grass-${active}`} cx="50%" cy="40%" r="60%">
-          <stop offset="0%" stopColor={active ? '#86efac' : '#6b7d92'} />
-          <stop offset="70%" stopColor={active ? '#22c55e' : '#4b5c72'} />
-          <stop offset="100%" stopColor={active ? '#166534' : '#334155'} />
-        </radialGradient>
-      </defs>
-      {/* Sandy beach base (irregular blob) */}
-      <path
-        d="M 12 68 Q 6 60 18 54 Q 10 44 26 42 Q 30 30 48 34 Q 52 24 68 30 Q 88 26 96 40 Q 112 44 108 58 Q 118 66 106 74 Q 100 84 82 82 Q 68 88 54 82 Q 36 88 22 80 Q 8 78 12 68 Z"
-        fill={`url(#grd-sand-${active})`}
-      />
-      {/* Green grass patch on top */}
-      <path
-        d="M 22 60 Q 20 46 34 44 Q 40 34 54 38 Q 62 32 74 40 Q 88 40 90 52 Q 96 60 86 66 Q 74 72 60 68 Q 44 74 32 68 Q 20 68 22 60 Z"
-        fill={`url(#grd-grass-${active})`}
-      />
-      {active && (
-        <>
-          {/* Central mosque dome */}
-          <ellipse cx="60" cy="52" rx="5" ry="4" fill="#fef3c7" />
-          <rect x="57" y="52" width="6" height="6" fill="#fef3c7" />
-          <circle cx="60" cy="48" r="3.5" fill="#fbbf24" />
-          <line x1="60" y1="45" x2="60" y2="41" stroke="#fbbf24" strokeWidth="0.6"/>
-          {/* Palm trees (3, scattered) */}
-          {[
-            { cx: 38, cy: 56 },
-            { cx: 82, cy: 54 },
-            { cx: 48, cy: 46 },
-          ].map((p, i) => (
-            <g key={i}>
-              <rect x={p.cx - 0.6} y={p.cy - 1} width="1.2" height="6" fill="#78350f" />
-              <ellipse cx={p.cx - 2.5} cy={p.cy - 2} rx="3" ry="1.4" fill="#16a34a" />
-              <ellipse cx={p.cx + 2.5} cy={p.cy - 2} rx="3" ry="1.4" fill="#16a34a" />
-              <ellipse cx={p.cx} cy={p.cy - 3.6} rx="1.6" ry="3" fill="#22c55e" />
-            </g>
-          ))}
-        </>
-      )}
-      {!active && (
-        <>
-          {/* Fog overlay for locked islands */}
-          <path
-            d="M 12 68 Q 6 60 18 54 Q 10 44 26 42 Q 30 30 48 34 Q 52 24 68 30 Q 88 26 96 40 Q 112 44 108 58 Q 118 66 106 74 Q 100 84 82 82 Q 68 88 54 82 Q 36 88 22 80 Q 8 78 12 68 Z"
-            fill="rgba(180,190,210,0.55)"
-          />
-          {/* Padlock icon in center */}
-          <text x="60" y="60" fontSize="12" textAnchor="middle" opacity="0.85">🔒</text>
-        </>
-      )}
-      {/* Wave ring around beach (subtle) */}
-      <ellipse cx="60" cy="76" rx="52" ry="6" fill="rgba(255,255,255,0.18)" />
-    </svg>
   )
 }
 
