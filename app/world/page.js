@@ -604,6 +604,16 @@ function WorldPageInner() {
         )}
       </div>
 
+      {/* Beautiful loading splash — shown ONLY on first mount while world
+          data is being fetched. Cycles through motivational Islamic sayings
+          so kids feel invited into the world instead of staring at a blank
+          screen. */}
+      <AnimatePresence>
+        {loading && (
+          <WorldLoadingScreen key="world-loading" lang={lang} />
+        )}
+      </AnimatePresence>
+
       {/* Move confirmation card — floats near destination cell when child
           drops a dragged building. Prevents accidental relocations. */}
       {moveConfirmation && (
@@ -1115,6 +1125,149 @@ const LandmarkCelebrationOverlay = ({ landmark, lang, onClose }) => {
           </div>
         </div>
       </motion.div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WorldLoadingScreen — full-viewport splash shown while the world state is
+// being fetched. Displays a rotating library of short Islamic-themed
+// motivational phrases in the child's language so they feel invited into
+// the world (rather than seeing a blank/broken screen). Uses a soft
+// gradient background matching the world's palette + animated mosque icon.
+// (User: "buat satu loading animation pages dengan kata2 motivasi untuk
+//  anak masuk ke world sementara world tengah loading, ini untuk avoid
+//  kids berasa world tak function".)
+// ═══════════════════════════════════════════════════════════════════════════
+const WorldLoadingScreen = ({ lang = 'ms' }) => {
+  // 6 kid-friendly Islamic motivational phrases per language, rotated every
+  // ~2.4s so the screen feels alive during a slow fetch.
+  const MSG_BANK = {
+    ms: [
+      'Bismillahirrahmanirrahim…',
+      'Kampung kamu sedang menanti…',
+      'Setiap amal kecil dinilai Allah 🌱',
+      'Menyediakan dunia kamu…',
+      'Rumah bertambah, jemaah gembira!',
+      'Setiap zikir menyinari kampungmu ✨',
+    ],
+    en: [
+      'Bismillahirrahmanirrahim…',
+      'Your village awaits you…',
+      'Every small deed counts with Allah 🌱',
+      'Preparing your world…',
+      'More houses, joyful jamaah!',
+      'Every dhikr lights up your village ✨',
+    ],
+    id: [
+      'Bismillahirrahmanirrahim…',
+      'Kampungmu sedang menantimu…',
+      'Setiap amal kecil bernilai di sisi Allah 🌱',
+      'Menyiapkan duniamu…',
+      'Rumah bertambah, jemaah bahagia!',
+      'Setiap zikir menyinari kampungmu ✨',
+    ],
+    ar: [
+      'بسم الله الرحمن الرحيم…',
+      'قريتك تنتظرك…',
+      'كل عمل صغير له قيمة عند الله 🌱',
+      'نُهيّئ عالمك…',
+      'المزيد من البيوت، جماعة سعيدة!',
+      'كل ذكر يُنير قريتك ✨',
+    ],
+  }
+  const HEADING = {
+    ms: 'Selamat datang ke Kampung EQ',
+    en: 'Welcome to Your EQ Village',
+    id: 'Selamat datang di Kampung EQ',
+    ar: 'أهلاً بك في قرية EQ',
+  }
+  const HINT = {
+    ms: 'Sabar sedikit ya, jangan pergi jauh…',
+    en: 'Hold on for a moment, don\u2019t go far…',
+    id: 'Sabar sebentar ya, jangan pergi jauh…',
+    ar: 'اصبر قليلاً، لا تذهب بعيدًا…',
+  }
+  const msgs = MSG_BANK[lang] || MSG_BANK.ms
+  const [msgIdx, setMsgIdx] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setMsgIdx(i => (i + 1) % msgs.length), 2400)
+    return () => clearInterval(timer)
+  }, [msgs.length])
+  const isRTL = lang === 'ar'
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[95] flex flex-col items-center justify-center px-6"
+      style={{ background: 'radial-gradient(ellipse at center, #0e6f5f 0%, #0d5b4e 55%, #063a30 100%)' }}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
+      {/* Animated star field for texture */}
+      <div className="absolute inset-0 opacity-30 pointer-events-none">
+        {[...Array(28)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute rounded-full bg-amber-200"
+            style={{
+              left: `${(i * 37) % 100}%`,
+              top: `${(i * 53) % 100}%`,
+              width: 2 + (i % 3),
+              height: 2 + (i % 3),
+            }}
+            animate={{ opacity: [0.2, 0.9, 0.2] }}
+            transition={{ duration: 2 + (i % 5) * 0.3, repeat: Infinity, delay: i * 0.15 }}
+          />
+        ))}
+      </div>
+      {/* Central mosque icon — gentle float */}
+      <motion.div
+        className="text-8xl mb-4 relative z-10"
+        animate={{ y: [0, -8, 0], rotate: [-2, 2, -2] }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        🕌
+      </motion.div>
+      {/* Ring of orbiting dots (spinner) */}
+      <motion.div
+        className="relative z-10 w-16 h-16 mb-6"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+      >
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <div
+            key={i}
+            className="absolute w-2.5 h-2.5 rounded-full bg-amber-300"
+            style={{
+              top: '50%', left: '50%',
+              transform: `rotate(${i * 60}deg) translateY(-28px) translateX(-5px)`,
+              opacity: 1 - i * 0.13,
+            }}
+          />
+        ))}
+      </motion.div>
+      {/* Heading */}
+      <div className="text-white font-black text-xl mb-2 relative z-10 text-center">
+        {HEADING[lang] || HEADING.ms}
+      </div>
+      {/* Rotating motivational message */}
+      <div className="min-h-[3.5rem] flex items-center justify-center max-w-sm relative z-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={msgIdx}
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -10, opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-amber-100 text-center text-sm leading-relaxed font-medium"
+          >
+            {msgs[msgIdx]}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      {/* Small hint at bottom */}
+      <div className="absolute bottom-8 left-0 right-0 text-center text-emerald-200/70 text-xs italic px-8 z-10">
+        {HINT[lang] || HINT.ms}
+      </div>
     </motion.div>
   )
 }
