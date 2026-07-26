@@ -141,6 +141,23 @@ function WorldPageInner() {
   // 10 completions of Astaghfirullah (with 3s cooldown between each tap)
   // to clear one demerit → one cloud fades from the sky.
   const [istighfarOpen, setIstighfarOpen] = useState(false)
+  // Archipelago Map — entry gate to the world scene. On every visit, kids
+  // land on the archipelago first, pick their island, then descend into
+  // that island's world. Currently only "Pulau Impianku" is playable; the
+  // other 6 slots are locked/generic ("Coming Soon"). Selection lives in
+  // localStorage so a mid-session refresh keeps them on the picked island.
+  const [selectedIslandId, setSelectedIslandId] = useState(null)
+  const [archipelagoOpen, setArchipelagoOpen] = useState(true)
+  useEffect(() => {
+    // Hydrate persisted island choice (SSR-safe)
+    try {
+      const saved = localStorage.getItem('eqrel-selected-island')
+      if (saved) {
+        setSelectedIslandId(saved)
+        setArchipelagoOpen(false)
+      }
+    } catch { /* noop */ }
+  }, [])
   // Audio mute preference (persisted in localStorage). We mirror to React state
   // so the header toggle re-renders on change. Initialised via effect (SSR-safe).
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -622,6 +639,26 @@ function WorldPageInner() {
         )}
       </AnimatePresence>
 
+      {/* ═══ ARCHIPELAGO MAP — entry gate ═══
+          Shown first-visit and when the child taps 🗺️ in the world view.
+          Only "Pulau Impianku" is playable; the other 6 slots are generic
+          locked placeholders (nama/tema belum diputuskan). Selection is
+          persisted so a page refresh keeps the child on their island. */}
+      <AnimatePresence>
+        {archipelagoOpen && (
+          <ArchipelagoMap
+            key="archipelago"
+            lang={lang}
+            worldState={worldState}
+            onSelectIsland={(id) => {
+              setSelectedIslandId(id)
+              setArchipelagoOpen(false)
+              try { localStorage.setItem('eqrel-selected-island', id) } catch { /* noop */ }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Move confirmation card — floats near destination cell when child
           drops a dragged building. Prevents accidental relocations. */}
       {moveConfirmation && (
@@ -636,6 +673,12 @@ function WorldPageInner() {
       {/* Floating zoom + center controls — right side above sidebar */}
       {!overlayOpen && hasMusalla && (
         <div className="absolute right-3 bottom-40 z-30 flex flex-col gap-2 pointer-events-auto">
+          <button
+            onClick={() => setArchipelagoOpen(true)}
+            className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-amber-400 shadow-lg text-amber-600 text-lg active:scale-90"
+            aria-label="Archipelago Map"
+            title="Peta Kepulauan"
+          >🗺️</button>
           <button
             onClick={() => setCameraCommand({ action: 'zoomIn', key: Date.now() })}
             className="w-10 h-10 rounded-full bg-white/90 backdrop-blur border-2 border-emerald-300 shadow-lg text-emerald-700 font-black text-xl active:scale-90"
@@ -1862,6 +1905,179 @@ const IstighfarModal = ({ lang, onClose, onComplete }) => {
           </motion.div>
         )}
       </motion.div>
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ArchipelagoMap — the entry gate. Kids see 7 island slots arranged in
+// a rough hexagonal ring, with "Pulau Impianku" glowing at the center as
+// the active/only playable island. The other 6 are locked placeholders
+// (nama/tema belum diputuskan). Progress toward "hijrah" is displayed as
+// a bar under Pulau Impianku so kids can gauge how close they are to
+// unlocking the next island (criteria: Musalla L3 + 30 buildings + 15
+// rumah minimum). Fully i18n across ms/en/id/ar including RTL Arabic.
+// ═══════════════════════════════════════════════════════════════════════════
+const ArchipelagoMap = ({ lang, worldState, onSelectIsland }) => {
+  const isRTL = lang === 'ar'
+  const buildings = worldState?.buildings || []
+  const musalla = buildings.find(b => b.templateId === 'musalla')
+  const musallaLevel = musalla?.level || 1
+  const rumahCount = buildings.filter(b => BUILDING_TEMPLATES[b.templateId]?.category === 'rumah').length
+  const totalBuildings = buildings.filter(b => b.templateId !== 'musalla').length
+  const musallaProgress = Math.min(1, (musallaLevel - 1) / 2)
+  const buildingProgress = Math.min(1, totalBuildings / 30)
+  const rumahProgress = Math.min(1, rumahCount / 15)
+  const overallPct = Math.round(((musallaProgress + buildingProgress + rumahProgress) / 3) * 100)
+  const readyToHijrah = overallPct >= 100
+  const L = {
+    title:      { ms: 'Peta Kepulauan Iman', en: 'Islands of Iman Map',       id: 'Peta Kepulauan Iman', ar: 'خريطة جزر الإيمان' },
+    subtitle:   {
+      ms: 'Pilih pulau untuk masuk. Buat baik terus-menerus untuk buka pulau baharu.',
+      en: 'Choose an island to enter. Keep doing good deeds to unlock new islands.',
+      id: 'Pilih pulau untuk masuk. Terus berbuat baik untuk membuka pulau baru.',
+      ar: 'اختر جزيرة للدخول. استمر في فعل الخير لفتح جزر جديدة.',
+    },
+    active:     { ms: 'AKTIF', en: 'ACTIVE', id: 'AKTIF', ar: 'نشط' },
+    locked:     { ms: 'Terkunci', en: 'Locked', id: 'Terkunci', ar: 'مغلق' },
+    comingSoon: { ms: 'Nanti Dibuka', en: 'Coming Soon', id: 'Segera Hadir', ar: 'قريبًا' },
+    enter:      { ms: 'Masuk Pulau', en: 'Enter Island', id: 'Masuk Pulau', ar: 'ادخل الجزيرة' },
+    pulauImpianku: { ms: 'Pulau Impianku', en: 'My Dream Island', id: 'Pulau Impianku', ar: 'جزيرة أحلامي' },
+    progressLabel: {
+      ms: 'lengkap untuk hijrah ke pulau seterusnya',
+      en: 'complete to migrate to the next island',
+      id: 'lengkap untuk hijrah ke pulau berikutnya',
+      ar: 'مكتمل للهجرة إلى الجزيرة التالية',
+    },
+    hijrahReady: {
+      ms: 'MashaAllah! Pulau kamu sudah lengkap. Nantikan pulau baharu!',
+      en: 'MashaAllah! Your island is complete. New islands coming!',
+      id: 'MashaAllah! Pulaumu sudah lengkap. Nantikan pulau baru!',
+      ar: 'ما شاء الله! جزيرتك مكتملة!',
+    },
+    stats: {
+      ms: (m, r, b) => `Musalla L${m} · ${r} rumah · ${b} binaan`,
+      en: (m, r, b) => `Musalla L${m} · ${r} homes · ${b} buildings`,
+      id: (m, r, b) => `Musalla L${m} · ${r} rumah · ${b} bangunan`,
+      ar: (m, r, b) => `مصلى ل${m} · ${r} بيوت · ${b} مباني`,
+    },
+  }
+  const tr = (k, ...args) => {
+    const v = L[k]?.[lang] || L[k]?.ms
+    return typeof v === 'function' ? v(...args) : v
+  }
+  const ISLANDS = [
+    { id: 'locked_1', angle: 30,  emoji: '🌫️' },
+    { id: 'locked_2', angle: 90,  emoji: '🌫️' },
+    { id: 'locked_3', angle: 150, emoji: '🌫️' },
+    { id: 'locked_4', angle: 210, emoji: '🌫️' },
+    { id: 'locked_5', angle: 270, emoji: '🌫️' },
+    { id: 'locked_6', angle: 330, emoji: '🌫️' },
+  ]
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[85] flex flex-col overflow-hidden"
+      dir={isRTL ? 'rtl' : 'ltr'}
+      style={{
+        background: 'radial-gradient(ellipse at center, #1e3a5f 0%, #0f2544 50%, #071229 100%)',
+      }}
+    >
+      <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
+        backgroundImage: 'repeating-linear-gradient(-45deg, transparent 0 40px, rgba(255,255,255,0.08) 40px 42px)',
+      }} />
+      {[...Array(20)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute w-1 h-1 bg-white/70 rounded-full pointer-events-none"
+          style={{ left: `${(i * 47) % 100}%`, top: `${(i * 29) % 90}%` }}
+          animate={{ opacity: [0.3, 0.9, 0.3] }}
+          transition={{ duration: 2 + (i % 3), repeat: Infinity, delay: i * 0.15 }}
+        />
+      ))}
+      <div className="relative z-10 px-6 pt-4 pb-2 text-center">
+        <div className="text-amber-300 text-[10px] uppercase tracking-widest font-black mb-1">
+          🗺️ {tr('title')}
+        </div>
+        <div className="text-white/80 text-xs max-w-md mx-auto leading-tight">
+          {tr('subtitle')}
+        </div>
+      </div>
+      <div className="relative flex-1 flex items-center justify-center">
+        {ISLANDS.map((island, i) => {
+          const rad = (island.angle - 90) * (Math.PI / 180)
+          const RX = 32
+          const RY = 30
+          const left = 50 + Math.cos(rad) * RX
+          const top = 50 + Math.sin(rad) * RY
+          return (
+            <div
+              key={island.id}
+              className="absolute w-24 h-24 -translate-x-1/2 -translate-y-1/2 opacity-60"
+              style={{ left: `${left}%`, top: `${top}%` }}
+            >
+              <div className="relative w-full h-full rounded-full bg-slate-700/50 backdrop-blur border border-slate-500/40 flex flex-col items-center justify-center overflow-hidden">
+                <div className="text-2xl mb-0.5 opacity-70">{island.emoji}</div>
+                <div className="text-[9px] text-white/60 font-bold uppercase tracking-wider">🔒 {tr('locked')}</div>
+                <div className="text-[8px] text-white/40 mt-0.5">{tr('comingSoon')}</div>
+              </div>
+            </div>
+          )
+        })}
+        <motion.button
+          onClick={() => onSelectIsland('pulau_impianku')}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          className="relative z-10 group"
+        >
+          <motion.div
+            className="absolute inset-0 rounded-full bg-amber-400/40 blur-xl"
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.9, 0.5] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <div className="relative w-44 h-44 rounded-full bg-gradient-to-br from-emerald-300 via-emerald-400 to-teal-500 border-4 border-amber-400 shadow-2xl flex flex-col items-center justify-center group-active:scale-95 transition-transform overflow-hidden">
+            <div className="text-5xl mb-1 drop-shadow-lg">🕌</div>
+            <div className="flex gap-0.5 text-2xl -mt-1">
+              <span>🌴</span><span>🏠</span><span>🌴</span>
+            </div>
+            <div className="mt-1 text-[9px] text-amber-800 font-black uppercase tracking-widest bg-amber-200/70 px-2 py-0.5 rounded-full">
+              ⭐ {tr('active')}
+            </div>
+          </div>
+          <div className="mt-2 text-center">
+            <div className="text-white font-black text-lg">{tr('pulauImpianku')}</div>
+            <div className="text-white/70 text-[10px] mt-0.5">
+              {tr('stats', musallaLevel, rumahCount, totalBuildings)}
+            </div>
+          </div>
+        </motion.button>
+      </div>
+      <div className="relative z-10 px-6 pb-6 pt-2 max-w-md mx-auto w-full">
+        <div className="bg-white/10 backdrop-blur border border-amber-400/40 rounded-2xl px-4 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-white/80 text-[10px] uppercase tracking-wider font-bold">
+              {tr('pulauImpianku')}
+            </div>
+            <div className="text-amber-300 text-sm font-black">{overallPct}%</div>
+          </div>
+          <div className="relative w-full h-2.5 bg-slate-900/60 rounded-full overflow-hidden border border-slate-500/40">
+            <div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-400 rounded-full"
+              style={{ width: `${overallPct}%`, transition: 'width 800ms ease' }}
+            />
+          </div>
+          <div className="text-white/60 text-[10px] mt-1.5 leading-tight text-center">
+            {readyToHijrah ? `🎉 ${tr('hijrahReady')}` : tr('progressLabel')}
+          </div>
+        </div>
+        <button
+          onClick={() => onSelectIsland('pulau_impianku')}
+          className="mt-3 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-emerald-500 text-white font-black py-3 active:scale-95 shadow-xl text-lg"
+        >
+          🏝️ {tr('enter')}
+        </button>
+      </div>
     </motion.div>
   )
 }
