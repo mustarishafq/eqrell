@@ -129,10 +129,16 @@ function WorldPageInner() {
   // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
   const [landmarkCelebration, setLandmarkCelebration] = useState(null)
   const [autoUpgradeCelebration, setAutoUpgradeCelebration] = useState(null)
-  // Construction sequel — after the AutoUpgrade popup closes, show a 10s
-  // scaffolding + progress ceremony so kids see the "wow" moment of the
-  // Musalla physically becoming a bigger Masjid.
-  const [upgradeConstruction, setUpgradeConstruction] = useState(null)
+  // Construction sequel — AFTER the AutoUpgrade popup closes, we no longer
+  // show a popup. Instead we trigger scene.playAutoUpgrade(...) which plays
+  // the full Red-Alert construction ceremony ON the actual Musalla tile in
+  // the world (user: "process upgrade bukan pada popup tetapi pada actual
+  // worlds macam kita baru bina asset").  Object shape: { buildingId, toLevel, key }.
+  const [autoUpgradeAnim, setAutoUpgradeAnim] = useState(null)
+  // While an auto-upgrade is pending (popup showing OR world anim playing),
+  // we DEFER load() so the Musalla stays at its pre-upgrade level in Phaser.
+  // Once the world anim completes we call load() to sync the new level.
+  const pendingAutoUpgradeRef = useRef(null)
   // Move confirmation: shown after the child drops a building on a new cell.
   // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
   // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
@@ -380,18 +386,25 @@ function WorldPageInner() {
           const data = await r.json().catch(() => ({}))
           haptic.ihsan()
           setRitual({ phase: 'alhamdulillah', templateId: payload.templateId })
-          await load()
+          // If the server AUTO-UPGRADED the Musalla (7 rumah → Masjid, 15
+          // rumah → Jami' Masjid), DEFER the load() so Phaser keeps showing
+          // the OLD Musalla level until the auto-upgrade celebration popup
+          // closes and the world-tile construction animation plays. Otherwise
+          // the child would see the Musalla instantly morph before the
+          // ceremonial anim runs.
+          if (data.autoUpgrade) {
+            pendingAutoUpgradeRef.current = data.autoUpgrade
+            // Queue the celebration popup — animation on the actual tile
+            // fires after the popup closes.
+            setTimeout(() => setAutoUpgradeCelebration(data.autoUpgrade), 3000)
+          } else {
+            await load()
+          }
           // If the server auto-placed a milestone landmark (Surau @ 5, Masjid
           // @ 10), queue a celebratory overlay AFTER the alhamdulillah dismiss
           // so the child sees "Kampung anda telah dianugerahkan..." pop up.
           if (Array.isArray(data.newLandmarks) && data.newLandmarks.length > 0) {
             setTimeout(() => setLandmarkCelebration(data.newLandmarks[0]), 2800)
-          }
-          // If the server AUTO-UPGRADED the Musalla (7 rumah → Masjid, 15
-          // rumah → Jami' Masjid), queue a pedagogical celebration popup
-          // so the child understands their houses/jemaah made the mosque grow.
-          if (data.autoUpgrade) {
-            setTimeout(() => setAutoUpgradeCelebration(data.autoUpgrade), 3000)
           }
         } else {
           haptic.locked()
@@ -488,6 +501,18 @@ function WorldPageInner() {
       // pairs beautifully with the sparkle burst Phaser plays at completion.
       alhamdulillah()
       finishConstruction(payload)
+      return
+    }
+    if (type === 'auto-upgrade-anim-done') {
+      // World-tile construction ceremony for auto-upgrade finished. Now it's
+      // safe to load() the fresh state — Phaser will diff-sync the Musalla
+      // to its new level and sweep the temp construction sprite. Also clear
+      // the pending flag + refresh anim state.
+      alhamdulillah()
+      haptic.ihsan()
+      pendingAutoUpgradeRef.current = null
+      setAutoUpgradeAnim(null)
+      ;(async () => { await load() })()
       return
     }
     if (type === 'drag-armed') {
@@ -612,7 +637,7 @@ function WorldPageInner() {
   // tile hit-zone or a sidebar variant tile underneath them. Includes ALL
   // types of overlays that block gameplay.
   const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
-                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration || !!upgradeConstruction
+                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -628,6 +653,7 @@ function WorldPageInner() {
             onEvent={handleCanvasEvent}
             interactionLocked={overlayOpen}
             construct={construct}
+            autoUpgradeAnim={autoUpgradeAnim}
             lang={lang}
             cameraCommand={cameraCommand}
             buildDrag={buildDrag}
@@ -960,23 +986,17 @@ function WorldPageInner() {
             upgrade={autoUpgradeCelebration}
             lang={lang}
             onClose={() => {
-              // Chain into 10-second construction ceremony so the child sees
-              // the Masjid physically "being built" — creates the wow moment
-              // the user asked for (upgrade dari L1→L2 tak feel enough).
-              setUpgradeConstruction({
-                fromLevel: (autoUpgradeCelebration.toLevel || 2) - 1,
+              // Popup dismissed → trigger the CONSTRUCTION CEREMONY on the
+              // ACTUAL Musalla tile in the world (not another popup). User
+              // said: "process upgrade bukan pada popup tetapi pada actual
+              // worlds macam kita baru bina asset."
+              setAutoUpgradeAnim({
+                buildingId: autoUpgradeCelebration.buildingId,
                 toLevel: autoUpgradeCelebration.toLevel,
+                key: Date.now(),
               })
               setAutoUpgradeCelebration(null)
             }}
-          />
-        )}
-        {upgradeConstruction && (
-          <UpgradeConstructionOverlay
-            key={`constr-${upgradeConstruction.toLevel}`}
-            upgrade={upgradeConstruction}
-            lang={lang}
-            onClose={() => setUpgradeConstruction(null)}
           />
         )}
       </AnimatePresence>

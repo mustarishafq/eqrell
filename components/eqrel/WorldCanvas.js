@@ -24,6 +24,7 @@ export default function WorldCanvas({
   onEvent,          // (type, payload) => void — bubbles game events to React
   interactionLocked = false, // when true, Phaser ignores cell taps (used while modals are open)
   construct,         // { x, y, templateId, level, key } | null — when set, triggers Red-Alert-style build anim
+  autoUpgradeAnim,   // { buildingId, toLevel, key } | null — triggers upgrade anim on existing tile
   lang = 'ms',       // language toggle for villager bubbles (ms/en/id/ar)
   cameraCommand,     // { action: 'zoomIn'|'zoomOut'|'center', key } | null
   buildDrag,         // { templateId, pointerX, pointerY, key } | null — for drag-from-sidebar preview
@@ -206,6 +207,30 @@ export default function WorldCanvas({
     // Only re-run when a new construction key is issued
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [construct?.key])
+
+  // ─── Trigger auto-upgrade animation on existing Musalla tile ────────
+  // When Musalla auto-upgrades to Masjid/Jami' Masjid, popup shows first, then
+  // this effect fires to play the actual construction ceremony ON the world
+  // (not inside a popup).  User: "process upgrade bukan pada popup tetapi pada
+  // actual worlds macam kita baru bina asset".
+  useEffect(() => {
+    const g = gameRef.current
+    if (!g || !autoUpgradeAnim) return
+    const trigger = () => {
+      const scene = g.scene.getScene('WorldScene')
+      if (!scene || typeof scene.playAutoUpgrade !== 'function') {
+        setTimeout(trigger, 120)
+        return
+      }
+      scene.playAutoUpgrade(
+        autoUpgradeAnim.buildingId,
+        autoUpgradeAnim.toLevel,
+        () => { onEvent?.('auto-upgrade-anim-done', autoUpgradeAnim) }
+      )
+    }
+    trigger()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoUpgradeAnim?.key])
 
   // Trigger build preview when user drags a template from the sidebar over the canvas
   useEffect(() => {
