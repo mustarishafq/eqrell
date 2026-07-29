@@ -39,7 +39,10 @@ const L = {
   buildMusalla: { ms: 'Bina Musalla dulu', en: 'Build the Musalla first', id: 'Bangun Musalla dulu', ar: 'ابنِ المصلى أولاً' },
   buildLevel:   { ms: 'level', en: 'level', id: 'level', ar: 'مستوى' },
   buildBuilding:{ ms: 'Bina Binaan', en: 'Build Buildings', id: 'Bangun Bangunan', ar: 'ابنِ المباني' },
-  dragHint:     { ms: 'Tekan lama untuk pindah', en: 'Long-press to move', id: 'Tekan lama untuk pindah', ar: 'اضغط مطولاً للتحريك' },
+  dragHint:     { ms: 'Tekan butang pindah untuk susun', en: 'Tap Move to reorganize', id: 'Tekan Pindah untuk susun', ar: 'اضغط "نقل" للترتيب' },
+  moveBtn:      { ms: 'Pindah bangunan ini', en: 'Move this building', id: 'Pindahkan bangunan ini', ar: 'انقل هذا المبنى' },
+  moveHint:     { ms: 'Seret ke petak baru...', en: 'Drag to new cell...', id: 'Seret ke petak baru...', ar: 'اسحب إلى موقع جديد...' },
+  moveCancel:   { ms: 'Batal', en: 'Cancel', id: 'Batal', ar: 'إلغاء' },
   buildingInfo: { ms: 'Info Binaan', en: 'Building Info', id: 'Info Bangunan', ar: 'معلومات المبنى' },
   progress:     { ms: 'Kemajuan', en: 'Progress', id: 'Kemajuan', ar: 'التقدم' },
   builtOn:      { ms: 'Dibina pada', en: 'Built on', id: 'Dibangun pada', ar: 'بُني في' },
@@ -143,6 +146,9 @@ function WorldPageInner() {
   // Prevents accidental relocations from stray drags. Cleared on confirm/cancel.
   // Shape: { buildingId, templateId, x, y, origX, origY, screenX, screenY }
   const [moveConfirmation, setMoveConfirmation] = useState(null)
+  // Move-mode HUD state — visible while the user is dragging a "picked-up"
+  // building to a new cell (after tapping [Pindah] in BuildingInfoCard).
+  const [moveModeActive, setMoveModeActive] = useState(null)
   // Istighfar overlay — opens when child taps a black cloud. Requires
   // 10 completions of Astaghfirullah (with 3s cooldown between each tap)
   // to clear one demerit → one cloud fades from the sky.
@@ -288,6 +294,11 @@ function WorldPageInner() {
     const { buildingId, x, y } = moveConfirmation
     setMoveConfirmation(null)
     haptic.ihsan()
+    // Bismillah — the child is DELIBERATELY starting the act of relocating
+    // (they tapped [Pindah] → dragged → confirmed). This is the pedagogical
+    // moment to associate with dhikr, v5: no longer fires on accidental
+    // touches thanks to the SELECT-FIRST-THEN-MOVE flow.
+    bismillah()
     // Kick off the restructure animation in Phaser via the scene method
     const scene = (typeof window !== 'undefined')
       ? window.__eqrelPhaser?.scene?.getScene?.('WorldScene')
@@ -516,24 +527,27 @@ function WorldPageInner() {
       return
     }
     if (type === 'drag-armed') {
-      // Long-press engaged drag mode — give a tactile buzz so the child knows
-      // the building is now "picked up" and can be repositioned safely.
-      // Also Bismillah: the child is starting the act of moving/restructuring
-      // — every deliberate action starts with the name of Allah.
+      // v5: This event no longer fires from Phaser drag (drag lifecycle
+      // disabled). Kept as a no-op stub for backward compat in case any
+      // stale code paths emit it. Bismillah is now triggered only when
+      // the child EXPLICITLY confirms a move via confirmMoveRelocate().
+      return
+    }
+    if (type === 'move-mode-entered') {
+      setMoveModeActive({ buildingId: payload.buildingId })
       haptic.select()
-      bismillah()
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(30) } catch { /* noop */ }
-      }
+      return
+    }
+    if (type === 'move-mode-cancelled') {
+      setMoveModeActive(null)
       return
     }
     if (type === 'building-move-requested') {
-      // User dragged a building onto a new valid cell. Instead of committing
-      // the move (which caused accidental relocations from stray drags), we
-      // pop a small confirmation card near the destination. The building has
-      // already snapped back to its origin in Phaser — nothing is committed
-      // until the child taps "Ya, alih". On cancel we just dismiss the card.
+      // User dropped a building at a valid destination cell. Show the
+      // Ya/Tidak confirmation card. Bismillah does NOT fire here — it
+      // fires only when the child confirms the move (see confirmMoveRelocate).
       haptic.select()
+      setMoveModeActive(null)
       setMoveConfirmation(payload)
       return
     }
@@ -1011,7 +1025,44 @@ function WorldPageInner() {
             lang={lang}
             onConfirm={executeUpgrade}
             onCancel={() => setUpgradeTarget(null)}
+            onMove={() => {
+              // v5: Explicit Move flow — engage scene's picked-up state and
+              // close the info card so the child can drag to the destination.
+              const scene = (typeof window !== 'undefined')
+                ? window.__eqrelPhaser?.scene?.getScene?.('WorldScene')
+                : null
+              if (scene?.enterMoveMode?.(upgradeTarget.id)) {
+                setUpgradeTarget(null)
+              }
+            }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Move-Mode HUD — hint + Batal button visible while a building is
+          "picked up" and the child is dragging to a new cell. */}
+      <AnimatePresence>
+        {moveModeActive && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="absolute top-3 left-1/2 -translate-x-1/2 z-[95] pointer-events-auto"
+          >
+            <div className="flex items-center gap-2 bg-amber-500 text-white rounded-2xl shadow-2xl px-3 py-2 border-2 border-amber-300">
+              <span className="text-lg">✋</span>
+              <span className="text-sm font-black">{l('moveHint', lang)}</span>
+              <button
+                onClick={() => {
+                  const scene = (typeof window !== 'undefined')
+                    ? window.__eqrelPhaser?.scene?.getScene?.('WorldScene')
+                    : null
+                  scene?.cancelMoveMode?.()
+                  setMoveModeActive(null)
+                }}
+                className="ml-1 rounded-lg bg-white/25 hover:bg-white/40 active:scale-95 px-2 py-0.5 text-[11px] font-black"
+              >{l('moveCancel', lang)}</button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -2388,9 +2439,11 @@ const MoveConfirmCard = ({ confirmation, lang, onConfirm, onCancel }) => {
 // (icon + name + level + villagers + date). "Selanjutnya" button expands to
 // show reflection + upgrade CTA in a compact side-drawer style.
 // ═══════════════════════════════════════════════════════════════════════════
-const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuildings = [] }) => {
+const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor, allBuildings = [] }) => {
   const t = BUILDING_TEMPLATES[building.templateId]
-  const [expanded, setExpanded] = useState(false)
+  // v5: Default expanded so [Pindah] button is immediately visible without
+  // an extra tap. Sacred buildings stay collapsed since they can't be moved.
+  const [expanded, setExpanded] = useState(!t?.isSacred)
   if (!t) return null
   const currentLevel = building.level || 1
   const nextLevel = currentLevel + 1
@@ -2523,10 +2576,18 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, anchor, allBuil
                       {reflectionText}
                     </div>
                   )}
-                  {!t.isSacred && (
-                    <div className="text-[10px] text-emerald-700/60 flex items-center gap-1">
-                      ✋ <span>{l('dragHint', lang)}</span>
-                    </div>
+                  {/* Pindah (Move) button — the ONLY way to relocate a
+                      building on the world. User feedback v5: previous
+                      Phaser drag-to-move accidentally triggered on natural
+                      pan gestures. Now relocation is explicit: tap here →
+                      building "picked up" → drag to new cell. */}
+                  {!t.isSacred && onMove && (
+                    <button
+                      onClick={onMove}
+                      className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-white font-black py-2 text-xs active:scale-95 shadow flex items-center justify-center gap-1.5"
+                    >
+                      ✋ {l('moveBtn', lang)}
+                    </button>
                   )}
                   {isMax ? (
                     <div className="text-center text-xs font-black text-amber-600 py-1">
