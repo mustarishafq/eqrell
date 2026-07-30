@@ -2035,6 +2035,78 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
     const t = setTimeout(() => setLockedTooltipId(null), 2600)
     return () => clearTimeout(t)
   }, [lockedTooltipId])
+
+  // ── Strategy B: background asset warm-up ─────────────────────────────
+  // While the child is viewing the archipelago (usually 2-5 seconds), we
+  // quietly kick off `new Image()` fetches for the most-critical world
+  // assets so they land in the browser's HTTP cache. When the child taps
+  // "Enter Island" and Phaser starts preloading, those assets resolve
+  // instantly from cache instead of hitting the network again. Combined
+  // with Strategy C (conditional preload in WorldScene), the perceived
+  // world-load time drops significantly. Runs ONCE per mount, non-blocking.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const buildings = worldState?.buildings || []
+    const templateIds = new Set(buildings.map(b => b.templateId))
+    const musallaLevel = buildings.find(b => b.templateId === 'musalla')?.level || 1
+
+    // Core assets — always warm (small footprint, always needed)
+    const paths = [
+      '/assets/world/musalla.webp',
+      '/assets/world/rumah/rumah_kayu.webp',
+      '/assets/world/rumah/rumah_batu.webp',
+      '/assets/world/rumah/banglo.webp',
+      '/assets/world/construction/fence.webp',
+    ]
+    // Construction poses (workers + excavator, 4 each — used for build/relocate)
+    for (let i = 1; i <= 4; i++) {
+      const k = String(i).padStart(2, '0')
+      paths.push(`/assets/world/construction/workers/worker_${k}.webp`)
+      paths.push(`/assets/world/construction/excavator/excavator_${k}.webp`)
+    }
+    // Musalla next-level (auto-upgrade preview)
+    if (musallaLevel <= 2) paths.push('/assets/world/masjid_l2.webp')
+    if (musallaLevel === 2) paths.push('/assets/world/masjid_l3.webp')
+    // Livestock — only warm animals whose pen exists
+    if (templateIds.has('kandang_kambing')) {
+      paths.push('/assets/world/ternakan/kandang_kambing.webp', '/assets/world/ternakan/kambing.webp')
+    }
+    if (templateIds.has('kandang_lembu')) {
+      paths.push('/assets/world/ternakan/kandang_lembu.webp', '/assets/world/ternakan/lembu.webp')
+    }
+    if (templateIds.has('kandang_unta')) {
+      paths.push('/assets/world/ternakan/kandang_unta.webp', '/assets/world/ternakan/unta.webp')
+    }
+    if (templateIds.has('reban_ayam')) {
+      paths.push('/assets/world/ternakan/reban_ayam.webp')
+      for (let i = 1; i <= 7; i++) {
+        const k = `chicken_${String(i).padStart(2, '0')}`
+        paths.push(`/assets/world/ternakan/chickens/${k}.webp`)
+      }
+    }
+    // Kebun trees — only warm if the matching kebun exists
+    const KEBUN_TO_TREE = {
+      kebun_kurma:  '/assets/world/kebun/palm_tree.webp',
+      kebun_tin:    '/assets/world/kebun/fig_tree.webp',
+      kebun_delima: '/assets/world/kebun/pomegranate_tree.webp',
+      kebun_zaitun: '/assets/world/kebun/olive_tree.webp',
+      kebun_anggur: '/assets/world/kebun/grape_row.webp',
+    }
+    for (const [kebun, tree] of Object.entries(KEBUN_TO_TREE)) {
+      if (templateIds.has(kebun)) paths.push(tree)
+    }
+    // Nature core (sample of most-used decoration — full set loaded by Phaser)
+    for (let i = 1; i <= 4; i++) {
+      const n = String(i).padStart(2, '0')
+      paths.push(`/assets/world/grass/grass_${n}.webp`)
+      paths.push(`/assets/world/flowers/patches/flower_patch_${n}.webp`)
+      paths.push(`/assets/world/saplings/sapling_${n}.webp`)
+    }
+    // Fire-and-forget prefetch — browser will cache; no error handling needed.
+    for (const p of paths) {
+      try { const img = new window.Image(); img.src = p } catch { /* ignore */ }
+    }
+  }, [worldState])
   const L = {
     title:      { ms: 'Peta Kepulauan Iman', en: 'Islands of Iman Map',       id: 'Peta Kepulauan Iman', ar: 'خريطة جزر الإيمان' },
     subtitle:   {
