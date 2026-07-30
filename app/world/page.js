@@ -652,6 +652,12 @@ function WorldPageInner() {
   // types of overlays that block gameplay.
   const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
                       !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration
+  // Canvas pointer-events + Phaser interactionLocked. We EXCLUDE
+  // ritual.phase === 'building' from the block so children can freely
+  // swipe/pan the world while the construction animation plays out
+  // (same as during restructure/relocate). The BuildingProgressOverlay is
+  // already pointer-events-none so it doesn't consume gestures itself.
+  const canvasBlocked = overlayOpen && !(ritual?.phase === 'building')
 
   return (
     <div className="fixed inset-0 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'} style={{
@@ -659,13 +665,13 @@ function WorldPageInner() {
     }}>
       {/* Phaser canvas — pointer events disabled whenever a React overlay is up
           so button taps on modals never bleed through to isometric tiles below. */}
-      <div className={`absolute inset-0 ${overlayOpen ? 'pointer-events-none' : ''}`}>
+      <div className={`absolute inset-0 ${canvasBlocked ? 'pointer-events-none' : ''}`}>
         {!loading && worldState && (
           <WorldCanvas
             childId={childId}
             worldState={worldState}
             onEvent={handleCanvasEvent}
-            interactionLocked={overlayOpen}
+            interactionLocked={canvasBlocked}
             construct={construct}
             autoUpgradeAnim={autoUpgradeAnim}
             lang={lang}
