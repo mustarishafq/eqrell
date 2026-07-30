@@ -2095,6 +2095,9 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
     for (const [kebun, tree] of Object.entries(KEBUN_TO_TREE)) {
       if (templateIds.has(kebun)) paths.push(tree)
     }
+    // Sumber Air (perigi/kolam) — warm if world already has them
+    if (templateIds.has('perigi')) paths.push('/assets/world/sumber_air/perigi.webp')
+    if (templateIds.has('kolam'))  paths.push('/assets/world/sumber_air/kolam.webp')
     // Nature core (sample of most-used decoration — full set loaded by Phaser)
     for (let i = 1; i <= 4; i++) {
       const n = String(i).padStart(2, '0')
