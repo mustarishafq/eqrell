@@ -956,16 +956,51 @@ async function handleRoute(request, { params }) {
           { childId },
           { $pull: { buildings: { templateId: { $in: ['masjid_landmark', 'surau'] } } } }
         )
+
+        // ─── Tasik landmark migration (v3, 2026-07-30) ─────────────
+        // Every world gets a pre-placed natural lake at top-left corner
+        // (13, 13), 4×4 footprint, locked=true. User confirmed testing
+        // data may be wiped so we clear ALL non-tasik buildings on first
+        // upgrade to v3. Once world.version === 3, migration is a no-op.
+        const existingWorld = await worldsCol.findOne({ childId }, { projection: { _id: 0 } })
+        if (existingWorld && (existingWorld.version || 1) < 3) {
+          const tasikBuilding = {
+            id: `bld-tasik-${childId}`,
+            templateId: 'tasik',
+            x: 13, y: 13,
+            level: 1,
+            locked: true,
+            placedAt: new Date(),
+          }
+          await worldsCol.updateOne(
+            { childId },
+            {
+              $set: {
+                buildings: [tasikBuilding],  // WIPE test data, keep only tasik
+                version: 3,
+                updatedAt: new Date(),
+              },
+            }
+          )
+        }
+
         let world = await worldsCol.findOne({ childId }, { projection: { _id: 0 } })
         if (!world) {
-          // Seed with Musalla NOT yet built — anak akan trigger ritual bina Musalla
-          // Musalla pre-gazetted position (center) is passed via config on client
+          // NEW WORLD: seed with tasik already in place. Anak akan build
+          // musalla di tengah dunia via ritual pertama.
           world = {
             id: `world-${childId}`,
             childId,
             familyId: user.familyId,
-            version: 1,
-            buildings: [],
+            version: 3,
+            buildings: [{
+              id: `bld-tasik-${childId}`,
+              templateId: 'tasik',
+              x: 13, y: 13,
+              level: 1,
+              locked: true,
+              placedAt: new Date(),
+            }],
             demeritCount: 0,
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -1115,6 +1150,13 @@ async function handleRoute(request, { params }) {
         const { templateId, x, y } = body
         if (!templateId || typeof x !== 'number' || typeof y !== 'number') {
           return err('Missing templateId/x/y', 400)
+        }
+        // Block user attempts to build tasik — it's an auto-placed landmark.
+        // The template is hidden in the sidebar, but this catches API-level
+        // spoofing / stale clients.
+        const tplToBuild = BUILDING_TEMPLATES[templateId]
+        if (tplToBuild?.locked === true || tplToBuild?.hidden === true) {
+          return err('Landmark ini adalah anugerah Allah — tidak boleh dibina manusia', 400)
         }
         await loadOrSeed()
         const world = await worldsCol.findOne({ childId })
@@ -1293,9 +1335,13 @@ async function handleRoute(request, { params }) {
         const target = buildings.find(b => b.id === buildingId)
         if (!target) return err('building not found', 404)
         if (target.templateId === 'musalla') return err('Musalla cannot be moved', 400)
-        // Auto-landmarks (Surau, Masjid) are also sacred + fixed positions.
+        // Auto-landmarks (Surau, Masjid, Tasik) are also sacred + fixed positions.
         if (target.templateId === 'surau' || target.templateId === 'masjid_landmark') {
           return err('Landmark cannot be moved', 400)
+        }
+        // Any building flagged `locked: true` (currently: tasik) is immutable.
+        if (target.locked === true) {
+          return err('Anugerah Allah tidak boleh dialihkan', 400)
         }
 
         // Footprint lookup — musalla/surau/masjid_landmark use hardcoded

@@ -132,6 +132,10 @@ function WorldPageInner() {
   // or Masjid (@10) after a build. Object shape: { templateId, x, y, id }.
   const [landmarkCelebration, setLandmarkCelebration] = useState(null)
   const [autoUpgradeCelebration, setAutoUpgradeCelebration] = useState(null)
+  // Tasik intro — EQ mascot dialog shown ONCE per child when they first
+  // enter the world after the v3 migration adds the pre-placed lake.
+  // Persisted via localStorage key `eqrel_tasik_intro_<childId>`.
+  const [tasikIntroOpen, setTasikIntroOpen] = useState(false)
   // Construction sequel — AFTER the AutoUpgrade popup closes, we no longer
   // show a popup. Instead we trigger scene.playAutoUpgrade(...) which plays
   // the full Red-Alert construction ceremony ON the actual Musalla tile in
@@ -267,6 +271,14 @@ function WorldPageInner() {
           const seen = typeof window !== 'undefined' &&
                        localStorage.getItem(`eqrel-world-onboarding-${childId}`) === '1'
           if (!seen) setShowOnboarding(true)
+        }
+        // Tasik intro — show EQ mascot dialog once per child, after world
+        // state loads (v3 migration guarantees tasik exists in buildings[]).
+        // Persisted via localStorage so it doesn't repeat on future visits.
+        const hasTasik = (data.world.buildings || []).some(b => b.templateId === 'tasik')
+        if (hasTasik && typeof window !== 'undefined') {
+          const seen = localStorage.getItem(`eqrel_tasik_intro_${childId}`) === '1'
+          if (!seen) setTimeout(() => setTasikIntroOpen(true), 1200)
         }
       }
     } finally { if (isFirstLoad) setLoading(false) }
@@ -651,7 +663,8 @@ function WorldPageInner() {
   // tile hit-zone or a sidebar variant tile underneath them. Includes ALL
   // types of overlays that block gameplay.
   const overlayOpen = !!ritual || !!upgradeTarget || showOnboarding ||
-                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration
+                      !!moveConfirmation || !!landmarkCelebration || !!autoUpgradeCelebration ||
+                      tasikIntroOpen
   // Canvas pointer-events + Phaser interactionLocked. We EXCLUDE
   // ritual.phase === 'building' from the block so children can freely
   // swipe/pan the world while the construction animation plays out
@@ -850,7 +863,7 @@ function WorldPageInner() {
             🌍 {l('yourWorld', lang)} {child?.nickname || l('you', lang)}
           </div>
           <div className="text-white/80 text-xs">
-            {buildings.length} {l('buildings', lang)}{' · '}
+            {buildings.filter(b => !(BUILDING_TEMPLATES[b.templateId]?.locked)).length} {l('buildings', lang)}{' · '}
             {musalla
               ? `${getBuildingName('musalla', musalla.level, lang)} ${l('buildLevel', lang)} ${musalla.level}`
               : l('buildMusalla', lang)}
@@ -1088,6 +1101,23 @@ function WorldPageInner() {
           />
         )}
       </AnimatePresence>
+
+      {/* Tasik intro — EQ mascot greeting when child first sees the
+          pre-placed natural lake. Shown once per child, persisted via
+          localStorage. Bilingual (follows lang toggle). */}
+      <AnimatePresence>
+        {tasikIntroOpen && (
+          <TasikIntroOverlay
+            lang={lang}
+            childName={child?.nickname}
+            onComplete={() => {
+              if (typeof window !== 'undefined')
+                localStorage.setItem(`eqrel_tasik_intro_${childId}`, '1')
+              setTasikIntroOpen(false)
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -1103,6 +1133,103 @@ export default function WorldPage() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Sub-components
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Tasik Intro Overlay ────────────────────────────────────────────
+// Shown ONCE per child, right after the world loads for the first time
+// (or after the v3 migration adds the pre-placed lake to an existing
+// world). EQ mascot greets the child and explains that the tasik is
+// Allah's gift — the reason civilization began here. Then invites them
+// to build the Musalla (rumah Allah) next.
+const TasikIntroOverlay = ({ lang, childName, onComplete }) => {
+  const isRTL = lang === 'ar'
+  const nick = childName || (lang === 'ms' ? 'anak soleh' : lang === 'ar' ? 'يا حبيبي' : 'young builder')
+
+  const text = {
+    ms: {
+      title: 'Assalamualaikum!',
+      body: `Lihat, ${nick}! Tasik ini bukan kita bina — Allah kurniakan sebagai nikmat awal. Tamadun bermula di mana ada air.`,
+      cta: 'Mari bina rumah Allah dahulu →',
+      subline: '"Dan Kami jadikan dari air, tiap-tiap sesuatu yang hidup" — Al-Anbiya: 30',
+    },
+    en: {
+      title: 'Assalamualaikum!',
+      body: `Look, ${nick}! This lake wasn't built by us — Allah placed it here as His first gift. Civilization begins where there is water.`,
+      cta: "Let's build Allah's house first →",
+      subline: '"We made from water every living thing" — Al-Anbiya: 30',
+    },
+    id: {
+      title: 'Assalamualaikum!',
+      body: `Lihat, ${nick}! Danau ini bukan kita buat — Allah kurniakan sebagai nikmat awal. Peradaban bermula di mana ada air.`,
+      cta: 'Mari bangun rumah Allah dahulu →',
+      subline: '"Kami jadikan segala yang hidup dari air" — Al-Anbiya: 30',
+    },
+    ar: {
+      title: 'السلام عليكم!',
+      body: `انظر يا ${nick}! هذه البحيرة ليست من صنعنا — الله وضعها هنا نعمةً أولى. تبدأ الحضارة حيث يكون الماء.`,
+      cta: '← فلنبنِ بيت الله أولاً',
+      subline: '﴿وَجَعَلْنَا مِنَ الْمَاءِ كُلَّ شَيْءٍ حَيٍّ﴾ — الأنبياء ٣٠',
+    },
+  }[lang] || null
+  const T = text || {
+    title: 'Assalamualaikum!',
+    body: `Look, ${nick}! Allah placed this lake here as His first gift.`,
+    cta: "Let's build Allah's house first →",
+    subline: '"We made from water every living thing" — Al-Anbiya: 30',
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0, 30, 45, 0.72)', backdropFilter: 'blur(6px)' }}
+      dir={isRTL ? 'rtl' : 'ltr'}
+      onClick={onComplete}
+    >
+      <motion.div
+        initial={{ y: 40, scale: 0.94, opacity: 0 }}
+        animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 40, scale: 0.94, opacity: 0 }}
+        transition={{ type: 'spring', damping: 22, stiffness: 260 }}
+        className="relative max-w-md w-full bg-gradient-to-br from-sky-50 to-cyan-100 rounded-3xl shadow-2xl border-4 border-sky-300 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* EQ mascot header */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="text-5xl leading-none" style={{ filter: 'drop-shadow(0 4px 8px rgba(0,120,180,0.35))' }}>
+            🌊
+          </div>
+          <div className="flex-1">
+            <div className="text-[10px] font-black text-sky-600 uppercase tracking-widest">EQ</div>
+            <div className="text-lg font-black text-sky-900 leading-tight">{T.title}</div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 pb-4 space-y-3">
+          <p className="text-sm text-sky-900/90 leading-relaxed font-medium">
+            {T.body}
+          </p>
+          <div className="text-[11px] italic text-sky-700 leading-snug border-l-3 border-cyan-400 pl-2.5 bg-white/50 rounded-r-lg py-1.5">
+            {T.subline}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="px-5 pb-5">
+          <button
+            onClick={onComplete}
+            className="w-full rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-black py-3 text-sm active:scale-95 shadow-lg"
+          >
+            {T.cta}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
 
 const OnboardingOverlay = ({ step, setStep, childName, lang, onComplete }) => {
   const cards = [
@@ -2020,7 +2147,9 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
   const musalla = buildings.find(b => b.templateId === 'musalla')
   const musallaLevel = musalla?.level || 1
   const rumahCount = buildings.filter(b => BUILDING_TEMPLATES[b.templateId]?.category === 'rumah').length
-  const totalBuildings = buildings.filter(b => b.templateId !== 'musalla').length
+  // totalBuildings excludes musalla (auto-tracked separately) AND locked landmarks
+  // (tasik) — these aren't child-built achievements.
+  const totalBuildings = buildings.filter(b => b.templateId !== 'musalla' && !BUILDING_TEMPLATES[b.templateId]?.locked).length
   const musallaProgress = Math.min(1, (musallaLevel - 1) / 2)
   const buildingProgress = Math.min(1, totalBuildings / 30)
   const rumahProgress = Math.min(1, rumahCount / 15)
@@ -2057,6 +2186,7 @@ const ArchipelagoMap = ({ lang, worldState, onSelectIsland, onBack, isLoadingWor
       '/assets/world/rumah/rumah_batu.webp',
       '/assets/world/rumah/banglo.webp',
       '/assets/world/construction/fence.webp',
+      '/assets/world/sumber_air/tasik.webp',  // pre-placed landmark, guaranteed in every world
     ]
     // Construction poses (workers + excavator, 4 each — used for build/relocate)
     for (let i = 1; i <= 4; i++) {
@@ -2526,6 +2656,9 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
   // an extra tap. Sacred buildings stay collapsed since they can't be moved.
   const [expanded, setExpanded] = useState(!t?.isSacred)
   if (!t) return null
+  // Tasik & other `locked:true` landmarks are treated as sacred/immutable —
+  // no Move button, no Upgrade button. Same locked treatment as musalla.
+  const isLocked = t.isSacred || t.locked === true
   const currentLevel = building.level || 1
   const nextLevel = currentLevel + 1
   const isMax = nextLevel > (t.maxLevel || 1)
@@ -2596,6 +2729,12 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
       id: 'Menanam adalah sedekah 🌱',
       ar: 'الغرس صدقة 🌱',
     },
+    tasik: {
+      ms: '"Dan Kami jadikan dari air, tiap-tiap sesuatu yang hidup" — Al-Anbiya 30 💧',
+      en: '"We made from water every living thing" — Al-Anbiya 30 💧',
+      id: '"Kami jadikan segala sesuatu yang hidup dari air" — Al-Anbiya 30 💧',
+      ar: '﴿وَجَعَلْنَا مِنَ الْمَاءِ كُلَّ شَيْءٍ حَيٍّ﴾ — الأنبياء ٣٠ 💧',
+    },
   }[building.templateId] || {}
   const reflectionText = reflection[lang] || reflection.ms || ''
 
@@ -2662,7 +2801,7 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
                       Phaser drag-to-move accidentally triggered on natural
                       pan gestures. Now relocation is explicit: tap here →
                       building "picked up" → drag to new cell. */}
-                  {!t.isSacred && onMove && (
+                  {!isLocked && onMove && (
                     <button
                       onClick={onMove}
                       className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-white font-black py-2 text-xs active:scale-95 shadow flex items-center justify-center gap-1.5"
@@ -2670,7 +2809,15 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
                       ✋ {l('moveBtn', lang)}
                     </button>
                   )}
-                  {isMax ? (
+                  {isLocked && t.locked === true ? (
+                    // Tasik / other landmark — read-only tag: "Anugerah Allah"
+                    <div className="text-center text-[11px] font-bold text-sky-700 bg-sky-50 rounded-xl py-1.5 border border-sky-200">
+                      🌊 {lang === 'ms' ? 'Anugerah Allah — kekal selamanya'
+                          : lang === 'en' ? "Allah's gift — everlasting"
+                          : lang === 'id' ? 'Anugerah Allah — kekal selamanya'
+                          : 'نعمة من الله — دائمة'}
+                    </div>
+                  ) : isMax ? (
                     <div className="text-center text-xs font-black text-amber-600 py-1">
                       ✨ {l('maxLevel', lang)}
                     </div>
