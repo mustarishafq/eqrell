@@ -123,15 +123,18 @@
 | Category | Icon | Templates | Cost Range |
 |---|---|---|---|
 | **ibadah** | 🕌 | musalla (auto-upgrade L1→L2→L3) | free |
-| **taman** ⭐ | 🎠 | taman_awam (30, 2×2), padang_bola (70, 3×3), waterpark (200, 4×4 PREMIUM) | 30-200 |
 | **rumah** | 🏘️ | rumah_kayu (30), rumah_batu (60), banglo (100) | 30-100 |
+| **taman** | 🎠 | taman_awam (30, 2×2), padang_bola (70, 3×3), waterpark (200, 4×4 PREMIUM) — PNG assets + animated kids inside | 30-200 |
 | **kebun** | 🌴 | tin (25), delima (28), anggur (30), zaitun (32), kurma (35) | 25-35 |
 | **ternakan** | 🐔 | reban_ayam (25), kandang_kambing (40), kandang_lembu (90), kandang_unta (100) | 25-100 |
 | **sumber_air** | 💧 | perigi (10, 1×1), kolam (25, 2×2), **tasik** (0, 4×4 LANDMARK — auto-placed) | 0-25 |
-| **pasar** | 🏪 | pasar_payung (50, 2×2), pasar_bangunan (120, 3×3) | 50-120 |
-| **awam** | 📚 | madrasah (120), perpustakaan (130), balai_rakyat (150) | 120-150 |
+| **awam** | 🏛️ | pasar_payung (50, 2×2), pasar_bangunan (120, 3×3), madrasah (120), perpustakaan (130), balai_rakyat (150) | 50-150 |
 
-**Category sidebar order (2026-08-03 update)**: `Ibadah → Taman → Rumah → Kebun → Ternakan → Sumber Air → Pasar → Awam`. User request: "kanak2 suka taman, letakan ianya di depan" — Taman is surfaced right after the mandatory Ibadah tab so children see the playgrounds prominently. Once Musalla is built, Ibadah tab is filtered out and **Taman becomes the very first visible tab**.
+**Category sidebar order (2026-08-03 v2)**: `Ibadah → Rumah → Taman → Kebun → Ternakan → Sumber Air → Awam`. Once Musalla is built, Ibadah is filtered out, so the visible order becomes **Rumah → Taman → Kebun → …**. Two structural changes this session:
+- **Taman moved AFTER Rumah** (user: "cart for taman should be place after the house, not before the house").
+- **Pasar tab merged into Awam** (user: "combine awam and pasar into one cart"). All pasar variants now have `category: 'awam'`; the standalone Pasar category is removed. Existing worlds keep rendering since we look up by templateId not category.
+
+**Taman animated play kids (`_spawnPlayKids`)**: After each taman PNG renders, kid emoji sprites (👦🏻 👧🏻 🧒🏻) are spawned INSIDE the park with per-template behaviours — playground kids wander near swings, football field spawns 4 players + an animated ⚽ chase ball, waterpark spawns 4 swimmers + 🛟 floatie + 💦 splash particle. Similar to `_spawnLivestockAnimals`, kids yoyo-tween between wander points with a subtle vertical body bob.
 
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
