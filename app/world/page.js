@@ -1876,113 +1876,32 @@ const UpgradeConstructionOverlay = ({ upgrade, lang, onClose }) => {
 // 0 demerit = clear sky, 10+ = heavy storm.
 // ═══════════════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════════
-// SmokeMass — one volumetric atmospheric smoke instance.
-// Composed from ~11 stacked multi-stop radial gradients at varying sizes,
-// blurs, opacities, palettes and offsets (deterministic per-index seed for
-// stable placement). Each blob picks its own charcoal palette from a
-// curated set so overlapping blobs read as layered density rather than
-// uniform blob-copies. mix-blend-mode:multiply on the wrapper lets terrain
-// colours penetrate — the world reads as "atmosphere darkening" not
-// "cloud floating". Charcoal only (#0A0A0A → #272727) per user spec.
+// SmokeMass v2 — layered atmospheric smoke, CSS only, ~10 DOM nodes.
+// Each layer uses MULTI-STOP radial-gradients with OFFSET centres so the
+// cloud has irregular internal density (not one symmetric oval). Palette
+// mostly pure black with subtle navy/purple hints ONLY inside inner dark
+// layers (per user spec 2026-08-03). One tiny highlight puff catches
+// "moonlight" for a hint of dimensionality. CSS variables drive per-
+// instance variation without duplicating declarations.
 // ═══════════════════════════════════════════════════════════════════════════
 const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
-  // Deterministic PRNG so the shape is stable across renders
   const rand = (n) => {
     const x = Math.sin(i * 137 + n * 31) * 10000
     return x - Math.floor(x)
   }
-  // Wider charcoal contrast so gradient variance is VISIBLE when blobs
-  // overlap. Still pure greyscale per spec (zero tint, zero white).
-  // Ordered from DARKEST → LIGHTEST so we can assign by role (see below).
-  const PALETTES = [
-    { dark: '#050505', mid: '#121212', soft: '#202020' },  // 0: deepest — for CORE
-    { dark: '#0A0A0A', mid: '#181818', soft: '#282828' },  // 1
-    { dark: '#0F0F0F', mid: '#1D1D1D', soft: '#2E2E2E' },  // 2
-    { dark: '#121212', mid: '#212121', soft: '#333333' },  // 3
-    { dark: '#0D0D0D', mid: '#1A1A1A', soft: '#2A2A2A' },  // 4
-    { dark: '#151515', mid: '#252525', soft: '#353535' },  // 5: lightest visible
-  ]
-  // ── Palette assignment by role (fixes overlay ordering) ─────────────
-  // Previously we picked a random palette per blob, which meant a WISP
-  // (rendered on top of CORE) could randomly get a DARKER palette than
-  // the core it sits above — this made the dark wisp visually block the
-  // brighter core underneath, defeating the layered feel.
-  // Now:
-  //   • CORE  → always DARKEST palette (rendered first/bottom = base density)
-  //   • WISP  → medium palettes (2-3), slight variance
-  //   • FRAG  → LIGHTEST palettes (4-5), rendered last/top = ethereal fringe
-  // Result: darker layers at bottom, lighter layers on top. Player sees
-  // the light haze diffusing around a dense dark core → real smoke feel.
-  const pickCorePalette = () => PALETTES[Math.floor(rand(7) * 2)]       // 0-1
-  const pickWispPalette = (k) => PALETTES[2 + Math.floor(rand(k * 91 + 13) * 2)]  // 2-3
-  const pickFragPalette = (k) => PALETTES[4 + Math.floor(rand(k * 77 + 19) * 2)]  // 4-5
+  // Per-instance CSS variables — see spec §10. Range values kept subtle.
+  const cssVars = {
+    '--cloud-scale':      1.0 + (rand(50) - 0.5) * 0.25,           // 0.875-1.125
+    '--cloud-opacity':    0.85 + rand(51) * 0.15,                  // 0.85-1.00
+    '--cloud-rotation':   `${(rand(52) - 0.5) * 30}deg`,           // -15 to +15
+    '--cloud-core-x':     `${45 + rand(53) * 10}%`,                // 45-55
+    '--cloud-core-y':     `${45 + rand(54) * 10}%`,                // 45-55
+    '--cloud-cool':       rand(55) > 0.5 ? '#101625' : '#141B2B',  // navy tint choice
+    '--cloud-warm':       rand(56) > 0.5 ? '#1A1730' : '#111319',  // purple/deep choice
+    '--cloud-highlight':  0.03 + rand(57) * 0.03,                  // 0.03-0.06
+  }
 
-  // Cluster tightly — all blobs orbit a central point so they overlap and
-  // form ONE cohesive smoke mass (not scattered patches). Ranges:
-  //   • Core:      45-55% (dead centre)
-  //   • Wisps:     25-75% (near-centre overlapping the core)
-  //   • Fragments: 15-85% (outer halo still touching wisps)
-  // Sizes intentionally overlap so the layers blend smoothly.
-  const CORE = {
-    x: 45 + rand(0) * 10, y: 45 + rand(1) * 10,
-    w: 65 + rand(2) * 12, h: 50 + rand(3) * 12,   // slightly smaller so top layers can peek
-    op: 0.62 + rand(4) * 0.13,   // 0.62-0.75 (lowered so top layers show through)
-    blur: 24 + rand(5) * 10,     // more blurred so it feels like density fog
-    pal: pickCorePalette(),
-    stops: [
-      { pos: 0,  op: 0.92 },
-      { pos: 35, op: 0.70 },
-      { pos: 65, op: 0.30 },
-      { pos: 88, op: 0 },
-    ],
-  }
-  const wisps = []
-  for (let k = 0; k < 6; k++) {
-    wisps.push({
-      x: 25 + rand(k * 3 + 10) * 50,
-      y: 22 + rand(k * 3 + 11) * 56,
-      w: 45 + rand(k * 3 + 12) * 30,
-      h: 32 + rand(k * 3 + 13) * 24,
-      op: 0.42 + rand(k + 20) * 0.25,       // 0.42-0.67
-      blur: 26 + rand(k + 21) * 16,
-      pal: pickWispPalette(k),
-      stops: [
-        { pos: 0,  op: 0.80 },
-        { pos: 40, op: 0.48 },
-        { pos: 75, op: 0.18 },
-        { pos: 100, op: 0 },
-      ],
-    })
-  }
-  const fragments = []
-  for (let k = 0; k < 8; k++) {
-    fragments.push({
-      x: 15 + rand(k * 5 + 30) * 70,
-      y: 12 + rand(k * 5 + 31) * 76,
-      w: 32 + rand(k * 5 + 32) * 28,
-      h: 22 + rand(k * 5 + 33) * 22,
-      op: 0.28 + rand(k + 40) * 0.30,       // 0.28-0.58 (bumped so lighter fringe reads)
-      blur: 22 + rand(k + 41) * 20,
-      pal: pickFragPalette(k),
-      stops: [
-        { pos: 0,  op: 0.72 },
-        { pos: 50, op: 0.35 },
-        { pos: 100, op: 0 },
-      ],
-    })
-  }
-  // CORE first (rendered at BOTTOM), then wisps, then fragments (rendered
-  // LAST = on TOP). This guarantees the lighter layers sit above the
-  // darker core visually.
-  const blobs = [CORE, ...wisps, ...fragments]
-
-  // ── Smooth seamless drift ─────────────────────────────────────────────
-  // Extended off-screen range (-70vw to +170vw = 240vw travel) guarantees
-  // both start and end are safely off-screen, so the framer-motion loop
-  // snap at cycle end is INVISIBLE. Opacity fades to zero right at the
-  // wrap boundary as an extra safety net so any perceptual "pop" is
-  // absorbed. Both `x` and `opacity` share the same 4-stop keyframe
-  // schedule so framer-motion can sync them via a single `times` array.
+  // Extended drift range — start & end well off-screen for invisible loop wrap.
   const xStart = startX - 70
   const xEnd   = startX + 170
 
@@ -1992,6 +1911,8 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
       animate={{
         x: [`${xStart}vw`, `${xStart + 20}vw`, `${xEnd - 20}vw`, `${xEnd}vw`],
         opacity: [0, 1, 1, 0],
+        // Very subtle breathing scale so the cloud feels alive without bouncing.
+        scale: [1, 1.03, 1.01, 1],
       }}
       transition={{
         duration,
@@ -2001,7 +1922,7 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
       }}
       onClick={onTap}
       aria-label="Astaghfirullah"
-      className="absolute pointer-events-auto cursor-pointer active:scale-95 transition-transform"
+      className="absolute pointer-events-auto cursor-pointer active:scale-95"
       style={{
         top: `${yPos}%`,
         width: size,
@@ -2009,43 +1930,98 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
         border: 'none',
         padding: 0,
         background: 'transparent',
-        // Multiply blend darkens terrain beneath without covering it —
-        // ground colours penetrate through the smoke naturally.
         mixBlendMode: 'multiply',
         filter: 'contrast(1.05)',
-        // Hint the browser to keep this on the compositor layer for
-        // silky-smooth long drift animations.
         willChange: 'transform, opacity',
+        transform: `rotate(var(--cloud-rotation, 0)) scale(var(--cloud-scale, 1))`,
+        ...cssVars,
       }}
     >
-      {blobs.map((b, k) => {
-        // Build multi-stop radial gradient using the blob's palette + its
-        // own opacity ramp. Each stop uses a DIFFERENT hex from the
-        // palette so the gradient has natural inner tone variation.
-        const stopStr = b.stops
-          .map((s, si) => {
-            const hex = si === 0 ? b.pal.dark
-                      : si === 1 ? b.pal.mid
-                      : b.pal.soft
-            // Prepend hex + alpha byte (opacity 0-255)
-            const alpha = Math.round(s.op * 255).toString(16).padStart(2, '0')
-            return `${hex}${alpha} ${s.pos}%`
-          })
-          .join(', ')
+      {/* LAYER 1 — Deep shadow core (bottom, darkest, 2 offset centres) */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: '50%',
+        background: `
+          radial-gradient(ellipse 55% 45% at var(--cloud-core-x) var(--cloud-core-y), #000000 0%, #050608 30%, transparent 70%),
+          radial-gradient(ellipse 40% 35% at 60% 40%, #090A0D 0%, transparent 65%)
+        `,
+        opacity: 0.72 + rand(60) * 0.14,
+        filter: `blur(${22 + rand(61) * 8}px)`,
+        pointerEvents: 'none',
+      }} />
+
+      {/* LAYER 2 — Dense smoke body (offset left, larger, navy hint) */}
+      <div style={{
+        position: 'absolute', inset: '5% 10% 5% 0', borderRadius: '55% 45% 60% 40%',
+        background: `
+          radial-gradient(ellipse 60% 50% at 40% 55%, var(--cloud-cool) 0%, #171A22 40%, transparent 75%),
+          radial-gradient(ellipse 45% 40% at 55% 40%, #111319 0%, transparent 70%)
+        `,
+        opacity: 0.55 + rand(62) * 0.13,
+        filter: `blur(${20 + rand(63) * 10}px)`,
+        transform: `translate(${(rand(64) - 0.5) * 8}%, ${(rand(65) - 0.5) * 6}%)`,
+        pointerEvents: 'none',
+      }} />
+
+      {/* LAYER 3 — Dense smoke body (offset right, purple/warm hint) */}
+      <div style={{
+        position: 'absolute', inset: '5% 0 5% 10%', borderRadius: '45% 55% 40% 60%',
+        background: `
+          radial-gradient(ellipse 55% 45% at 55% 50%, var(--cloud-warm) 0%, #20232D 45%, transparent 78%),
+          radial-gradient(ellipse 35% 30% at 40% 60%, #171A22 0%, transparent 70%)
+        `,
+        opacity: 0.48 + rand(66) * 0.14,
+        filter: `blur(${24 + rand(67) * 10}px)`,
+        transform: `translate(${(rand(68) - 0.5) * 8}%, ${(rand(69) - 0.5) * 6}%)`,
+        pointerEvents: 'none',
+      }} />
+
+      {/* LAYER 4 — Medium outer wisp (spans wider, dilutes edges) */}
+      <div style={{
+        position: 'absolute', inset: '-5% -5% -5% -5%', borderRadius: '48% 52% 55% 45%',
+        background: `
+          radial-gradient(ellipse 50% 45% at 45% 50%, #20232D 0%, #2A2D38 40%, transparent 80%),
+          radial-gradient(ellipse 30% 28% at 65% 45%, #262933 0%, transparent 75%),
+          radial-gradient(ellipse 25% 22% at 30% 60%, #232633 0%, transparent 72%)
+        `,
+        opacity: 0.32 + rand(70) * 0.16,
+        filter: `blur(${28 + rand(71) * 12}px)`,
+        pointerEvents: 'none',
+      }} />
+
+      {/* LAYER 5 — Highlight puff (very subtle, on upper region only) */}
+      <div style={{
+        position: 'absolute',
+        left: `${25 + rand(72) * 20}%`, top: `${15 + rand(73) * 15}%`,
+        width: '35%', height: '25%', borderRadius: '50%',
+        background: `radial-gradient(ellipse at center,
+          rgba(255,255,255, var(--cloud-highlight)) 0%,
+          rgba(210,220,235, calc(var(--cloud-highlight) * 0.6)) 45%,
+          transparent 80%)`,
+        filter: `blur(${18 + rand(74) * 8}px)`,
+        mixBlendMode: 'screen',
+        pointerEvents: 'none',
+      }} />
+
+      {/* SMALL DETACHED PUFFS — 4 small edge fragments */}
+      {[0, 1, 2, 3].map((k) => {
+        const px = 5 + rand(80 + k) * 90
+        const py = 5 + rand(85 + k) * 90
+        const pw = 14 + rand(90 + k) * 14
+        const ph = 10 + rand(95 + k) * 12
+        const po = 0.10 + rand(100 + k) * 0.18
+        const pblur = 22 + rand(105 + k) * 18
+        const shape = ['48% 52% 55% 45%', '55% 45% 48% 52%', '50% 50% 42% 58%', '45% 55% 52% 48%'][k]
         return (
           <div
-            key={k}
+            key={`puff-${k}`}
             style={{
               position: 'absolute',
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              width: `${b.w}%`,
-              height: `${b.h}%`,
-              background: `radial-gradient(ellipse at center, ${stopStr})`,
-              opacity: b.op,
-              filter: `blur(${b.blur}px)`,
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
+              left: `${px}%`, top: `${py}%`,
+              width: `${pw}%`, height: `${ph}%`,
+              borderRadius: shape,
+              background: `radial-gradient(ellipse at 40% 45%, #0F1218 0%, #1A1D25 55%, transparent 88%)`,
+              opacity: po,
+              filter: `blur(${pblur}px)`,
               pointerEvents: 'none',
             }}
           />
