@@ -1875,56 +1875,137 @@ const UpgradeConstructionOverlay = ({ upgrade, lang, onClose }) => {
 // Uses layered blurred CSS shapes for depth (no Phaser overhead).
 // 0 demerit = clear sky, 10+ = heavy storm.
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// SmokeMass — one volumetric atmospheric smoke instance.
+// Composed from ~11 stacked radial-gradient blobs at varying sizes, blurs,
+// opacities and offsets (deterministic per-index seed for stable placement).
+// mix-blend-mode:multiply on the wrapper lets terrain colours penetrate
+// naturally, so the world reads as "atmosphere is darkening" rather than
+// "a cloud is floating". Charcoal palette only (#0F0F0F → #252525) —
+// zero blue/purple tint, zero white, zero rim light per user spec.
+// ═══════════════════════════════════════════════════════════════════════════
+const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
+  // Deterministic PRNG so the shape is stable across renders (no jitter on
+  // language toggle, re-render, etc.)
+  const rand = (n) => {
+    const x = Math.sin(i * 137 + n * 31) * 10000
+    return x - Math.floor(x)
+  }
+  // Build blob descriptor list — 1 dense core + 4 medium wisps + 6 tiny fragments.
+  // Positions are % of the wrapper. Blur grows outward. Opacity drops outward.
+  const CORE = { x: 45 + rand(0) * 10, y: 45 + rand(1) * 10, w: 70, h: 55, op: 0.80, blur: 22, hex: '#0F0F0F' }
+  const wisps = []
+  for (let k = 0; k < 4; k++) {
+    wisps.push({
+      x: 15 + rand(k * 3 + 10) * 70,
+      y: 15 + rand(k * 3 + 11) * 70,
+      w: 40 + rand(k * 3 + 12) * 30,
+      h: 28 + rand(k * 3 + 13) * 22,
+      op: 0.35 + rand(k + 20) * 0.20,       // 0.35 – 0.55
+      blur: 32 + rand(k + 21) * 14,
+      hex: '#161616',
+    })
+  }
+  const fragments = []
+  for (let k = 0; k < 6; k++) {
+    fragments.push({
+      x: -15 + rand(k * 5 + 30) * 130,
+      y: -15 + rand(k * 5 + 31) * 130,
+      w: 22 + rand(k * 5 + 32) * 20,
+      h: 16 + rand(k * 5 + 33) * 16,
+      op: 0.08 + rand(k + 40) * 0.17,       // 0.08 – 0.25
+      blur: 26 + rand(k + 41) * 20,
+      hex: '#1E1E1E',
+    })
+  }
+  const blobs = [CORE, ...wisps, ...fragments]
+
+  return (
+    <motion.button
+      initial={{ x: `${startX - 20}vw` }}
+      animate={{ x: `${startX + 120}vw` }}
+      transition={{ duration, repeat: Infinity, ease: 'linear' }}
+      onClick={onTap}
+      aria-label="Astaghfirullah"
+      className="absolute pointer-events-auto cursor-pointer active:scale-95 transition-transform"
+      style={{
+        top: `${yPos}%`,
+        width: size,
+        height: size * 0.72,
+        border: 'none',
+        padding: 0,
+        background: 'transparent',
+        // Multiply blend darkens the terrain beneath without covering it —
+        // ground colours penetrate through the smoke naturally.
+        mixBlendMode: 'multiply',
+        // Slight overall softening for volumetric feel
+        filter: 'contrast(1.1)',
+      }}
+    >
+      {blobs.map((b, k) => (
+        <div
+          key={k}
+          style={{
+            position: 'absolute',
+            left: `${b.x}%`,
+            top: `${b.y}%`,
+            width: `${b.w}%`,
+            height: `${b.h}%`,
+            background: `radial-gradient(ellipse at center, ${b.hex} 0%, ${b.hex} 25%, ${b.hex}80 55%, transparent 80%)`,
+            opacity: b.op,
+            filter: `blur(${b.blur}px)`,
+            transform: 'translate(-50%, -50%)',
+            borderRadius: '50%',
+            pointerEvents: 'none',
+          }}
+        />
+      ))}
+    </motion.button>
+  )
+}
+
 const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
   if (!demeritCount || demeritCount <= 0) return null
   const clouds = Math.min(demeritCount, 10)
-  // Overall darkening intensity (0 → 0.5 max)
-  const darken = Math.min(0.5, demeritCount * 0.05)
-  // i18n for the CTA that appears once clouds accumulate. All text piped
-  // through this map so the toggle bahasa switches copy live.
+  // Overall darkening intensity (0 → 0.45 max) — subtle ambient dim,
+  // NOT a solid overlay. Smoke masses layer their own darkness on top.
+  const darken = Math.min(0.45, demeritCount * 0.04)
+  // i18n for the CTA that appears once smoke accumulates.
   const CTA = {
-    ms: '🤲 Ketuk awan untuk beristighfar',
-    en: '🤲 Tap a cloud to say Astaghfirullah',
-    id: '🤲 Ketuk awan untuk beristighfar',
-    ar: '🤲 اضغط على السحاب للاستغفار',
+    ms: '🤲 Ketuk asap untuk beristighfar',
+    en: '🤲 Tap the smoke to say Astaghfirullah',
+    id: '🤲 Ketuk asap untuk beristighfar',
+    ar: '🤲 اضغط على الدخان للاستغفار',
   }
   return (
     // pointer-events-none on the wrapper so the world underneath still receives
     // pans/zooms — only the interactive elements below enable pointer events.
     <div className="absolute inset-0 pointer-events-none z-[20] overflow-hidden">
-      {/* Sky darkening layer */}
+      {/* Ambient atmospheric darkening — subtle, since smoke masses carry
+          the heavy darkness. This layer just tints the whole scene calmer. */}
       <div className="absolute inset-0 transition-opacity duration-1000" style={{
-        background: `rgba(20, 20, 30, ${darken})`,
+        background: `rgba(15, 15, 15, ${darken})`,
       }} />
-      {/* Individual cloud puffs — slow drift, tappable to open Istighfar */}
+      {/* Volumetric smoke masses — each drifts across the sky and can be
+          tapped to open the Istighfar cleanse loop. */}
       {[...Array(clouds)].map((_, i) => {
-        const size = 120 + (i % 4) * 40
-        const yPos = 5 + (i * 7) % 40   // spread top portion of screen
-        const startX = -(i * 15) % 100
-        const duration = 40 + (i % 5) * 8  // 40-72s drift
+        const size = 200 + (i % 4) * 80         // 200, 280, 360, 440 px
+        const yPos = 2 + (i * 11) % 45          // spread top half of screen
+        const startX = -(i * 13) % 100
+        const duration = 55 + (i % 5) * 12      // 55-103s drift — slow, calm
         return (
-          <motion.button
+          <SmokeMass
             key={i}
-            initial={{ x: `${startX - 20}vw` }}
-            animate={{ x: `${startX + 120}vw` }}
-            transition={{ duration, repeat: Infinity, ease: 'linear' }}
-            onClick={onOpenIstighfar}
-            aria-label="Astaghfirullah"
-            className="absolute rounded-full pointer-events-auto cursor-pointer active:scale-95 transition-transform"
-            style={{
-              top: `${yPos}%`,
-              width: size,
-              height: size * 0.55,
-              background: 'radial-gradient(ellipse, rgba(45,50,65,0.85) 0%, rgba(45,50,65,0.35) 60%, transparent 100%)',
-              filter: 'blur(12px)',
-              border: 'none',
-              padding: 0,
-            }}
+            i={i}
+            size={size}
+            yPos={yPos}
+            startX={startX}
+            duration={duration}
+            onTap={onOpenIstighfar}
           />
         )
       })}
-      {/* CTA hint — clickable button that also opens the Istighfar modal.
-          Shows as soon as ANY cloud is present so kids know the way out. */}
+      {/* CTA hint — clickable button that also opens the Istighfar modal. */}
       <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-auto">
         <button
           onClick={onOpenIstighfar}
