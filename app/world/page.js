@@ -1877,54 +1877,109 @@ const UpgradeConstructionOverlay = ({ upgrade, lang, onClose }) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════════
 // SmokeMass — one volumetric atmospheric smoke instance.
-// Composed from ~11 stacked radial-gradient blobs at varying sizes, blurs,
-// opacities and offsets (deterministic per-index seed for stable placement).
-// mix-blend-mode:multiply on the wrapper lets terrain colours penetrate
-// naturally, so the world reads as "atmosphere is darkening" rather than
-// "a cloud is floating". Charcoal palette only (#0F0F0F → #252525) —
-// zero blue/purple tint, zero white, zero rim light per user spec.
+// Composed from ~11 stacked multi-stop radial gradients at varying sizes,
+// blurs, opacities, palettes and offsets (deterministic per-index seed for
+// stable placement). Each blob picks its own charcoal palette from a
+// curated set so overlapping blobs read as layered density rather than
+// uniform blob-copies. mix-blend-mode:multiply on the wrapper lets terrain
+// colours penetrate — the world reads as "atmosphere darkening" not
+// "cloud floating". Charcoal only (#0A0A0A → #272727) per user spec.
 // ═══════════════════════════════════════════════════════════════════════════
 const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
-  // Deterministic PRNG so the shape is stable across renders (no jitter on
-  // language toggle, re-render, etc.)
+  // Deterministic PRNG so the shape is stable across renders
   const rand = (n) => {
     const x = Math.sin(i * 137 + n * 31) * 10000
     return x - Math.floor(x)
   }
-  // Build blob descriptor list — 1 dense core + 4 medium wisps + 6 tiny fragments.
-  // Positions are % of the wrapper. Blur grows outward. Opacity drops outward.
-  const CORE = { x: 45 + rand(0) * 10, y: 45 + rand(1) * 10, w: 70, h: 55, op: 0.80, blur: 22, hex: '#0F0F0F' }
+  // Curated charcoal palette — pure greyscale only, zero tint.
+  // Each blob picks a "dark" + "mid" + "soft" triple so its own gradient
+  // has natural inner tone variation (not a single flat colour smeared).
+  const PALETTES = [
+    { dark: '#0A0A0A', mid: '#131313', soft: '#1C1C1C' },
+    { dark: '#0F0F0F', mid: '#171717', soft: '#212121' },
+    { dark: '#0C0C0C', mid: '#1A1A1A', soft: '#252525' },
+    { dark: '#111111', mid: '#191919', soft: '#232323' },
+    { dark: '#0D0D0D', mid: '#141414', soft: '#1F1F1F' },
+    { dark: '#101010', mid: '#181818', soft: '#272727' },
+  ]
+  const pickPalette = (k) => PALETTES[Math.floor(rand(k * 91 + 7) * PALETTES.length)]
+
+  // Build blob descriptor list — 1 dense core + 5 medium wisps + 7 tiny
+  // fragments for richer overlay. Positions are % of the wrapper. Blur
+  // grows outward. Opacity drops outward.
+  const CORE = {
+    x: 45 + rand(0) * 10, y: 45 + rand(1) * 10,
+    w: 70 + rand(2) * 10, h: 52 + rand(3) * 12,
+    op: 0.72 + rand(4) * 0.13,   // 0.72-0.85
+    blur: 20 + rand(5) * 8,
+    pal: pickPalette(0),
+    stops: [
+      { pos: 0,  op: 0.95 },
+      { pos: 30, op: 0.75 },
+      { pos: 60, op: 0.35 },
+      { pos: 85, op: 0 },
+    ],
+  }
   const wisps = []
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < 5; k++) {
     wisps.push({
-      x: 15 + rand(k * 3 + 10) * 70,
-      y: 15 + rand(k * 3 + 11) * 70,
-      w: 40 + rand(k * 3 + 12) * 30,
-      h: 28 + rand(k * 3 + 13) * 22,
-      op: 0.35 + rand(k + 20) * 0.20,       // 0.35 – 0.55
-      blur: 32 + rand(k + 21) * 14,
-      hex: '#161616',
+      x: 10 + rand(k * 3 + 10) * 80,
+      y: 12 + rand(k * 3 + 11) * 76,
+      w: 38 + rand(k * 3 + 12) * 32,
+      h: 26 + rand(k * 3 + 13) * 24,
+      op: 0.35 + rand(k + 20) * 0.30,       // 0.35-0.65
+      blur: 30 + rand(k + 21) * 18,
+      pal: pickPalette(k + 3),
+      stops: [
+        { pos: 0,  op: 0.80 },
+        { pos: 40, op: 0.45 },
+        { pos: 75, op: 0.15 },
+        { pos: 100, op: 0 },
+      ],
     })
   }
   const fragments = []
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 7; k++) {
     fragments.push({
       x: -15 + rand(k * 5 + 30) * 130,
       y: -15 + rand(k * 5 + 31) * 130,
-      w: 22 + rand(k * 5 + 32) * 20,
-      h: 16 + rand(k * 5 + 33) * 16,
-      op: 0.08 + rand(k + 40) * 0.17,       // 0.08 – 0.25
-      blur: 26 + rand(k + 41) * 20,
-      hex: '#1E1E1E',
+      w: 22 + rand(k * 5 + 32) * 24,
+      h: 15 + rand(k * 5 + 33) * 18,
+      op: 0.10 + rand(k + 40) * 0.25,       // 0.10-0.35
+      blur: 24 + rand(k + 41) * 22,
+      pal: pickPalette(k + 9),
+      stops: [
+        { pos: 0,  op: 0.55 },
+        { pos: 50, op: 0.28 },
+        { pos: 100, op: 0 },
+      ],
     })
   }
   const blobs = [CORE, ...wisps, ...fragments]
 
+  // ── Smooth seamless drift ─────────────────────────────────────────────
+  // Extended off-screen range (-70vw to +170vw = 240vw travel) guarantees
+  // both start and end are safely off-screen, so the framer-motion loop
+  // snap at cycle end is INVISIBLE. Opacity fades to zero right at the
+  // wrap boundary as an extra safety net so any perceptual "pop" is
+  // absorbed. Both `x` and `opacity` share the same 4-stop keyframe
+  // schedule so framer-motion can sync them via a single `times` array.
+  const xStart = startX - 70
+  const xEnd   = startX + 170
+
   return (
     <motion.button
-      initial={{ x: `${startX - 20}vw` }}
-      animate={{ x: `${startX + 120}vw` }}
-      transition={{ duration, repeat: Infinity, ease: 'linear' }}
+      initial={{ x: `${xStart}vw`, opacity: 0 }}
+      animate={{
+        x: [`${xStart}vw`, `${xStart + 20}vw`, `${xEnd - 20}vw`, `${xEnd}vw`],
+        opacity: [0, 1, 1, 0],
+      }}
+      transition={{
+        duration,
+        times: [0, 0.09, 0.91, 1],
+        repeat: Infinity,
+        ease: 'linear',
+      }}
       onClick={onTap}
       aria-label="Astaghfirullah"
       className="absolute pointer-events-auto cursor-pointer active:scale-95 transition-transform"
@@ -1935,31 +1990,48 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
         border: 'none',
         padding: 0,
         background: 'transparent',
-        // Multiply blend darkens the terrain beneath without covering it —
+        // Multiply blend darkens terrain beneath without covering it —
         // ground colours penetrate through the smoke naturally.
         mixBlendMode: 'multiply',
-        // Slight overall softening for volumetric feel
-        filter: 'contrast(1.1)',
+        filter: 'contrast(1.05)',
+        // Hint the browser to keep this on the compositor layer for
+        // silky-smooth long drift animations.
+        willChange: 'transform, opacity',
       }}
     >
-      {blobs.map((b, k) => (
-        <div
-          key={k}
-          style={{
-            position: 'absolute',
-            left: `${b.x}%`,
-            top: `${b.y}%`,
-            width: `${b.w}%`,
-            height: `${b.h}%`,
-            background: `radial-gradient(ellipse at center, ${b.hex} 0%, ${b.hex} 25%, ${b.hex}80 55%, transparent 80%)`,
-            opacity: b.op,
-            filter: `blur(${b.blur}px)`,
-            transform: 'translate(-50%, -50%)',
-            borderRadius: '50%',
-            pointerEvents: 'none',
-          }}
-        />
-      ))}
+      {blobs.map((b, k) => {
+        // Build multi-stop radial gradient using the blob's palette + its
+        // own opacity ramp. Each stop uses a DIFFERENT hex from the
+        // palette so the gradient has natural inner tone variation.
+        const stopStr = b.stops
+          .map((s, si) => {
+            const hex = si === 0 ? b.pal.dark
+                      : si === 1 ? b.pal.mid
+                      : b.pal.soft
+            // Prepend hex + alpha byte (opacity 0-255)
+            const alpha = Math.round(s.op * 255).toString(16).padStart(2, '0')
+            return `${hex}${alpha} ${s.pos}%`
+          })
+          .join(', ')
+        return (
+          <div
+            key={k}
+            style={{
+              position: 'absolute',
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+              background: `radial-gradient(ellipse at center, ${stopStr})`,
+              opacity: b.op,
+              filter: `blur(${b.blur}px)`,
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '50%',
+              pointerEvents: 'none',
+            }}
+          />
+        )
+      })}
     </motion.button>
   )
 }
