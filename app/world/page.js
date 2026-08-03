@@ -1884,26 +1884,48 @@ const UpgradeConstructionOverlay = ({ upgrade, lang, onClose }) => {
 // "moonlight" for a hint of dimensionality. CSS variables drive per-
 // instance variation without duplicating declarations.
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// SmokeMass v3 — layered smoke where DARKNESS EMERGES from overlap, not
+// from a single black fill. Fixes the "flat uniform black" problem (2026-
+// 08-03): parent is transparent, NO parent multiply blend, no full-size
+// black gradient. Charcoal-dominant body + navy & violet depth pockets +
+// SMALL black density pockets + subtle highlights on top. Composition
+// (per spec §"Colour Proportions"):
+//   pure black   ~12%  (tiny inner pockets, opacity <0.60)
+//   charcoal     ~55%  (main visible body, opacity 0.30-0.52)
+//   navy-charcoal ~18%  (cool cavity, opacity 0.18-0.34)
+//   violet-charcoal ~10% (warm depth pocket, opacity 0.18-0.30)
+//   highlights   ~5%   (rgba white/blue at 0.04-0.10 on upper puffs)
+// Z-order (back → front): outer haze → charcoal → navy → violet →
+// black pockets → highlights. No mix-blend on parent.
+// ═══════════════════════════════════════════════════════════════════════════
 const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
   const rand = (n) => {
     const x = Math.sin(i * 137 + n * 31) * 10000
     return x - Math.floor(x)
   }
-  // Per-instance CSS variables — see spec §10. Range values kept subtle.
   const cssVars = {
-    '--cloud-scale':      1.0 + (rand(50) - 0.5) * 0.25,           // 0.875-1.125
-    '--cloud-opacity':    0.85 + rand(51) * 0.15,                  // 0.85-1.00
-    '--cloud-rotation':   `${(rand(52) - 0.5) * 30}deg`,           // -15 to +15
-    '--cloud-core-x':     `${45 + rand(53) * 10}%`,                // 45-55
-    '--cloud-core-y':     `${45 + rand(54) * 10}%`,                // 45-55
-    '--cloud-cool':       rand(55) > 0.5 ? '#101625' : '#141B2B',  // navy tint choice
-    '--cloud-warm':       rand(56) > 0.5 ? '#1A1730' : '#111319',  // purple/deep choice
-    '--cloud-highlight':  0.03 + rand(57) * 0.03,                  // 0.03-0.06
+    '--cloud-scale':      1.0 + (rand(50) - 0.5) * 0.25,
+    '--cloud-rotation':   `${(rand(52) - 0.5) * 22}deg`,
   }
-
-  // Extended drift range — start & end well off-screen for invisible loop wrap.
   const xStart = startX - 70
   const xEnd   = startX + 170
+
+  // Deterministic offset centres so gradients don't all sit at 50/50.
+  const cLeft  = `${28 + rand(60) * 14}%`  // charcoal body offset centre-left
+  const cLeftY = `${42 + rand(61) * 16}%`
+  const cRight = `${58 + rand(62) * 14}%`  // charcoal body offset centre-right
+  const cRightY = `${48 + rand(63) * 14}%`
+  const navyX  = `${45 + rand(64) * 20}%`  // navy cavity lower-centre
+  const navyY  = `${58 + rand(65) * 16}%`
+  const violX  = `${58 + rand(66) * 18}%`  // violet depth upper-right
+  const violY  = `${28 + rand(67) * 18}%`
+  const hlX    = `${34 + rand(68) * 24}%`  // highlight upper-left/centre
+  const hlY    = `${18 + rand(69) * 14}%`
+  const blk1X  = `${38 + rand(70) * 12}%`  // black pocket 1
+  const blk1Y  = `${48 + rand(71) * 10}%`
+  const blk2X  = `${56 + rand(72) * 14}%`  // black pocket 2
+  const blk2Y  = `${52 + rand(73) * 14}%`
 
   return (
     <motion.button
@@ -1911,15 +1933,9 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
       animate={{
         x: [`${xStart}vw`, `${xStart + 20}vw`, `${xEnd - 20}vw`, `${xEnd}vw`],
         opacity: [0, 1, 1, 0],
-        // Very subtle breathing scale so the cloud feels alive without bouncing.
         scale: [1, 1.03, 1.01, 1],
       }}
-      transition={{
-        duration,
-        times: [0, 0.09, 0.91, 1],
-        repeat: Infinity,
-        ease: 'linear',
-      }}
+      transition={{ duration, times: [0, 0.09, 0.91, 1], repeat: Infinity, ease: 'linear' }}
       onClick={onTap}
       aria-label="Astaghfirullah"
       className="absolute pointer-events-auto cursor-pointer active:scale-95"
@@ -1929,107 +1945,115 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
         height: size * 0.72,
         border: 'none',
         padding: 0,
+        // Parent must be transparent — no full-size black fill, no multiply.
         background: 'transparent',
-        mixBlendMode: 'multiply',
-        filter: 'contrast(1.05)',
         willChange: 'transform, opacity',
         transform: `rotate(var(--cloud-rotation, 0)) scale(var(--cloud-scale, 1))`,
         ...cssVars,
       }}
     >
-      {/* LAYER 1 — Deep shadow core (bottom, darkest, 2 offset centres) */}
+      {/* Layer 1 — outer atmospheric haze (broadest, most transparent) */}
       <div style={{
-        position: 'absolute', inset: 0, borderRadius: '50%',
+        position: 'absolute', inset: '-8% -8% -8% -8%', borderRadius: '48% 52% 55% 45%',
         background: `
-          radial-gradient(ellipse 55% 45% at var(--cloud-core-x) var(--cloud-core-y), #000000 0%, #050608 30%, transparent 70%),
-          radial-gradient(ellipse 40% 35% at 60% 40%, #090A0D 0%, transparent 65%)
+          radial-gradient(ellipse 60% 55% at 35% 55%, #222630 0%, #292D37 45%, transparent 82%),
+          radial-gradient(ellipse 50% 45% at 65% 45%, #20283A 0%, transparent 78%)
         `,
-        opacity: 0.72 + rand(60) * 0.14,
-        filter: `blur(${22 + rand(61) * 8}px)`,
+        opacity: 0.10 + rand(80) * 0.08,     // 0.10-0.18
+        filter: `blur(${34 + rand(81) * 12}px)`,
         pointerEvents: 'none',
       }} />
 
-      {/* LAYER 2 — Dense smoke body (offset left, larger, navy hint) */}
+      {/* Layer 2 — broad charcoal body (main visible mass, offset centre-left) */}
       <div style={{
-        position: 'absolute', inset: '5% 10% 5% 0', borderRadius: '55% 45% 60% 40%',
+        position: 'absolute', inset: '2% 6% 4% 0', borderRadius: '55% 45% 58% 42%',
         background: `
-          radial-gradient(ellipse 60% 50% at 40% 55%, var(--cloud-cool) 0%, #171A22 40%, transparent 75%),
-          radial-gradient(ellipse 45% 40% at 55% 40%, #111319 0%, transparent 70%)
+          radial-gradient(ellipse 58% 48% at ${cLeft} ${cLeftY}, #15171C 0%, #1B1E25 35%, #222630 60%, transparent 82%),
+          radial-gradient(ellipse 42% 36% at ${cRight} ${cRightY}, #1B1E25 0%, #292D37 50%, transparent 78%)
         `,
-        opacity: 0.55 + rand(62) * 0.13,
-        filter: `blur(${20 + rand(63) * 10}px)`,
-        transform: `translate(${(rand(64) - 0.5) * 8}%, ${(rand(65) - 0.5) * 6}%)`,
+        opacity: 0.34 + rand(82) * 0.18,     // 0.34-0.52
+        filter: `blur(${20 + rand(83) * 10}px)`,
         pointerEvents: 'none',
       }} />
 
-      {/* LAYER 3 — Dense smoke body (offset right, purple/warm hint) */}
+      {/* Layer 3 — cool navy-charcoal cavity (lower centre) */}
       <div style={{
-        position: 'absolute', inset: '5% 0 5% 10%', borderRadius: '45% 55% 40% 60%',
+        position: 'absolute', inset: '10% 8% 5% 12%', borderRadius: '52% 48% 45% 55%',
         background: `
-          radial-gradient(ellipse 55% 45% at 55% 50%, var(--cloud-warm) 0%, #20232D 45%, transparent 78%),
-          radial-gradient(ellipse 35% 30% at 40% 60%, #171A22 0%, transparent 70%)
+          radial-gradient(ellipse 55% 45% at ${navyX} ${navyY}, #111827 0%, #182033 40%, transparent 78%)
         `,
-        opacity: 0.48 + rand(66) * 0.14,
-        filter: `blur(${24 + rand(67) * 10}px)`,
-        transform: `translate(${(rand(68) - 0.5) * 8}%, ${(rand(69) - 0.5) * 6}%)`,
+        opacity: 0.20 + rand(84) * 0.14,     // 0.20-0.34
+        filter: `blur(${22 + rand(85) * 8}px)`,
         pointerEvents: 'none',
       }} />
 
-      {/* LAYER 4 — Medium outer wisp (spans wider, dilutes edges) */}
+      {/* Layer 4 — muted violet depth (upper right pocket) */}
       <div style={{
-        position: 'absolute', inset: '-5% -5% -5% -5%', borderRadius: '48% 52% 55% 45%',
+        position: 'absolute', inset: '5% 5% 15% 20%', borderRadius: '45% 55% 50% 50%',
         background: `
-          radial-gradient(ellipse 50% 45% at 45% 50%, #20232D 0%, #2A2D38 40%, transparent 80%),
-          radial-gradient(ellipse 30% 28% at 65% 45%, #262933 0%, transparent 75%),
-          radial-gradient(ellipse 25% 22% at 30% 60%, #232633 0%, transparent 72%)
+          radial-gradient(ellipse 50% 45% at ${violX} ${violY}, #1D1928 0%, #252033 40%, transparent 76%)
         `,
-        opacity: 0.32 + rand(70) * 0.16,
-        filter: `blur(${28 + rand(71) * 12}px)`,
+        opacity: 0.18 + rand(86) * 0.12,     // 0.18-0.30
+        filter: `blur(${20 + rand(87) * 10}px)`,
         pointerEvents: 'none',
       }} />
 
-      {/* LAYER 5 — Highlight puff (very subtle, on upper region only) */}
+      {/* Layer 5a — deep black pocket #1 (small, dense, inner) */}
       <div style={{
-        position: 'absolute',
-        left: `${25 + rand(72) * 20}%`, top: `${15 + rand(73) * 15}%`,
-        width: '35%', height: '25%', borderRadius: '50%',
-        background: `radial-gradient(ellipse at center,
-          rgba(255,255,255, var(--cloud-highlight)) 0%,
-          rgba(210,220,235, calc(var(--cloud-highlight) * 0.6)) 45%,
-          transparent 80%)`,
-        filter: `blur(${18 + rand(74) * 8}px)`,
-        mixBlendMode: 'screen',
+        position: 'absolute', inset: '25% 30% 25% 30%', borderRadius: '50%',
+        background: `radial-gradient(ellipse 45% 40% at ${blk1X} ${blk1Y}, #000000 0%, #040506 40%, transparent 75%)`,
+        opacity: 0.44 + rand(88) * 0.16,     // 0.44-0.60
+        filter: `blur(${12 + rand(89) * 6}px)`,
         pointerEvents: 'none',
       }} />
 
-      {/* SMALL DETACHED PUFFS — 4 small edge fragments */}
+      {/* Layer 5b — deep black pocket #2 (smaller, offset) */}
+      <div style={{
+        position: 'absolute', inset: '30% 25% 30% 35%', borderRadius: '50%',
+        background: `radial-gradient(ellipse 35% 32% at ${blk2X} ${blk2Y}, #000000 0%, #08090C 45%, transparent 78%)`,
+        opacity: 0.38 + rand(90) * 0.18,     // 0.38-0.56
+        filter: `blur(${14 + rand(91) * 4}px)`,
+        pointerEvents: 'none',
+      }} />
+
+      {/* Layer 6 — subtle upper highlights (TOP of z-order) */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          radial-gradient(ellipse 28% 20% at ${hlX} ${hlY}, rgba(205,212,224,0.09) 0%, rgba(170,180,195,0.05) 50%, transparent 85%),
+          radial-gradient(ellipse 18% 14% at 58% 22%, rgba(255,255,255,0.035) 0%, transparent 80%)
+        `,
+        opacity: 0.6 + rand(92) * 0.3,
+        filter: `blur(${14 + rand(93) * 8}px)`,
+        mixBlendMode: 'screen',              // ONLY on this thin highlight layer, per spec
+        pointerEvents: 'none',
+      }} />
+
+      {/* Small detached charcoal puffs at perimeter — irregular silhouette */}
       {[0, 1, 2, 3].map((k) => {
-        const px = 5 + rand(80 + k) * 90
-        const py = 5 + rand(85 + k) * 90
-        const pw = 14 + rand(90 + k) * 14
-        const ph = 10 + rand(95 + k) * 12
-        const po = 0.10 + rand(100 + k) * 0.18
-        const pblur = 22 + rand(105 + k) * 18
+        const px = 5 + rand(100 + k) * 88
+        const py = 5 + rand(105 + k) * 88
+        const pw = 15 + rand(110 + k) * 15
+        const ph = 11 + rand(115 + k) * 12
         const shape = ['48% 52% 55% 45%', '55% 45% 48% 52%', '50% 50% 42% 58%', '45% 55% 52% 48%'][k]
         return (
-          <div
-            key={`puff-${k}`}
-            style={{
-              position: 'absolute',
-              left: `${px}%`, top: `${py}%`,
-              width: `${pw}%`, height: `${ph}%`,
-              borderRadius: shape,
-              background: `radial-gradient(ellipse at 40% 45%, #0F1218 0%, #1A1D25 55%, transparent 88%)`,
-              opacity: po,
-              filter: `blur(${pblur}px)`,
-              pointerEvents: 'none',
-            }}
-          />
+          <div key={`puff-${k}`} style={{
+            position: 'absolute',
+            left: `${px}%`, top: `${py}%`,
+            width: `${pw}%`, height: `${ph}%`,
+            borderRadius: shape,
+            background: `radial-gradient(ellipse at 42% 45%, #1B1E25 0%, #222630 50%, transparent 85%)`,
+            opacity: 0.10 + rand(120 + k) * 0.14,
+            filter: `blur(${20 + rand(125 + k) * 14}px)`,
+            pointerEvents: 'none',
+          }} />
         )
       })}
     </motion.button>
   )
 }
+
+
 
 const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
   if (!demeritCount || demeritCount <= 0) return null
