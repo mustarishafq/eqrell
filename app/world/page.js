@@ -1891,27 +1891,29 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
     const x = Math.sin(i * 137 + n * 31) * 10000
     return x - Math.floor(x)
   }
-  // Curated charcoal palette — pure greyscale only, zero tint.
-  // Each blob picks a "dark" + "mid" + "soft" triple so its own gradient
-  // has natural inner tone variation (not a single flat colour smeared).
+  // Wider charcoal contrast so gradient variance is VISIBLE when blobs
+  // overlap. Still pure greyscale per spec (zero tint, zero white).
+  // Ranges: dark #050505-#181818, mid #121212-#282828, soft #202020-#353535
   const PALETTES = [
-    { dark: '#0A0A0A', mid: '#131313', soft: '#1C1C1C' },
-    { dark: '#0F0F0F', mid: '#171717', soft: '#212121' },
-    { dark: '#0C0C0C', mid: '#1A1A1A', soft: '#252525' },
-    { dark: '#111111', mid: '#191919', soft: '#232323' },
-    { dark: '#0D0D0D', mid: '#141414', soft: '#1F1F1F' },
-    { dark: '#101010', mid: '#181818', soft: '#272727' },
+    { dark: '#050505', mid: '#121212', soft: '#202020' },  // deepest
+    { dark: '#0A0A0A', mid: '#181818', soft: '#282828' },
+    { dark: '#0F0F0F', mid: '#1D1D1D', soft: '#2E2E2E' },
+    { dark: '#121212', mid: '#212121', soft: '#333333' },
+    { dark: '#0D0D0D', mid: '#1A1A1A', soft: '#2A2A2A' },
+    { dark: '#151515', mid: '#252525', soft: '#353535' },  // lightest (still dark)
   ]
   const pickPalette = (k) => PALETTES[Math.floor(rand(k * 91 + 7) * PALETTES.length)]
 
-  // Build blob descriptor list — 1 dense core + 5 medium wisps + 7 tiny
-  // fragments for richer overlay. Positions are % of the wrapper. Blur
-  // grows outward. Opacity drops outward.
+  // Cluster tightly — all blobs orbit a central point so they overlap and
+  // form ONE cohesive smoke mass (not scattered patches). Ranges:
+  //   • Core:      45-55% (dead centre)
+  //   • Wisps:     25-75% (near-centre overlapping the core)
+  //   • Fragments: 15-85% (outer halo still touching wisps)
   const CORE = {
     x: 45 + rand(0) * 10, y: 45 + rand(1) * 10,
-    w: 70 + rand(2) * 10, h: 52 + rand(3) * 12,
-    op: 0.72 + rand(4) * 0.13,   // 0.72-0.85
-    blur: 20 + rand(5) * 8,
+    w: 78 + rand(2) * 12, h: 60 + rand(3) * 14,
+    op: 0.75 + rand(4) * 0.10,   // 0.75-0.85
+    blur: 18 + rand(5) * 8,
     pal: pickPalette(0),
     stops: [
       { pos: 0,  op: 0.95 },
@@ -1921,36 +1923,36 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
     ],
   }
   const wisps = []
-  for (let k = 0; k < 5; k++) {
+  for (let k = 0; k < 6; k++) {
     wisps.push({
-      x: 10 + rand(k * 3 + 10) * 80,
-      y: 12 + rand(k * 3 + 11) * 76,
-      w: 38 + rand(k * 3 + 12) * 32,
-      h: 26 + rand(k * 3 + 13) * 24,
-      op: 0.35 + rand(k + 20) * 0.30,       // 0.35-0.65
-      blur: 30 + rand(k + 21) * 18,
+      x: 25 + rand(k * 3 + 10) * 50,
+      y: 22 + rand(k * 3 + 11) * 56,
+      w: 45 + rand(k * 3 + 12) * 30,
+      h: 32 + rand(k * 3 + 13) * 24,
+      op: 0.45 + rand(k + 20) * 0.25,       // 0.45-0.70
+      blur: 26 + rand(k + 21) * 16,
       pal: pickPalette(k + 3),
       stops: [
-        { pos: 0,  op: 0.80 },
-        { pos: 40, op: 0.45 },
-        { pos: 75, op: 0.15 },
+        { pos: 0,  op: 0.85 },
+        { pos: 40, op: 0.50 },
+        { pos: 75, op: 0.18 },
         { pos: 100, op: 0 },
       ],
     })
   }
   const fragments = []
-  for (let k = 0; k < 7; k++) {
+  for (let k = 0; k < 8; k++) {
     fragments.push({
-      x: -15 + rand(k * 5 + 30) * 130,
-      y: -15 + rand(k * 5 + 31) * 130,
-      w: 22 + rand(k * 5 + 32) * 24,
-      h: 15 + rand(k * 5 + 33) * 18,
-      op: 0.10 + rand(k + 40) * 0.25,       // 0.10-0.35
-      blur: 24 + rand(k + 41) * 22,
+      x: 15 + rand(k * 5 + 30) * 70,
+      y: 12 + rand(k * 5 + 31) * 76,
+      w: 28 + rand(k * 5 + 32) * 26,
+      h: 20 + rand(k * 5 + 33) * 20,
+      op: 0.22 + rand(k + 40) * 0.28,       // 0.22-0.50
+      blur: 22 + rand(k + 41) * 20,
       pal: pickPalette(k + 9),
       stops: [
-        { pos: 0,  op: 0.55 },
-        { pos: 50, op: 0.28 },
+        { pos: 0,  op: 0.70 },
+        { pos: 50, op: 0.32 },
         { pos: 100, op: 0 },
       ],
     })
