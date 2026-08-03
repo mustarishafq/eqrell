@@ -1277,7 +1277,7 @@ const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) 
   // Prefer the actual illustrated PNG over the fallback emoji so the child
   // sees the exact building/orchard art they're about to construct — a
   // stronger "Bismillah" moment than a generic 🏠 or 🌴 icon.
-  const spriteSrc = t?.spriteAsset
+  const spriteSrc = t?.cardAsset || t?.spriteAsset
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1352,7 +1352,7 @@ const BuildingProgressOverlay = ({ lang = 'ms' }) => (
 const AlhamdulillahOverlay = ({ templateId, lang }) => {
   const t = BUILDING_TEMPLATES[templateId]
   const isRTL = lang === 'ar'
-  const spriteSrc = t?.spriteAsset
+  const spriteSrc = t?.cardAsset || t?.spriteAsset
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
