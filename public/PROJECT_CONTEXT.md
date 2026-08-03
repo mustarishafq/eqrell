@@ -389,7 +389,6 @@ Currently applies to: **musalla** (isSacred), **tasik** (locked)
 - Construction animation (fence + workers + excavator, 4 poses each)
 - Relocation flow: "Select-First-Then-Move" (tap → Pindah button → drag)
 - Loading optimization (30-50% faster world load)
-- Cloud overlay for demerit visualization — 6 hand-drawn dark cloud PNG variants blended with soft CSS glow via `mix-blend-mode:multiply` for realistic textured stormy sky (2026-08-03). Existing dark ambient effect preserved.
 - Cross-family verification queue (INTRA-family only — kod semasa TIDAK expose kepada keluarga lain)
 - Habit CRUD with per-session focus
 - Reward shop (proposals + requests)
