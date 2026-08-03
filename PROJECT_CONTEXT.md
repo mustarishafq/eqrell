@@ -123,11 +123,15 @@
 | Category | Icon | Templates | Cost Range |
 |---|---|---|---|
 | **ibadah** | 🕌 | musalla (auto-upgrade L1→L2→L3) | free |
+| **taman** ⭐ | 🎠 | taman_awam (30, 2×2), padang_bola (70, 3×3), waterpark (200, 4×4 PREMIUM) | 30-200 |
 | **rumah** | 🏘️ | rumah_kayu (30), rumah_batu (60), banglo (100) | 30-100 |
 | **kebun** | 🌴 | tin (25), delima (28), anggur (30), zaitun (32), kurma (35) | 25-35 |
 | **ternakan** | 🐔 | reban_ayam (25), kandang_kambing (40), kandang_lembu (90), kandang_unta (100) | 25-100 |
 | **sumber_air** | 💧 | perigi (10, 1×1), kolam (25, 2×2), **tasik** (0, 4×4 LANDMARK — auto-placed) | 0-25 |
-| **taman** | 🎠 | ayunan, gelongsor, panjat, trampolin, jongkang, bola, pokok, bunga | varies |
+| **pasar** | 🏪 | pasar_payung (50, 2×2), pasar_bangunan (120, 3×3) | 50-120 |
+| **awam** | 📚 | madrasah (120), perpustakaan (130), balai_rakyat (150) | 120-150 |
+
+**Category sidebar order (2026-08-03 update)**: `Ibadah → Taman → Rumah → Kebun → Ternakan → Sumber Air → Pasar → Awam`. User request: "kanak2 suka taman, letakan ianya di depan" — Taman is surfaced right after the mandatory Ibadah tab so children see the playgrounds prominently. Once Musalla is built, Ibadah tab is filtered out and **Taman becomes the very first visible tab**.
 
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
