@@ -1880,6 +1880,18 @@ const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
   const clouds = Math.min(demeritCount, 10)
   // Overall darkening intensity (0 → 0.5 max)
   const darken = Math.min(0.5, demeritCount * 0.05)
+  // 6 hand-drawn dark cloud sprites (positive-space sliced from user-supplied
+  // Awan_hitam.webp pack). Each cloud puff pairs a soft blurred CSS glow
+  // (ambient darkening) with ONE random PNG variant on top (texture/detail),
+  // so the sky darkens like before but individual clouds now look 3D-real.
+  const CLOUD_VARIANTS = [
+    '/assets/world/clouds_dark/cloud_dark_01.webp',
+    '/assets/world/clouds_dark/cloud_dark_02.webp',
+    '/assets/world/clouds_dark/cloud_dark_03.webp',
+    '/assets/world/clouds_dark/cloud_dark_04.webp',
+    '/assets/world/clouds_dark/cloud_dark_05.webp',
+    '/assets/world/clouds_dark/cloud_dark_06.webp',
+  ]
   // i18n for the CTA that appears once clouds accumulate. All text piped
   // through this map so the toggle bahasa switches copy live.
   const CTA = {
@@ -1896,12 +1908,17 @@ const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
       <div className="absolute inset-0 transition-opacity duration-1000" style={{
         background: `rgba(20, 20, 30, ${darken})`,
       }} />
-      {/* Individual cloud puffs — slow drift, tappable to open Istighfar */}
+      {/* Individual cloud puffs — soft glow + PNG texture, slow drift, tappable */}
       {[...Array(clouds)].map((_, i) => {
         const size = 120 + (i % 4) * 40
         const yPos = 5 + (i * 7) % 40   // spread top portion of screen
         const startX = -(i * 15) % 100
         const duration = 40 + (i % 5) * 8  // 40-72s drift
+        const variantIdx = (i * 7 + 3) % CLOUD_VARIANTS.length
+        const pngUrl = CLOUD_VARIANTS[variantIdx]
+        // Slight per-cloud tilt for organic variety (no rotation on odd ones)
+        const tilt = (i % 3 - 1) * 6
+        const scaleFlip = (i % 2) === 0 ? 1 : -1   // mirror half of them
         return (
           <motion.button
             key={i}
@@ -1910,17 +1927,42 @@ const CloudOverlay = ({ demeritCount, lang, onOpenIstighfar }) => {
             transition={{ duration, repeat: Infinity, ease: 'linear' }}
             onClick={onOpenIstighfar}
             aria-label="Astaghfirullah"
-            className="absolute rounded-full pointer-events-auto cursor-pointer active:scale-95 transition-transform"
+            className="absolute pointer-events-auto cursor-pointer active:scale-95 transition-transform"
             style={{
               top: `${yPos}%`,
               width: size,
-              height: size * 0.55,
-              background: 'radial-gradient(ellipse, rgba(45,50,65,0.85) 0%, rgba(45,50,65,0.35) 60%, transparent 100%)',
-              filter: 'blur(12px)',
+              height: size * 0.75,
               border: 'none',
               padding: 0,
+              background: 'transparent',
             }}
-          />
+          >
+            {/* Soft blurred glow — ambient darkening halo behind PNG.
+                Keeps the darken-the-sky vibe from previous version. */}
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: 'radial-gradient(ellipse, rgba(45,50,65,0.55) 0%, rgba(45,50,65,0.22) 55%, transparent 100%)',
+                filter: 'blur(14px)',
+                transform: `translateY(4px)`,
+              }}
+            />
+            {/* Real cloud PNG — layered on top for texture + realism.
+                mix-blend-mode:multiply lets the PNG darken whatever's beneath
+                naturally so it feathers with the ambient sky darken. */}
+            <img
+              src={pngUrl}
+              alt=""
+              draggable={false}
+              className="absolute inset-0 w-full h-full object-contain select-none"
+              style={{
+                mixBlendMode: 'multiply',
+                opacity: 0.92,
+                transform: `rotate(${tilt}deg) scaleX(${scaleFlip})`,
+                filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))',
+              }}
+            />
+          </motion.button>
         )
       })}
       {/* CTA hint — clickable button that also opens the Istighfar modal.
