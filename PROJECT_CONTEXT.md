@@ -134,7 +134,13 @@
 - **Taman moved AFTER Rumah** (user: "cart for taman should be place after the house, not before the house").
 - **Pasar tab merged into Awam** (user: "combine awam and pasar into one cart"). All pasar variants now have `category: 'awam'`; the standalone Pasar category is removed. Existing worlds keep rendering since we look up by templateId not category.
 
-**Taman animated play kids (`_spawnPlayKids`)**: After each taman PNG renders, kid emoji sprites (👦🏻 👧🏻 🧒🏻) are spawned INSIDE the park with per-template behaviours — playground kids wander near swings, football field spawns 4 players + an animated ⚽ chase ball, waterpark spawns 4 swimmers + 🛟 floatie + 💦 splash particle. Similar to `_spawnLivestockAnimals`, kids yoyo-tween between wander points with a subtle vertical body bob.
+**Taman animated play kids (`_spawnPlayKids`, v3 SKELETON RIG 2026-08-03)**: Each kid is now a procedurally-drawn stick figure — head (circle with face), torso (rounded rect in shirt color), 2 arms + 2 legs (thin lines that ROTATE around hip/shoulder joints). A walking cycle tween on `.angle` of each limb runs indefinitely: legs swing ±25° alternating stride, arms swing ±22° in counter-phase (natural gait), whole container bobs 1px vertically in sync. When a kid tweens across a wander path, `scaleX` flips so they face travel direction.
+
+- **6 palette variants** cycle through kids (boy blue T, pink-hijab girl, yellow T boy, purple-hijab girl, navy T tan boy, green-hijab girl) so each park feels crowded and diverse.
+- **Swimming mode** (waterpark pool kids): legs hidden, torso partially submerged, arms paddle at wider ±42° amplitude. Deck kids still walk normally.
+- **Props** (⚽ football, 🛟 floatie, 💦 splash) remain emoji text sprites — cheap and expressive.
+
+**Taman asset smart-trim (2026-08-03)**: All 3 taman PNGs (Playground.webp, Football_field.webp, Waterpark.webp) auto-cropped via PIL `getbbox()` — transparent padding removed so the artwork sits tighter on the isometric pad (waterpark went from 384×256 → 296×224 = 32% trimmed). baseScale re-tuned to 0.52 / 0.72 / 1.25 respectively.
 
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
