@@ -955,9 +955,9 @@ function WorldPageInner() {
                       'border-emerald-300 bg-white hover:bg-emerald-50/60'}`}
                 >
                   <div className="text-2xl leading-none mb-1 flex items-center justify-between">
-                    {t.spriteAsset ? (
+                    {(t.cardAsset || t.spriteAsset) ? (
                       <img
-                        src={t.spriteAsset}
+                        src={t.cardAsset || t.spriteAsset}
                         alt={t.name[lang] || t.name.ms}
                         draggable={false}
                         className="h-9 w-9 object-contain drop-shadow-sm pointer-events-none"
