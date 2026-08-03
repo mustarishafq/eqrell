@@ -1893,33 +1893,47 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
   }
   // Wider charcoal contrast so gradient variance is VISIBLE when blobs
   // overlap. Still pure greyscale per spec (zero tint, zero white).
-  // Ranges: dark #050505-#181818, mid #121212-#282828, soft #202020-#353535
+  // Ordered from DARKEST → LIGHTEST so we can assign by role (see below).
   const PALETTES = [
-    { dark: '#050505', mid: '#121212', soft: '#202020' },  // deepest
-    { dark: '#0A0A0A', mid: '#181818', soft: '#282828' },
-    { dark: '#0F0F0F', mid: '#1D1D1D', soft: '#2E2E2E' },
-    { dark: '#121212', mid: '#212121', soft: '#333333' },
-    { dark: '#0D0D0D', mid: '#1A1A1A', soft: '#2A2A2A' },
-    { dark: '#151515', mid: '#252525', soft: '#353535' },  // lightest (still dark)
+    { dark: '#050505', mid: '#121212', soft: '#202020' },  // 0: deepest — for CORE
+    { dark: '#0A0A0A', mid: '#181818', soft: '#282828' },  // 1
+    { dark: '#0F0F0F', mid: '#1D1D1D', soft: '#2E2E2E' },  // 2
+    { dark: '#121212', mid: '#212121', soft: '#333333' },  // 3
+    { dark: '#0D0D0D', mid: '#1A1A1A', soft: '#2A2A2A' },  // 4
+    { dark: '#151515', mid: '#252525', soft: '#353535' },  // 5: lightest visible
   ]
-  const pickPalette = (k) => PALETTES[Math.floor(rand(k * 91 + 7) * PALETTES.length)]
+  // ── Palette assignment by role (fixes overlay ordering) ─────────────
+  // Previously we picked a random palette per blob, which meant a WISP
+  // (rendered on top of CORE) could randomly get a DARKER palette than
+  // the core it sits above — this made the dark wisp visually block the
+  // brighter core underneath, defeating the layered feel.
+  // Now:
+  //   • CORE  → always DARKEST palette (rendered first/bottom = base density)
+  //   • WISP  → medium palettes (2-3), slight variance
+  //   • FRAG  → LIGHTEST palettes (4-5), rendered last/top = ethereal fringe
+  // Result: darker layers at bottom, lighter layers on top. Player sees
+  // the light haze diffusing around a dense dark core → real smoke feel.
+  const pickCorePalette = () => PALETTES[Math.floor(rand(7) * 2)]       // 0-1
+  const pickWispPalette = (k) => PALETTES[2 + Math.floor(rand(k * 91 + 13) * 2)]  // 2-3
+  const pickFragPalette = (k) => PALETTES[4 + Math.floor(rand(k * 77 + 19) * 2)]  // 4-5
 
   // Cluster tightly — all blobs orbit a central point so they overlap and
   // form ONE cohesive smoke mass (not scattered patches). Ranges:
   //   • Core:      45-55% (dead centre)
   //   • Wisps:     25-75% (near-centre overlapping the core)
   //   • Fragments: 15-85% (outer halo still touching wisps)
+  // Sizes intentionally overlap so the layers blend smoothly.
   const CORE = {
     x: 45 + rand(0) * 10, y: 45 + rand(1) * 10,
-    w: 78 + rand(2) * 12, h: 60 + rand(3) * 14,
-    op: 0.75 + rand(4) * 0.10,   // 0.75-0.85
-    blur: 18 + rand(5) * 8,
-    pal: pickPalette(0),
+    w: 65 + rand(2) * 12, h: 50 + rand(3) * 12,   // slightly smaller so top layers can peek
+    op: 0.62 + rand(4) * 0.13,   // 0.62-0.75 (lowered so top layers show through)
+    blur: 24 + rand(5) * 10,     // more blurred so it feels like density fog
+    pal: pickCorePalette(),
     stops: [
-      { pos: 0,  op: 0.95 },
-      { pos: 30, op: 0.75 },
-      { pos: 60, op: 0.35 },
-      { pos: 85, op: 0 },
+      { pos: 0,  op: 0.92 },
+      { pos: 35, op: 0.70 },
+      { pos: 65, op: 0.30 },
+      { pos: 88, op: 0 },
     ],
   }
   const wisps = []
@@ -1929,12 +1943,12 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
       y: 22 + rand(k * 3 + 11) * 56,
       w: 45 + rand(k * 3 + 12) * 30,
       h: 32 + rand(k * 3 + 13) * 24,
-      op: 0.45 + rand(k + 20) * 0.25,       // 0.45-0.70
+      op: 0.42 + rand(k + 20) * 0.25,       // 0.42-0.67
       blur: 26 + rand(k + 21) * 16,
-      pal: pickPalette(k + 3),
+      pal: pickWispPalette(k),
       stops: [
-        { pos: 0,  op: 0.85 },
-        { pos: 40, op: 0.50 },
+        { pos: 0,  op: 0.80 },
+        { pos: 40, op: 0.48 },
         { pos: 75, op: 0.18 },
         { pos: 100, op: 0 },
       ],
@@ -1945,18 +1959,21 @@ const SmokeMass = ({ i, size, yPos, startX, duration, onTap }) => {
     fragments.push({
       x: 15 + rand(k * 5 + 30) * 70,
       y: 12 + rand(k * 5 + 31) * 76,
-      w: 28 + rand(k * 5 + 32) * 26,
-      h: 20 + rand(k * 5 + 33) * 20,
-      op: 0.22 + rand(k + 40) * 0.28,       // 0.22-0.50
+      w: 32 + rand(k * 5 + 32) * 28,
+      h: 22 + rand(k * 5 + 33) * 22,
+      op: 0.28 + rand(k + 40) * 0.30,       // 0.28-0.58 (bumped so lighter fringe reads)
       blur: 22 + rand(k + 41) * 20,
-      pal: pickPalette(k + 9),
+      pal: pickFragPalette(k),
       stops: [
-        { pos: 0,  op: 0.70 },
-        { pos: 50, op: 0.32 },
+        { pos: 0,  op: 0.72 },
+        { pos: 50, op: 0.35 },
         { pos: 100, op: 0 },
       ],
     })
   }
+  // CORE first (rendered at BOTTOM), then wisps, then fragments (rendered
+  // LAST = on TOP). This guarantees the lighter layers sit above the
+  // darker core visually.
   const blobs = [CORE, ...wisps, ...fragments]
 
   // ── Smooth seamless drift ─────────────────────────────────────────────
