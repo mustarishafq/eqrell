@@ -18,7 +18,7 @@
 - Mata dibelanjakan untuk **membina kampung Islam 2.5D isometric** berpusat pada Masjid
 - Progress rohani (solat, ihsan) diterjemahkan kepada **progress visual** (Musalla → Masjid → Jami' Masjid) + populasi kampung
 - Elemen naratif: "Tamadun bermula di mana ada air" — tasik semulajadi anugerah Allah + Masjid sebagai binaan pilihan
-- Verifikasi cross-family (parent-jiran) untuk elak fake claim
+- Verifikasi habit oleh **ibu bapa dalam keluarga sendiri** (parent-in-family verification). Kod SEMASA hanya sokong intra-family — tidak ada cross-family exposure.
 
 **Bahasa disokong**: Malay (MS), English (EN), Indonesian (ID), Arabic (AR)
 
@@ -282,7 +282,7 @@ Currently applies to: **musalla** (isSacred), **tasik** (locked)
 - `sessions` — active JWT sessions (sid → userId)
 - `families` — family metadata
 - `reward_requests`, `reward_proposals`, `rewards_custom` — reward shop
-- `verify_log` — cross-family verification history
+- `verify_log` — intra-family verification audit trail (records who verified which claim in the same family)
 - `tv_pair_codes` — Family TV pairing
 - `prayer_times_cache` — Aladhan API responses (per location)
 - `quiz_sessions` — quiz progress
@@ -321,9 +321,11 @@ Currently applies to: **musalla** (isSacred), **tasik** (locked)
 - `POST /api/habits/:id/claim`
 - `GET/POST /api/rewards/...` — reward CRUD + proposals
 
-### Verification
-- `GET /api/verify-queue` / `GET /api/verify-queue/items`
-- Cross-family parent-jiran approval flow
+### Verification (Intra-Family Only)
+- `GET /api/verify-queue` — pending claims **untuk keluarga sendiri sahaja** (filter `familyId: user.familyId`)
+- `GET /api/verify-queue/items` — enriched pending claims, same-family only
+- `POST /api/verify-queue/items/:claimId/verify` — apply rubric grade (`ihsan`/`sah`/`belum`). Parent adds optional `note` (200 char max) — stays within family.
+- **NO cross-family logic exists in code.** All queries scoped by `familyId: user.familyId`.
 
 ### Zikir & Quiz
 - `POST /api/family/zikir/tap`
@@ -387,7 +389,7 @@ Currently applies to: **musalla** (isSacred), **tasik** (locked)
 - Construction animation (fence + workers + excavator, 4 poses each)
 - Relocation flow: "Select-First-Then-Move" (tap → Pindah button → drag)
 - Loading optimization (30-50% faster world load)
-- Cross-family verification queue
+- Cross-family verification queue (INTRA-family only — kod semasa TIDAK expose kepada keluarga lain)
 - Habit CRUD with per-session focus
 - Reward shop (proposals + requests)
 - Zikir tasbih tap counter
@@ -519,8 +521,16 @@ Global via `useEffect` reading `localStorage['eqrel-lang']`. All UI text uses ei
 - `tr('key', ...)` for interpolated strings
 - Direct `text[lang]` on objects with `{ ms, en, id, ar }` shape
 
-### Q: How does the parent-jiran verify system work?
-When child claims a habit, `verify_log` collection tracks a queue. Random other parents (not the same family) receive the claim in their "Verify Queue" — they see the child's evidence (photo/note) and approve/reject. This prevents fake claims by same family.
+### Q: How does habit verification work?
+When child claims a habit (`POST /habits/:id/claim` with `status: 'claimed'`), it enters the family's verify queue with `status='claimed', familyId: user.familyId`. **Only parents/guardians in the SAME family** see it in their queue. A parent applies a rubric grade (`ihsan` = 1.5× points, `sah` = 1× points, `belum` = 0 points, claim removed for retry). Parent can add an optional note (200 char max). Both claim + verify_log entries are scoped by `familyId`.
+
+**Cross-family verification does NOT exist** in the codebase as of 2026-07-30. Any earlier documentation mentioning "parent-jiran" cross-family flow was **an error on my part** — no such feature was designed or requested.
+
+### Q: Can children upload photos as proof?
+No. The `PhotoUploader` component exists but is only used in `/app/display/setup/page.js` for Family TV slideshow photos (uploaded by parents). Habit claims have NO photo/evidence upload endpoint.
+
+### Q: Can children write text that goes outside the family?
+No. All text fields (habit claim `note` written by parent, reward proposal `title`/`desc` written by child) are stored with `familyId: user.familyId` and never queried across families. Children's content stays entirely within their own family.
 
 ### Q: How does the world grow (population)?
 Each `rumah` (house) spawns 2 villagers on placement. Villagers wander procedurally. Musalla spawns 2 (imam + muadhin). Total population = sum of `villagerSpawn` for all buildings.
