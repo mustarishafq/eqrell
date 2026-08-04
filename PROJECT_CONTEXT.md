@@ -155,6 +155,12 @@
 
 All six run with ZERO external assets — pure Phaser Graphics tweens + CSS radial gradients. Deferred to next iteration (needs user-provided assets): grass tile texture, bird/butterfly spritesheets, water_ripple PNG (see `/app/PROJECT_CONTEXT.md` for spec).
 
+**Islamic Reflections in BuildingInfoCard (2026-08-04)**: Every long-press building card now displays an Islamic reflection (Quran verse, Hadith, or Islamic wisdom) alongside the Move option. Structured lookup:
+1. `REFLECTIONS_BY_ID` — 18 template-specific reflections (musalla → Al-Ankabut 29:45, kebun_kurma → "Plant your seedling even if the Day comes tomorrow" Ahmad, madrasah → "Seeking knowledge is fardhu upon every Muslim" Ibn Majah, waterpark → "The strong believer is better than the weak" Muslim, etc.)
+2. `REFLECTIONS_BY_CATEGORY` — 7 category-level fallbacks (rumah → Yunus 10:87, kebun → planting-as-charity Bukhari, awam → "The best of people are those most beneficial" Ahmad, etc.)
+3. Full multilingual: `ms / en / id / ar` with vocalized Arabic + Quranic ornamental brackets `﴿ ﴾`.
+Card default expanded so reflection is visible immediately (previously required tap on "More"). **MAX LEVEL badge removed** (user: "buang status binaan tertinggi") — max-level buildings simply show reflection + Move button for a cleaner spiritual focus.
+
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
 ### 4.3 Musalla Auto-Upgrade
