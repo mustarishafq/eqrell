@@ -142,6 +142,19 @@
 
 **Taman asset smart-trim (2026-08-03)**: All 3 taman PNGs (Playground.webp, Football_field.webp, Waterpark.webp) auto-cropped via PIL `getbbox()` — transparent padding removed so the artwork sits tighter on the isometric pad (waterpark went from 384×256 → 296×224 = 32% trimmed). baseScale re-tuned to 0.52 / 0.72 / 1.25 respectively.
 
+**World Polish v3 (2026-08-04) — CSS/Procedural Quick Wins.** User feedback: LordRush/Kingshot look more cinematic. Six zero-asset polish helpers added to WorldScene + a CSS vignette overlay in world/page.js:
+
+| # | Feature | Where | How |
+|---|---|---|---|
+| 1 | **Water shimmer** | `_spawnWaterShimmer` | Ripple ellipses expand from random points on Tasik/Kolam/Perigi. Ring size + count + frequency scale with footprint (4×4 Tasik → 3 concurrent big ripples, 1×1 Perigi → 1 tiny glint). Additive white lineStyle with iso squash (ry = 0.5·rx). |
+| 2 | **Musalla dome glow** | `_spawnDomeGlow` | Soft golden aura pulsing (0.75 ↔ 0.45 alpha, 2.4s cycle) BEHIND the dome sprite via `container.addAt(0)`. ADD blend mode for warm halo feel. Tuned 2026-08-04 to 32% radius (down from 60%) so glow reads as reverent, not overpowering. |
+| 3 | **Chimney smoke** | `_spawnChimneySmoke` | White puff circles rise + drift + fade from top-right chimney position of every rumah. Emits every 650-900ms with slight jitter. |
+| 4 | **Camera shake + sparkle burst** | `_playBuildBurst` | On construction complete: `cameras.main.shake(140, 0.003)` + 14 radiating white 4-point stars + one expanding halo ring — all ADD blend. |
+| 5 | **Ambient dust motes** | `_spawnDustMotes` | 40 tiny white pixels drift upper-right across the entire scene continuously; respawn after fade for endless loop. Adds cinematic atmosphere. |
+| 6 | **CSS vignette + sun tint** | `world/page.js` | Two-layer radial gradient overlay (`mix-blend-mode: multiply`, `pointer-events: none`) — warm yellow glow at top-right (45° light direction), dark corners fading toward centre for depth. |
+
+All six run with ZERO external assets — pure Phaser Graphics tweens + CSS radial gradients. Deferred to next iteration (needs user-provided assets): grass tile texture, bird/butterfly spritesheets, water_ripple PNG (see `/app/PROJECT_CONTEXT.md` for spec).
+
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
 ### 4.3 Musalla Auto-Upgrade

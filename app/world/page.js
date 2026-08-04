@@ -694,6 +694,29 @@ function WorldPageInner() {
         )}
       </div>
 
+      {/*  ═══ WORLD POLISH — CSS VIGNETTE + SUN WARMTH ═══
+           A subtle radial mask darkens the edges of the viewport to give the
+           world "cinematic depth" (Kingshot/LordRush trick). The vignette is
+           `pointer-events: none` so it never blocks taps. Two layers:
+             1. dark vignette — corners fade to ~35% black, centre stays clear.
+             2. warm sun tint — soft top-right warm glow reinforces the
+                consistent 45° top-right lighting our assets are drawn with. */}
+      {!loading && worldState && (
+        <div
+          className="pointer-events-none absolute inset-0 z-[6]"
+          aria-hidden="true"
+          style={{
+            background: [
+              // Warm sun highlight — top-right, blended additively
+              'radial-gradient(circle at 82% 12%, rgba(255,236,180,0.22) 0%, rgba(255,236,180,0.10) 22%, transparent 45%)',
+              // Vignette — dark corners fading toward centre
+              'radial-gradient(ellipse at 50% 55%, transparent 42%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0.36) 100%)',
+            ].join(', '),
+            mixBlendMode: 'multiply',
+          }}
+        />
+      )}
+
       {/* Beautiful loading splash — shown ONLY on first mount while world
           data is being fetched AND the archipelago is closed (archipelago
           now doubles as the loading screen when it is open, per user
