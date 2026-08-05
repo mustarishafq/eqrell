@@ -2852,6 +2852,11 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
   // ini, binaan sacred (Musalla, Tasik) collapsed by default. Kini SEMUA
   // binaan expanded default supaya ayat Quran / hadith terus dibaca.
   const [expanded, setExpanded] = useState(true)
+  // Reflection rotation — pick random verse index on mount. Must be
+  // called BEFORE any early return (Rules of Hooks). Uses templateId
+  // string length as a soft seed so the same building keeps the same
+  // verse within one card view; a re-open (new card mount) picks fresh.
+  const [reflectionIdx] = useState(() => Math.floor(Math.random() * 100))
   if (!t) return null
   // Tasik & other `locked:true` landmarks are treated as sacred/immutable —
   // no Move button, no Upgrade button. Same locked treatment as musalla.
@@ -2908,224 +2913,474 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
     : ''
 
   // ─── Islamic reflections (Quran, Hadith, hikmah) ─────────────────
-  // Setiap binaan ada ayat / hadith / kata-kata positif untuk dibaca
-  // semasa long-press. Susun ikut templateId spesifik dulu → fallback
-  // ke category → default umum. User (2026-08-04):
-  // "Saya nak minta ada binaan reflection dalam islamic view, sama ada
-  //  ayat al quran, hadith atau kata2 positif semasa long press binaan."
+  // Setiap binaan ada ARRAY 2-3 refleksi — random pick pada mount supaya
+  // kanak-kanak nampak ayat/hadith berbeza setiap kali long-press.
+  // User (2026-08-05): "Rotate through 2-3 Quran verses per building so
+  // kids see fresh ayat each visit".
+  // Susun ikut templateId spesifik dulu → fallback ke category → default.
   const REFLECTIONS_BY_ID = {
-    // Ibadah
-    musalla: {
-      ms: '"Sesungguhnya solat itu mencegah perbuatan keji & mungkar" — Al-Ankabut 29:45 🕌',
-      en: '"Indeed, prayer prohibits immorality and wrongdoing" — Al-Ankabut 29:45 🕌',
-      id: '"Sesungguhnya salat mencegah perbuatan keji dan mungkar" — Al-Ankabut 29:45 🕌',
-      ar: '﴿إِنَّ الصَّلَاةَ تَنْهَىٰ عَنِ الْفَحْشَاءِ وَالْمُنكَرِ﴾ — العنكبوت ٤٥ 🕌',
-    },
-    surau: {
-      ms: '"Barangsiapa membina masjid kerana Allah, Allah bina rumah untuknya di syurga" — HR Bukhari 🕌',
-      en: '"Whoever builds a mosque for Allah, Allah builds a house for him in Paradise" — Bukhari 🕌',
-      id: '"Siapa yang membangun masjid karena Allah, Allah bangunkan rumah baginya di surga" — HR Bukhari 🕌',
-      ar: '«من بنى مسجداً لله بنى الله له بيتاً في الجنة» — البخاري 🕌',
-    },
-    masjid_landmark: {
-      ms: '"Tempat paling dicintai Allah ialah masjid" — HR Muslim 🕌',
-      en: '"The most beloved places to Allah are the mosques" — Muslim 🕌',
-      id: '"Tempat yang paling dicintai Allah adalah masjid" — HR Muslim 🕌',
-      ar: '«أحبُّ البلاد إلى الله مساجدها» — مسلم 🕌',
-    },
+    // Ibadah — masjid & solat
+    musalla: [
+      {
+        ms: '"Sesungguhnya solat itu mencegah perbuatan keji & mungkar" — Al-Ankabut 29:45 🕌',
+        en: '"Indeed, prayer prohibits immorality and wrongdoing" — Al-Ankabut 29:45 🕌',
+        id: '"Sesungguhnya salat mencegah perbuatan keji dan mungkar" — Al-Ankabut 29:45 🕌',
+        ar: '﴿إِنَّ الصَّلَاةَ تَنْهَىٰ عَنِ الْفَحْشَاءِ وَالْمُنكَرِ﴾ — العنكبوت ٤٥ 🕌',
+      },
+      {
+        ms: '"Barangsiapa membina masjid kerana Allah, Allah bina rumah baginya di syurga" — HR Bukhari 🕌',
+        en: '"Whoever builds a mosque for Allah, Allah builds a house for him in Paradise" — Bukhari 🕌',
+        id: '"Siapa membangun masjid karena Allah, Allah bangunkan rumah di surga" — HR Bukhari 🕌',
+        ar: '«من بنى مسجداً لله بنى الله له بيتاً في الجنة» — البخاري 🕌',
+      },
+      {
+        ms: '"Dirikanlah solat untuk mengingati Aku" — Toha 20:14 🤲',
+        en: '"Establish prayer for My remembrance" — Ta-Ha 20:14 🤲',
+        id: '"Dirikanlah salat untuk mengingat-Ku" — Thaha 20:14 🤲',
+        ar: '﴿وَأَقِمِ الصَّلَاةَ لِذِكْرِي﴾ — طه ١٤ 🤲',
+      },
+    ],
+    surau: [
+      {
+        ms: '"Tempat paling dicintai Allah ialah masjid" — HR Muslim 🕌',
+        en: '"The most beloved places to Allah are the mosques" — Muslim 🕌',
+        id: '"Tempat yang paling dicintai Allah adalah masjid" — HR Muslim 🕌',
+        ar: '«أحبُّ البلاد إلى الله مساجدها» — مسلم 🕌',
+      },
+      {
+        ms: 'Solat berjemaah lebih afdhal 27 darjat dari solat sendirian — HR Bukhari 🕌',
+        en: 'Congregational prayer is 27 times better than praying alone — Bukhari 🕌',
+        id: 'Salat berjamaah lebih utama 27 derajat dari salat sendiri — HR Bukhari 🕌',
+        ar: '«صلاة الجماعة أفضل من صلاة الفذ بسبع وعشرين درجة» — البخاري 🕌',
+      },
+    ],
+    masjid_landmark: [
+      {
+        ms: '"Sesiapa berpagi & berpetang ke masjid, Allah sediakan tempat untuknya di syurga" — HR Bukhari 🕌',
+        en: '"Whoever goes to the mosque morning or evening, Allah prepares his place in Paradise" — Bukhari 🕌',
+        id: '"Siapa yang pergi ke masjid pagi & petang, Allah sediakan tempat di surga" — HR Bukhari 🕌',
+        ar: '«من غدا إلى المسجد أو راح، أعد الله له نُزلَه من الجنة» — البخاري 🕌',
+      },
+      {
+        ms: '"Wahai Tuhanku! Masukkanlah aku dengan cara masuk yang benar" — Al-Isra 17:80 🕌',
+        en: '"O my Lord! Cause me to enter with a truthful entrance" — Al-Isra 17:80 🕌',
+        id: '"Ya Tuhanku! Masukkan aku dengan cara masuk yang benar" — Al-Isra 17:80 🕌',
+        ar: '﴿رَبِّ أَدْخِلْنِي مُدْخَلَ صِدْقٍ﴾ — الإسراء ٨٠ 🕌',
+      },
+    ],
     // Sumber Air
-    tasik: {
-      ms: '"Dan Kami jadikan dari air, tiap-tiap sesuatu yang hidup" — Al-Anbiya 21:30 💧',
-      en: '"We made from water every living thing" — Al-Anbiya 21:30 💧',
-      id: '"Kami jadikan segala sesuatu yang hidup dari air" — Al-Anbiya 21:30 💧',
-      ar: '﴿وَجَعَلْنَا مِنَ الْمَاءِ كُلَّ شَيْءٍ حَيٍّ﴾ — الأنبياء ٣٠ 💧',
-    },
-    perigi: {
-      ms: '"Sedekah paling utama ialah memberi air minum" — HR Ibn Majah ⛲',
-      en: '"The best charity is giving water to drink" — Ibn Majah ⛲',
-      id: '"Sedekah paling utama adalah memberi minum air" — HR Ibn Majah ⛲',
-      ar: '«أفضل الصدقة سقي الماء» — ابن ماجه ⛲',
-    },
-    kolam: {
-      ms: 'Air suci menyucikan hati & tubuh — Bersih itu sebahagian iman ✨',
-      en: 'Pure water cleanses body & soul — Cleanliness is half of faith ✨',
-      id: 'Air suci mensucikan hati & tubuh — Kebersihan adalah sebagian iman ✨',
-      ar: 'الطهور شطر الإيمان ✨',
-    },
-    // Kebun — every fruit gets its own Quranic reference
-    kebun_kurma: {
-      ms: '"Tanamlah pokok, walaupun kiamat menjelang esok" — HR Ahmad 🌴',
-      en: '"Plant your seedling even if the Day of Judgement comes tomorrow" — Ahmad 🌴',
-      id: '"Tanamlah pohon walau kiamat datang besok" — HR Ahmad 🌴',
-      ar: '«إن قامت الساعة وفي يد أحدكم فسيلة فليغرسها» — أحمد 🌴',
-    },
-    kebun_tin: {
-      ms: '"Demi buah Tin dan buah Zaitun" — At-Tin 95:1 🍈',
-      en: '"By the fig and the olive" — At-Tin 95:1 🍈',
-      id: '"Demi buah Tin dan Zaitun" — At-Tin 95:1 🍈',
-      ar: '﴿وَالتِّينِ وَالزَّيْتُونِ﴾ — التين ١ 🍈',
-    },
-    kebun_delima: {
-      ms: '"Di dalamnya ada buah-buahan, kurma dan delima" — Ar-Rahman 55:68 🍎',
-      en: '"In them will be fruit, dates and pomegranates" — Ar-Rahman 55:68 🍎',
-      id: '"Di dalamnya ada buah-buahan, kurma dan delima" — Ar-Rahman 55:68 🍎',
-      ar: '﴿فِيهِمَا فَاكِهَةٌ وَنَخْلٌ وَرُمَّانٌ﴾ — الرحمن ٦٨ 🍎',
-    },
-    kebun_anggur: {
-      ms: '"Kami keluarkan darinya biji-bijian, anggur & sayur-sayuran" — Abasa 80:27-28 🍇',
-      en: '"We caused to grow therein grain, grapes and vegetables" — Abasa 80:27-28 🍇',
-      id: '"Kami tumbuhkan padanya biji-bijian, anggur & sayuran" — Abasa 80:27-28 🍇',
-      ar: '﴿فَأَنبَتْنَا فِيهَا حَبًّا ۝ وَعِنَبًا وَقَضْبًا﴾ — عبس ٢٧-٢٨ 🍇',
-    },
-    kebun_zaitun: {
-      ms: '"Pohon yang penuh berkat, iaitu pohon zaitun" — An-Nur 24:35 🫒',
-      en: '"A blessed tree — an olive" — An-Nur 24:35 🫒',
-      id: '"Pohon yang penuh berkah, yakni pohon zaitun" — An-Nur 24:35 🫒',
-      ar: '﴿شَجَرَةٍ مُّبَارَكَةٍ زَيْتُونَةٍ﴾ — النور ٣٥ 🫒',
-    },
+    tasik: [
+      {
+        ms: '"Dan Kami jadikan dari air, tiap-tiap sesuatu yang hidup" — Al-Anbiya 21:30 💧',
+        en: '"We made from water every living thing" — Al-Anbiya 21:30 💧',
+        id: '"Kami jadikan segala sesuatu yang hidup dari air" — Al-Anbiya 21:30 💧',
+        ar: '﴿وَجَعَلْنَا مِنَ الْمَاءِ كُلَّ شَيْءٍ حَيٍّ﴾ — الأنبياء ٣٠ 💧',
+      },
+      {
+        ms: '"Dan Dialah yang menurunkan hujan dari langit lalu menghidupkan bumi setelah matinya" — Ar-Rum 30:24 🌧️',
+        en: '"He sends down rain from the sky and gives life to the earth after its death" — Ar-Rum 30:24 🌧️',
+        id: '"Dia menurunkan air hujan dari langit lalu menghidupkan bumi setelah matinya" — Ar-Rum 30:24 🌧️',
+        ar: '﴿وَيُنَزِّلُ مِنَ السَّمَاءِ مَاءً فَيُحْيِي بِهِ الْأَرْضَ﴾ — الروم ٢٤ 🌧️',
+      },
+      {
+        ms: '"Dan Kami turunkan dari langit air yang penuh keberkatan" — Qaf 50:9 💧',
+        en: '"We sent down blessed water from the sky" — Qaf 50:9 💧',
+        id: '"Kami turunkan dari langit air yang penuh berkah" — Qaf 50:9 💧',
+        ar: '﴿وَنَزَّلْنَا مِنَ السَّمَاءِ مَاءً مُبَارَكًا﴾ — ق ٩ 💧',
+      },
+    ],
+    perigi: [
+      {
+        ms: '"Sedekah paling utama ialah memberi air minum" — HR Ibn Majah ⛲',
+        en: '"The best charity is giving water to drink" — Ibn Majah ⛲',
+        id: '"Sedekah paling utama adalah memberi minum air" — HR Ibn Majah ⛲',
+        ar: '«أفضل الصدقة سقي الماء» — ابن ماجه ⛲',
+      },
+      {
+        ms: 'Perigi Uthman r.a — bekalan air minum umat Islam yang menjadi wakaf berkekalan 💧',
+        en: "Uthman's Well r.a — a lasting endowment providing water to the Muslim community 💧",
+        id: 'Sumur Utsman r.a — wakaf abadi bekal minum umat Islam 💧',
+        ar: 'بئر عثمان رضي الله عنه — وقف مبارك لسقي المسلمين 💧',
+      },
+    ],
+    kolam: [
+      {
+        ms: '"Bersuci itu sebahagian daripada iman" — HR Muslim ✨',
+        en: '"Purification is half of faith" — Muslim ✨',
+        id: '"Kesucian adalah setengah dari iman" — HR Muslim ✨',
+        ar: '«الطهور شطر الإيمان» — مسلم ✨',
+      },
+      {
+        ms: 'Air suci — asas wudhu, kunci solat, penghapus dosa kecil 💧',
+        en: 'Pure water — foundation of wudhu, key to prayer, eraser of minor sins 💧',
+        id: 'Air suci — pondasi wudhu, kunci salat, penghapus dosa kecil 💧',
+        ar: 'الماء الطاهر — أساس الوضوء ومفتاح الصلاة 💧',
+      },
+    ],
+    // Kebun — every fruit
+    kebun_kurma: [
+      {
+        ms: '"Tanamlah pokok, walaupun kiamat menjelang esok" — HR Ahmad 🌴',
+        en: '"Plant your seedling even if the Day of Judgement comes tomorrow" — Ahmad 🌴',
+        id: '"Tanamlah pohon walau kiamat datang besok" — HR Ahmad 🌴',
+        ar: '«إن قامت الساعة وفي يد أحدكم فسيلة فليغرسها» — أحمد 🌴',
+      },
+      {
+        ms: '"Dan pohon kurma yang tinggi, mempunyai mayang yang bersusun" — Qaf 50:10 🌴',
+        en: '"And tall date-palms with layered spathes" — Qaf 50:10 🌴',
+        id: '"Dan pohon kurma tinggi dengan mayang bertumpuk" — Qaf 50:10 🌴',
+        ar: '﴿وَالنَّخْلَ بَاسِقَاتٍ لَّهَا طَلْعٌ نَّضِيدٌ﴾ — ق ١٠ 🌴',
+      },
+      {
+        ms: 'Nabi ﷺ bersabda: sesiapa berbuka dengan kurma sunnah — nikmat & barakah 🌴',
+        en: 'Prophet ﷺ said: whoever breaks fast with dates follows the Sunnah — blessing and grace 🌴',
+        id: 'Nabi ﷺ berbuka dengan kurma — mengikuti sunnah adalah keberkahan 🌴',
+        ar: 'كان النبي ﷺ يفطر على رطبات — من السنة والبركة 🌴',
+      },
+    ],
+    kebun_tin: [
+      {
+        ms: '"Demi buah Tin dan buah Zaitun" — At-Tin 95:1 🍈',
+        en: '"By the fig and the olive" — At-Tin 95:1 🍈',
+        id: '"Demi buah Tin dan Zaitun" — At-Tin 95:1 🍈',
+        ar: '﴿وَالتِّينِ وَالزَّيْتُونِ﴾ — التين ١ 🍈',
+      },
+      {
+        ms: 'Buah Tin — Allah bersumpah dengannya, tanda kemuliaan dan barakah 🍈',
+        en: 'The fig — Allah swears by it, a mark of nobility and blessing 🍈',
+        id: 'Buah Tin — Allah bersumpah atasnya, tanda kemuliaan dan berkah 🍈',
+        ar: 'التين — أقسم الله به لعظمته وبركته 🍈',
+      },
+    ],
+    kebun_delima: [
+      {
+        ms: '"Di dalamnya ada buah-buahan, kurma dan delima" — Ar-Rahman 55:68 🍎',
+        en: '"In them will be fruit, dates and pomegranates" — Ar-Rahman 55:68 🍎',
+        id: '"Di dalamnya ada buah-buahan, kurma dan delima" — Ar-Rahman 55:68 🍎',
+        ar: '﴿فِيهِمَا فَاكِهَةٌ وَنَخْلٌ وَرُمَّانٌ﴾ — الرحمن ٦٨ 🍎',
+      },
+      {
+        ms: '"Dan (Kami keluarkan) delima yang serupa dan tidak serupa" — Al-An\'am 6:99 🍎',
+        en: '"And pomegranates, similar and different" — Al-An\'am 6:99 🍎',
+        id: '"Dan buah delima yang serupa dan tidak serupa" — Al-An\'am 6:99 🍎',
+        ar: '﴿وَالرُّمَّانَ مُشْتَبِهًا وَغَيْرَ مُتَشَابِهٍ﴾ — الأنعام ٩٩ 🍎',
+      },
+    ],
+    kebun_anggur: [
+      {
+        ms: '"Kami keluarkan biji-bijian, anggur & sayur-sayuran" — Abasa 80:27-28 🍇',
+        en: '"We caused to grow therein grain, grapes and vegetables" — Abasa 80:27-28 🍇',
+        id: '"Kami tumbuhkan biji-bijian, anggur & sayuran" — Abasa 80:27-28 🍇',
+        ar: '﴿فَأَنبَتْنَا فِيهَا حَبًّا ۝ وَعِنَبًا وَقَضْبًا﴾ — عبس ٢٧-٢٨ 🍇',
+      },
+      {
+        ms: '"Dan dari buah kurma dan anggur, kamu ambil daripadanya rezeki yang baik" — An-Nahl 16:67 🍇',
+        en: '"From dates and grapes you take goodly sustenance" — An-Nahl 16:67 🍇',
+        id: '"Dari buah kurma dan anggur, kalian ambil rezeki yang baik" — An-Nahl 16:67 🍇',
+        ar: '﴿وَمِن ثَمَرَاتِ النَّخِيلِ وَالْأَعْنَابِ تَتَّخِذُونَ مِنْهُ سَكَرًا وَرِزْقًا حَسَنًا﴾ — النحل ٦٧ 🍇',
+      },
+    ],
+    kebun_zaitun: [
+      {
+        ms: '"Pohon yang penuh berkat, iaitu pohon zaitun" — An-Nur 24:35 🫒',
+        en: '"A blessed tree — an olive" — An-Nur 24:35 🫒',
+        id: '"Pohon yang penuh berkah, yakni pohon zaitun" — An-Nur 24:35 🫒',
+        ar: '﴿شَجَرَةٍ مُّبَارَكَةٍ زَيْتُونَةٍ﴾ — النور ٣٥ 🫒',
+      },
+      {
+        ms: '"Dan Kami tumbuhkan pohon zaitun yang menghasilkan minyak" — Al-Mu\'minun 23:20 🫒',
+        en: '"And a tree issuing from Mount Sinai which produces oil" — Al-Mu\'minun 23:20 🫒',
+        id: '"Kami tumbuhkan pohon zaitun yang menghasilkan minyak" — Al-Mu\'minun 23:20 🫒',
+        ar: '﴿وَشَجَرَةً تَخْرُجُ مِن طُورِ سَيْنَاءَ تَنبُتُ بِالدُّهْنِ﴾ — المؤمنون ٢٠ 🫒',
+      },
+    ],
     // Ternakan
-    reban_ayam: {
-      ms: '"Berbuat baiklah kepada haiwan — setiap kebaikan adalah pahala" — HR Bukhari 🐔',
-      en: '"Kindness to animals brings reward from Allah" — Bukhari 🐔',
-      id: '"Berbuat baik pada hewan mendatangkan pahala" — HR Bukhari 🐔',
-      ar: '«في كل ذات كبد رطبة أجر» — البخاري 🐔',
-    },
-    kandang_kambing: {
-      ms: 'Nabi ﷺ menggembala kambing sebelum menjadi Rasul — Kerja tangan itu mulia 🐐',
-      en: 'The Prophet ﷺ herded sheep before prophethood — Honest labor is noble 🐐',
-      id: 'Nabi ﷺ menggembala kambing sebelum diutus — Kerja halal itu mulia 🐐',
-      ar: 'كان النبي ﷺ يرعى الغنم — العمل الشريف عبادة 🐐',
-    },
-    kandang_lembu: {
-      ms: '"Dan (Kami tundukkan) binatang ternak untuk kamu" — An-Nahl 16:5 🐄',
-      en: '"And He created the cattle for you" — An-Nahl 16:5 🐄',
-      id: '"Dia menciptakan hewan ternak untuk kamu" — An-Nahl 16:5 🐄',
-      ar: '﴿وَالْأَنْعَامَ خَلَقَهَا لَكُمْ﴾ — النحل ٥ 🐄',
-    },
-    kandang_unta: {
-      ms: '"Tidakkah mereka memerhatikan unta bagaimana ia diciptakan?" — Al-Ghashiyah 88:17 🐫',
-      en: '"Do they not look at the camels, how they are created?" — Al-Ghashiyah 88:17 🐫',
-      id: '"Tidakkah mereka memperhatikan unta bagaimana diciptakan?" — Al-Ghashiyah 88:17 🐫',
-      ar: '﴿أَفَلَا يَنظُرُونَ إِلَى الْإِبِلِ كَيْفَ خُلِقَتْ﴾ — الغاشية ١٧ 🐫',
-    },
+    reban_ayam: [
+      {
+        ms: '"Berbuat baik kepada haiwan — setiap kebaikan mendapat pahala" — HR Bukhari 🐔',
+        en: '"Kindness to animals brings reward from Allah" — Bukhari 🐔',
+        id: '"Berbuat baik pada hewan mendatangkan pahala" — HR Bukhari 🐔',
+        ar: '«في كل ذات كبد رطبة أجر» — البخاري 🐔',
+      },
+      {
+        ms: 'Ayam bertelur — nikmat rezeki yang sederhana, mengajar syukur 🥚',
+        en: 'Chickens lay eggs — simple sustenance teaches us gratitude 🥚',
+        id: 'Ayam bertelur — nikmat rezeki sederhana yang mengajarkan syukur 🥚',
+        ar: 'الدجاج والبيض — من نعم الله البسيطة تعلمنا الشكر 🥚',
+      },
+    ],
+    kandang_kambing: [
+      {
+        ms: 'Nabi ﷺ menggembala kambing sebelum menjadi Rasul — Kerja tangan itu mulia 🐐',
+        en: 'The Prophet ﷺ herded sheep before prophethood — Honest labor is noble 🐐',
+        id: 'Nabi ﷺ menggembala kambing sebelum diutus — Kerja halal itu mulia 🐐',
+        ar: 'كان النبي ﷺ يرعى الغنم — العمل الشريف عبادة 🐐',
+      },
+      {
+        ms: '"Dan Kami korbankan (Ismail) dengan sembelihan yang besar" — As-Saffat 37:107 🐐',
+        en: '"And We ransomed him with a great sacrifice" — As-Saffat 37:107 🐐',
+        id: '"Dan Kami tebus (Ismail) dengan sembelihan yang besar" — As-Saffat 37:107 🐐',
+        ar: '﴿وَفَدَيْنَاهُ بِذِبْحٍ عَظِيمٍ﴾ — الصافات ١٠٧ 🐐',
+      },
+    ],
+    kandang_lembu: [
+      {
+        ms: '"Dan (Kami tundukkan) binatang ternak untuk kamu" — An-Nahl 16:5 🐄',
+        en: '"And He created the cattle for you" — An-Nahl 16:5 🐄',
+        id: '"Dia menciptakan hewan ternak untuk kamu" — An-Nahl 16:5 🐄',
+        ar: '﴿وَالْأَنْعَامَ خَلَقَهَا لَكُمْ﴾ — النحل ٥ 🐄',
+      },
+      {
+        ms: '"Dan pada binatang ternak sungguh ada pengajaran bagi kamu" — An-Nahl 16:66 🐄',
+        en: '"And indeed, for you in the cattle is a lesson" — An-Nahl 16:66 🐄',
+        id: '"Pada hewan ternak sungguh terdapat pelajaran bagi kalian" — An-Nahl 16:66 🐄',
+        ar: '﴿وَإِنَّ لَكُمْ فِي الْأَنْعَامِ لَعِبْرَةً﴾ — النحل ٦٦ 🐄',
+      },
+    ],
+    kandang_unta: [
+      {
+        ms: '"Tidakkah mereka memerhatikan unta bagaimana ia diciptakan?" — Al-Ghashiyah 88:17 🐫',
+        en: '"Do they not look at the camels, how they are created?" — Al-Ghashiyah 88:17 🐫',
+        id: '"Tidakkah mereka memperhatikan unta bagaimana diciptakan?" — Al-Ghashiyah 88:17 🐫',
+        ar: '﴿أَفَلَا يَنظُرُونَ إِلَى الْإِبِلِ كَيْفَ خُلِقَتْ﴾ — الغاشية ١٧ 🐫',
+      },
+      {
+        ms: 'Unta — kenderaan bersabar melintasi padang pasir — Simbol keteguhan iman 🐫',
+        en: 'The camel — patient traveler across deserts — Symbol of steadfast faith 🐫',
+        id: 'Unta — pengembara sabar di gurun — Lambang keteguhan iman 🐫',
+        ar: 'الإبل — ركاب الصبر في الصحاري — رمز الإيمان الراسخ 🐫',
+      },
+    ],
     // Taman
-    taman_awam: {
-      ms: 'Anak yang gembira & sihat adalah anugerah — "Harta & anak-anak ialah perhiasan hidup" — Al-Kahfi 46 🎠',
-      en: 'Happy healthy children are a gift — "Wealth and children are the adornment of life" — Al-Kahf 46 🎠',
-      id: 'Anak yang gembira adalah nikmat — "Harta & anak adalah perhiasan hidup" — Al-Kahfi 46 🎠',
-      ar: '﴿الْمَالُ وَالْبَنُونَ زِينَةُ الْحَيَاةِ الدُّنْيَا﴾ — الكهف ٤٦ 🎠',
-    },
-    padang_bola: {
-      ms: '"Ajarilah anak-anak kamu berenang, memanah dan menunggang kuda" — HR Bukhari ⚽',
-      en: '"Teach your children swimming, archery, and horse-riding" — Bukhari ⚽',
-      id: '"Ajari anak kamu berenang, memanah & menunggang kuda" — HR Bukhari ⚽',
-      ar: '«علموا أولادكم السباحة والرماية وركوب الخيل» — البخاري ⚽',
-    },
-    waterpark: {
-      ms: 'Mukmin yang kuat lebih baik dari mukmin yang lemah — Latih badan, mantap jiwa 🏊',
-      en: 'The strong believer is better than the weak one — Train the body, strengthen the soul 🏊',
-      id: 'Mukmin yang kuat lebih baik dari yang lemah — Latih tubuh, kuatkan jiwa 🏊',
-      ar: '«المؤمن القوي خير وأحب إلى الله من المؤمن الضعيف» — مسلم 🏊',
-    },
+    taman_awam: [
+      {
+        ms: '"Harta & anak-anak adalah perhiasan hidup dunia" — Al-Kahfi 18:46 🎠',
+        en: '"Wealth and children are the adornment of worldly life" — Al-Kahf 18:46 🎠',
+        id: '"Harta & anak adalah perhiasan hidup dunia" — Al-Kahfi 18:46 🎠',
+        ar: '﴿الْمَالُ وَالْبَنُونَ زِينَةُ الْحَيَاةِ الدُّنْيَا﴾ — الكهف ٤٦ 🎠',
+      },
+      {
+        ms: 'Anak yang gembira & saleh — sedekah jariah yang mendoakan ibu bapa 🎈',
+        en: 'A happy righteous child — continuous charity that prays for parents 🎈',
+        id: 'Anak saleh yang bahagia — sedekah jariyah yang mendoakan orang tua 🎈',
+        ar: 'الولد الصالح — صدقة جارية يدعو لوالديه 🎈',
+      },
+    ],
+    padang_bola: [
+      {
+        ms: '"Ajari anak-anak kamu berenang, memanah & menunggang kuda" — HR Bukhari ⚽',
+        en: '"Teach your children swimming, archery, and horse-riding" — Bukhari ⚽',
+        id: '"Ajari anak kamu berenang, memanah & menunggang kuda" — HR Bukhari ⚽',
+        ar: '«علموا أولادكم السباحة والرماية وركوب الخيل» — البخاري ⚽',
+      },
+      {
+        ms: '"Mukmin yang kuat lebih baik & lebih dicintai Allah daripada mukmin yang lemah" — HR Muslim 💪',
+        en: '"The strong believer is better and more loved by Allah than the weak one" — Muslim 💪',
+        id: '"Mukmin yang kuat lebih dicintai Allah daripada mukmin lemah" — HR Muslim 💪',
+        ar: '«المؤمن القوي خير وأحب إلى الله من المؤمن الضعيف» — مسلم 💪',
+      },
+    ],
+    waterpark: [
+      {
+        ms: '"Mukmin yang kuat lebih baik dari mukmin yang lemah" — HR Muslim 🏊',
+        en: '"The strong believer is better than the weak one" — Muslim 🏊',
+        id: '"Mukmin yang kuat lebih baik dari yang lemah" — HR Muslim 🏊',
+        ar: '«المؤمن القوي خير من المؤمن الضعيف» — مسلم 🏊',
+      },
+      {
+        ms: 'Berenang — sunnah Rasulullah ﷺ untuk anak-anak menjadi sihat & berani 🏊',
+        en: 'Swimming — Sunnah of the Prophet ﷺ for children to grow healthy & brave 🏊',
+        id: 'Berenang — sunnah Rasulullah ﷺ agar anak sehat & berani 🏊',
+        ar: 'السباحة — سنة النبي ﷺ لتربية الأولاد أقوياء 🏊',
+      },
+    ],
     // Rumah
-    rumah_kayu: {
-      ms: '"Baiti Jannati — rumahku syurgaku" — Rumah tenang dengan cinta & solat 🏡',
-      en: '"Baiti Jannati — my home, my paradise" — A home of love and prayer 🏡',
-      id: '"Baiti Jannati — rumahku surgaku" — Rumah tenang dengan cinta & doa 🏡',
-      ar: 'بيتي جنتي — بيت ملؤه المحبة والصلاة 🏡',
-    },
-    rumah_batu: {
-      ms: '"Sebaik-baik rumah ialah rumah yang di dalamnya ada anak yatim yang dilayan dengan baik" — HR Ibn Majah 🏠',
-      en: '"The best home is one where an orphan is treated well" — Ibn Majah 🏠',
-      id: '"Sebaik-baik rumah adalah yang di dalamnya anak yatim disayangi" — HR Ibn Majah 🏠',
-      ar: '«خير بيت في المسلمين بيت فيه يتيم يحسن إليه» — ابن ماجه 🏠',
-    },
-    banglo: {
-      ms: '"Berterima kasihlah kepada nikmat — Aku akan tambahkan lagi" — Ibrahim 14:7 🏘️',
-      en: '"If you are grateful, I will surely increase you" — Ibrahim 14:7 🏘️',
-      id: '"Jika kalian bersyukur, Aku tambah nikmat kalian" — Ibrahim 14:7 🏘️',
-      ar: '﴿لَئِن شَكَرْتُمْ لَأَزِيدَنَّكُمْ﴾ — إبراهيم ٧ 🏘️',
-    },
+    rumah_kayu: [
+      {
+        ms: '"Baiti Jannati — rumahku syurgaku" — Rumah tenang dengan cinta & solat 🏡',
+        en: '"Baiti Jannati — my home, my paradise" — A home of love and prayer 🏡',
+        id: '"Baiti Jannati — rumahku surgaku" — Rumah tenang dengan cinta & doa 🏡',
+        ar: 'بيتي جنتي — بيت ملؤه المحبة والصلاة 🏡',
+      },
+      {
+        ms: '"Dan Allah menjadikan rumah-rumahmu sebagai tempat tinggal yang tenang" — An-Nahl 16:80 🏡',
+        en: '"Allah has made your homes a place of rest" — An-Nahl 16:80 🏡',
+        id: '"Allah menjadikan rumahmu tempat tinggal yang tenang" — An-Nahl 16:80 🏡',
+        ar: '﴿وَاللَّهُ جَعَلَ لَكُم مِّن بُيُوتِكُمْ سَكَنًا﴾ — النحل ٨٠ 🏡',
+      },
+    ],
+    rumah_batu: [
+      {
+        ms: '"Sebaik-baik rumah ialah yang di dalamnya ada anak yatim yang dilayan baik" — HR Ibn Majah 🏠',
+        en: '"The best home is one where an orphan is treated well" — Ibn Majah 🏠',
+        id: '"Sebaik-baik rumah adalah yang di dalamnya anak yatim disayangi" — HR Ibn Majah 🏠',
+        ar: '«خير بيت في المسلمين بيت فيه يتيم يحسن إليه» — ابن ماجه 🏠',
+      },
+      {
+        ms: '"Jadikanlah rumah-rumah kamu sebagai qiblah (tempat ibadah)" — Yunus 10:87 🏠',
+        en: '"Make your homes places of worship" — Yunus 10:87 🏠',
+        id: '"Jadikan rumah-rumah kalian sebagai tempat ibadah" — Yunus 10:87 🏠',
+        ar: '﴿وَاجْعَلُوا بُيُوتَكُمْ قِبْلَةً﴾ — يونس ٨٧ 🏠',
+      },
+    ],
+    banglo: [
+      {
+        ms: '"Jika kamu bersyukur, nescaya Aku akan menambah nikmat kepadamu" — Ibrahim 14:7 🏘️',
+        en: '"If you are grateful, I will surely increase you" — Ibrahim 14:7 🏘️',
+        id: '"Jika kalian bersyukur, Aku tambah nikmat kalian" — Ibrahim 14:7 🏘️',
+        ar: '﴿لَئِن شَكَرْتُمْ لَأَزِيدَنَّكُمْ﴾ — إبراهيم ٧ 🏘️',
+      },
+      {
+        ms: 'Rumah besar bukan penentu bahagia — Rumah penuh cinta & taqwa lebih mulia 🏘️',
+        en: 'A big house doesn\'t equal happiness — A home full of love and taqwa is nobler 🏘️',
+        id: 'Rumah besar bukan tolok bahagia — Rumah penuh cinta & takwa lebih mulia 🏘️',
+        ar: 'ليس البيت الكبير مقياس السعادة — بيت المحبة والتقوى أعظم 🏘️',
+      },
+    ],
     // Awam (Pasar + Public)
-    pasar_payung: {
-      ms: '"Peniaga yang jujur & amanah bersama nabi, siddiqin & syuhada" — HR Tirmizi ☂️',
-      en: '"The truthful merchant is with the prophets, the truthful, and the martyrs" — Tirmizi ☂️',
-      id: '"Pedagang jujur bersama para nabi & syuhada" — HR Tirmizi ☂️',
-      ar: '«التاجر الصدوق الأمين مع النبيين والصديقين والشهداء» — الترمذي ☂️',
-    },
-    pasar_bangunan: {
-      ms: 'Berjual-beli dengan jujur — Rezeki halal adalah kunci ketenangan 🏛️',
-      en: 'Trade honestly — Halal earnings bring true peace 🏛️',
-      id: 'Berdagang jujur — Rezeki halal kunci ketenangan hati 🏛️',
-      ar: 'التجارة الحلال بركة وطمأنينة 🏛️',
-    },
-    madrasah: {
-      ms: '"Menuntut ilmu adalah fardhu ke atas setiap Muslim" — HR Ibn Majah 📖',
-      en: '"Seeking knowledge is obligatory upon every Muslim" — Ibn Majah 📖',
-      id: '"Menuntut ilmu wajib bagi setiap Muslim" — HR Ibn Majah 📖',
-      ar: '«طلب العلم فريضة على كل مسلم» — ابن ماجه 📖',
-    },
-    perpustakaan: {
-      ms: '"Iqra — Bacalah dengan nama Tuhanmu yang menciptakan" — Al-Alaq 96:1 📚',
-      en: '"Read! In the name of your Lord who created" — Al-Alaq 96:1 📚',
-      id: '"Iqra — Bacalah dengan nama Tuhanmu yang menciptakan" — Al-Alaq 96:1 📚',
-      ar: '﴿اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ﴾ — العلق ١ 📚',
-    },
-    balai_rakyat: {
-      ms: '"Sebaik-baik manusia ialah yang paling bermanfaat kepada manusia lain" — HR Ahmad 🏛️',
-      en: '"The best of people are those most beneficial to others" — Ahmad 🏛️',
-      id: '"Sebaik-baik manusia adalah yang paling bermanfaat bagi orang lain" — HR Ahmad 🏛️',
-      ar: '«خير الناس أنفعهم للناس» — أحمد 🏛️',
-    },
+    pasar_payung: [
+      {
+        ms: '"Peniaga yang jujur & amanah bersama nabi, siddiqin & syuhada" — HR Tirmizi ☂️',
+        en: '"The truthful merchant is with the prophets, the truthful, and the martyrs" — Tirmizi ☂️',
+        id: '"Pedagang jujur bersama para nabi & syuhada" — HR Tirmizi ☂️',
+        ar: '«التاجر الصدوق الأمين مع النبيين والصديقين والشهداء» — الترمذي ☂️',
+      },
+      {
+        ms: '"Berjual-belilah kamu dengan aman & jangan tipu-menipu" — Al-Baqarah 2:275 ☂️',
+        en: '"Trade in truth and do not deceive one another" — inspired by Al-Baqarah 2:275 ☂️',
+        id: '"Berjual belilah dengan jujur, jangan menipu" — Al-Baqarah 2:275 ☂️',
+        ar: '﴿وَأَحَلَّ اللَّهُ الْبَيْعَ وَحَرَّمَ الرِّبَا﴾ — البقرة ٢٧٥ ☂️',
+      },
+    ],
+    pasar_bangunan: [
+      {
+        ms: 'Berjual-beli jujur — Rezeki halal adalah kunci ketenangan hati 🏛️',
+        en: 'Trade honestly — Halal earnings bring true peace of heart 🏛️',
+        id: 'Berdagang jujur — Rezeki halal kunci ketenangan hati 🏛️',
+        ar: 'التجارة الحلال بركة وطمأنينة 🏛️',
+      },
+      {
+        ms: '"Sebaik-baik rezeki ialah yang halal dari usaha tangan sendiri" — HR Ahmad 🏛️',
+        en: '"The best earnings are from one\'s own halal effort" — Ahmad 🏛️',
+        id: '"Sebaik-baik rezeki adalah dari usaha tangan sendiri" — HR Ahmad 🏛️',
+        ar: '«ما أكل أحد طعاماً خيراً من عمل يده» — البخاري 🏛️',
+      },
+    ],
+    madrasah: [
+      {
+        ms: '"Menuntut ilmu adalah fardhu ke atas setiap Muslim" — HR Ibn Majah 📖',
+        en: '"Seeking knowledge is obligatory upon every Muslim" — Ibn Majah 📖',
+        id: '"Menuntut ilmu wajib bagi setiap Muslim" — HR Ibn Majah 📖',
+        ar: '«طلب العلم فريضة على كل مسلم» — ابن ماجه 📖',
+      },
+      {
+        ms: '"Allah akan mengangkat darjat orang-orang yang beriman & berilmu" — Al-Mujadilah 58:11 📖',
+        en: '"Allah will raise those who believe and those given knowledge" — Al-Mujadilah 58:11 📖',
+        id: '"Allah tinggikan derajat orang beriman & berilmu" — Al-Mujadalah 58:11 📖',
+        ar: '﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾ — المجادلة ١١ 📖',
+      },
+      {
+        ms: '"Barangsiapa berjalan mencari ilmu, Allah mudahkan baginya jalan ke syurga" — HR Muslim 📖',
+        en: '"Whoever walks a path seeking knowledge, Allah eases his path to Paradise" — Muslim 📖',
+        id: '"Siapa berjalan menuntut ilmu, Allah mudahkan jalannya ke surga" — HR Muslim 📖',
+        ar: '«من سلك طريقاً يلتمس فيه علماً سهل الله له به طريقاً إلى الجنة» — مسلم 📖',
+      },
+    ],
+    perpustakaan: [
+      {
+        ms: '"Iqra — Bacalah dengan nama Tuhanmu yang menciptakan" — Al-Alaq 96:1 📚',
+        en: '"Read! In the name of your Lord who created" — Al-Alaq 96:1 📚',
+        id: '"Iqra — Bacalah dengan nama Tuhanmu yang menciptakan" — Al-Alaq 96:1 📚',
+        ar: '﴿اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ﴾ — العلق ١ 📚',
+      },
+      {
+        ms: '"Katakanlah: Adakah sama orang yang berilmu dengan orang yang tidak berilmu?" — Az-Zumar 39:9 📚',
+        en: '"Say: Are those who know equal to those who do not know?" — Az-Zumar 39:9 📚',
+        id: '"Katakan: Apakah sama orang berilmu & tidak berilmu?" — Az-Zumar 39:9 📚',
+        ar: '﴿قُلْ هَلْ يَسْتَوِي الَّذِينَ يَعْلَمُونَ وَالَّذِينَ لَا يَعْلَمُونَ﴾ — الزمر ٩ 📚',
+      },
+    ],
+    balai_rakyat: [
+      {
+        ms: '"Sebaik-baik manusia ialah yang paling bermanfaat kepada manusia lain" — HR Ahmad 🏛️',
+        en: '"The best of people are those most beneficial to others" — Ahmad 🏛️',
+        id: '"Sebaik-baik manusia adalah yang paling bermanfaat bagi orang lain" — HR Ahmad 🏛️',
+        ar: '«خير الناس أنفعهم للناس» — أحمد 🏛️',
+      },
+      {
+        ms: '"Dan tolong-menolonglah kamu dalam berbuat kebajikan & taqwa" — Al-Ma\'idah 5:2 🤝',
+        en: '"And cooperate in righteousness and piety" — Al-Ma\'idah 5:2 🤝',
+        id: '"Tolong-menolonglah kalian dalam kebaikan & takwa" — Al-Ma\'idah 5:2 🤝',
+        ar: '﴿وَتَعَاوَنُوا عَلَى الْبِرِّ وَالتَّقْوَىٰ﴾ — المائدة ٢ 🤝',
+      },
+    ],
   }
   // Category-level fallbacks (kalau templateId spesifik tak dijumpai).
   const REFLECTIONS_BY_CATEGORY = {
-    ibadah: {
-      ms: 'Mendirikan tempat ibadah adalah amal jariah 🕌',
-      en: 'Building a place of worship is ongoing charity 🕌',
-      id: 'Mendirikan tempat ibadah adalah amal jariyah 🕌',
-      ar: 'بناء بيوت الله من الصدقات الجارية 🕌',
-    },
-    rumah: {
-      ms: '"Rumah kalian jadikan tempat solat" — Yunus 10:87 🏡',
-      en: '"Make your homes places of worship" — Yunus 10:87 🏡',
-      id: '"Jadikan rumah kalian tempat ibadah" — Yunus 10:87 🏡',
-      ar: '﴿وَاجْعَلُوا بُيُوتَكُمْ قِبْلَةً﴾ — يونس ٨٧ 🏡',
-    },
-    kebun: {
-      ms: '"Tidaklah seorang Muslim menanam pokok melainkan setiap yang memakan darinya menjadi sedekah baginya" — HR Bukhari 🌱',
-      en: '"Every seed a Muslim plants that is eaten becomes charity for him" — Bukhari 🌱',
-      id: '"Muslim yang menanam pohon, setiap makhluk yang makan darinya menjadi sedekah" — HR Bukhari 🌱',
-      ar: '«ما من مسلم يغرس غرساً فيأكل منه إنسان أو دابة إلا كان له صدقة» — البخاري 🌱',
-    },
-    ternakan: {
-      ms: 'Merawat haiwan adalah tanggungjawab & pahala 🐄',
-      en: 'Caring for animals is duty and reward 🐄',
-      id: 'Merawat hewan adalah tanggung jawab & pahala 🐄',
-      ar: 'رعاية الحيوان أمانة وأجر 🐄',
-    },
-    sumber_air: {
-      ms: 'Air adalah sumber hayat — Jangan bazir walau sedikit 💧',
-      en: 'Water is the source of life — Do not waste even a drop 💧',
-      id: 'Air adalah sumber kehidupan — Jangan boroskan setetes pun 💧',
-      ar: 'الماء أصل الحياة — لا تسرف ولو من نهر جار 💧',
-    },
-    taman: {
-      ms: 'Anak-anak nikmat & tanggungjawab — Ajar mereka bermain, belajar & berdoa 🎠',
-      en: 'Children are a gift and a trust — Teach them to play, learn and pray 🎠',
-      id: 'Anak-anak adalah nikmat & amanah — Ajarkan bermain, belajar & berdoa 🎠',
-      ar: 'الأولاد نعمة وأمانة — علّمهم اللعب والتعلم والدعاء 🎠',
-    },
-    awam: {
-      ms: '"Sebaik-baik kamu ialah yang paling bermanfaat kepada orang lain" — HR Ahmad 🏛️',
-      en: '"The best of you is he who benefits others most" — Ahmad 🏛️',
-      id: '"Sebaik-baik kalian adalah yang paling bermanfaat bagi orang lain" — HR Ahmad 🏛️',
-      ar: '«خير الناس أنفعهم للناس» — أحمد 🏛️',
-    },
+    ibadah: [
+      {
+        ms: 'Mendirikan tempat ibadah adalah amal jariah yang mengalir pahala berterusan 🕌',
+        en: 'Building a place of worship is ongoing charity 🕌',
+        id: 'Mendirikan tempat ibadah adalah amal jariyah 🕌',
+        ar: 'بناء بيوت الله من الصدقات الجارية 🕌',
+      },
+    ],
+    rumah: [
+      {
+        ms: '"Rumah kalian jadikan tempat solat" — Yunus 10:87 🏡',
+        en: '"Make your homes places of worship" — Yunus 10:87 🏡',
+        id: '"Jadikan rumah kalian tempat ibadah" — Yunus 10:87 🏡',
+        ar: '﴿وَاجْعَلُوا بُيُوتَكُمْ قِبْلَةً﴾ — يونس ٨٧ 🏡',
+      },
+    ],
+    kebun: [
+      {
+        ms: '"Tidaklah seorang Muslim menanam pokok melainkan setiap yang memakan darinya menjadi sedekah baginya" — HR Bukhari 🌱',
+        en: '"Every seed a Muslim plants that is eaten becomes charity for him" — Bukhari 🌱',
+        id: '"Muslim yang menanam pohon, setiap makhluk yang makan darinya menjadi sedekah" — HR Bukhari 🌱',
+        ar: '«ما من مسلم يغرس غرساً فيأكل منه إنسان أو دابة إلا كان له صدقة» — البخاري 🌱',
+      },
+    ],
+    ternakan: [
+      {
+        ms: 'Merawat haiwan adalah tanggungjawab & pahala — Rahmat Allah untuk yang berbuat baik 🐄',
+        en: 'Caring for animals is duty and reward — Allah\'s mercy for those who do good 🐄',
+        id: 'Merawat hewan adalah tanggung jawab & pahala 🐄',
+        ar: 'رعاية الحيوان أمانة وأجر — من رحمة الله للمحسنين 🐄',
+      },
+    ],
+    sumber_air: [
+      {
+        ms: 'Air adalah sumber hayat — Jangan bazir walau setitis 💧',
+        en: 'Water is the source of life — Do not waste even a drop 💧',
+        id: 'Air adalah sumber kehidupan — Jangan boroskan setetes pun 💧',
+        ar: 'الماء أصل الحياة — لا تسرف ولو من نهر جار 💧',
+      },
+    ],
+    taman: [
+      {
+        ms: 'Anak-anak nikmat & tanggungjawab — Ajar mereka bermain, belajar & berdoa 🎠',
+        en: 'Children are a gift and a trust — Teach them to play, learn and pray 🎠',
+        id: 'Anak-anak adalah nikmat & amanah 🎠',
+        ar: 'الأولاد نعمة وأمانة — علّمهم اللعب والتعلم والدعاء 🎠',
+      },
+    ],
+    awam: [
+      {
+        ms: '"Sebaik-baik kamu ialah yang paling bermanfaat kepada orang lain" — HR Ahmad 🏛️',
+        en: '"The best of you is he who benefits others most" — Ahmad 🏛️',
+        id: '"Sebaik-baik kalian adalah yang paling bermanfaat bagi orang lain" — HR Ahmad 🏛️',
+        ar: '«خير الناس أنفعهم للناس» — أحمد 🏛️',
+      },
+    ],
   }
-  const idReflection  = REFLECTIONS_BY_ID[building.templateId]
-  const catReflection = REFLECTIONS_BY_CATEGORY[t?.category]
-  const reflection = idReflection || catReflection || {}
+  // Reflection ROTATION — pick verse using pre-computed random idx
+  // (from top of component, before early-return). Modulo by pool length
+  // so any random seed maps to a valid index for any pool size.
+  const idPool  = REFLECTIONS_BY_ID[building.templateId]
+  const catPool = REFLECTIONS_BY_CATEGORY[t?.category]
+  const pool    = idPool || catPool || []
+  const reflection = pool.length > 0 ? pool[reflectionIdx % pool.length] : {}
   const reflectionText = reflection[lang] || reflection.ms || ''
 
   return (

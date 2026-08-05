@@ -155,11 +155,18 @@
 
 All six run with ZERO external assets — pure Phaser Graphics tweens + CSS radial gradients. Deferred to next iteration (needs user-provided assets): grass tile texture, bird/butterfly spritesheets, water_ripple PNG (see `/app/PROJECT_CONTEXT.md` for spec).
 
-**Islamic Reflections in BuildingInfoCard (2026-08-04)**: Every long-press building card now displays an Islamic reflection (Quran verse, Hadith, or Islamic wisdom) alongside the Move option. Structured lookup:
-1. `REFLECTIONS_BY_ID` — 18 template-specific reflections (musalla → Al-Ankabut 29:45, kebun_kurma → "Plant your seedling even if the Day comes tomorrow" Ahmad, madrasah → "Seeking knowledge is fardhu upon every Muslim" Ibn Majah, waterpark → "The strong believer is better than the weak" Muslim, etc.)
-2. `REFLECTIONS_BY_CATEGORY` — 7 category-level fallbacks (rumah → Yunus 10:87, kebun → planting-as-charity Bukhari, awam → "The best of people are those most beneficial" Ahmad, etc.)
-3. Full multilingual: `ms / en / id / ar` with vocalized Arabic + Quranic ornamental brackets `﴿ ﴾`.
-Card default expanded so reflection is visible immediately (previously required tap on "More"). **MAX LEVEL badge removed** (user: "buang status binaan tertinggi") — max-level buildings simply show reflection + Move button for a cleaner spiritual focus.
+**Islamic Reflections + Rotation (2026-08-04/05)**: Every long-press building card displays a rotating Islamic reflection (Quran verse, Hadith, or Islamic wisdom). Structured lookup:
+1. `REFLECTIONS_BY_ID` — 18 template-specific pools, each with 2-3 verses (musalla → 3 verses: Al-Ankabut 29:45, Bukhari "builds a mosque", Ta-Ha 20:14; kebun_kurma → 3 verses including Ahmad "plant your seedling", Qaf 50:10, Prophet ﷺ breaks fast with dates; madrasah → 3 verses including Ibn Majah, Al-Mujadilah 58:11, Muslim; etc.)
+2. `REFLECTIONS_BY_CATEGORY` — 7 category-level fallbacks.
+3. **Rotation logic**: `const [reflectionIdx] = useState(() => Math.floor(Math.random() * 100))` picked once on mount, then `pool[reflectionIdx % pool.length]` selects the verse. Same card stays stable during its lifetime; each new open picks a fresh random. Verified: opening the Musalla card 5× shows 2-3 different verses.
+4. Full multilingual: `ms / en / id / ar` with vocalized Arabic + Quranic ornamental brackets `﴿ ﴾`.
+Card default expanded so reflection is visible immediately. **MAX LEVEL badge removed** — max-level buildings simply show reflection + Move button.
+
+**Grass Terrain Overlay (2026-08-05)**: User-supplied `grass_tile.webp` (256×256 seamless tileable painted grass) now replaces the flat green ground. `drawGround()` renders:
+1. A single `Phaser.GameObjects.TileSprite` covering the world bounds rectangle, tileScaleX/Y = 0.55 for optimal grass-tile-to-isometric-tile ratio.
+2. A geometry mask constructed from the union of all in-world diamond shapes → grass only shows inside the circular island; beyond stays plain sky/mountain.
+3. Existing colored diamond tiles retained at alpha 0.18 for subtle green tint over the texture (isometric structure remains readable).
+Preloaded once via `terrain_grass` key. Falls back gracefully to solid diamonds if the texture is missing.
 
 **Sidebar sort**: variants sorted ascending by cost (kids see cheapest first).
 
