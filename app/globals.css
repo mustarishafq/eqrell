@@ -76,3 +76,14 @@
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }
+
+
+/* ═══ Unexplored area mist drift (2026-08-05) ═══
+   Very slow bidirectional background-position drift for the atmospheric
+   mist overlay in /world. Kept outside @layer so it's globally available.
+   90s cycle → almost subconscious motion. */
+@keyframes eqrelMistDrift {
+  0%   { background-position: 0% 0%, 100% 100%, 50% 0%; }
+  50%  { background-position: 100% 50%, 0% 50%, 50% 100%; }
+  100% { background-position: 0% 0%, 100% 100%, 50% 0%; }
+}
