@@ -694,54 +694,6 @@ function WorldPageInner() {
         )}
       </div>
 
-      {/*  ═══ UNEXPLORED AREA — CSS-only atmospheric perspective (2026-08-05) ═══
-           Softens the hard cut between the playable grass and the outer
-           gradient background. Three effects in ONE div, zero new assets:
-             1. Feather transition   — radial-gradient stops at 46% → 62%
-                create a soft ~40px fade band (band width scales with viewport
-                so mobile ~24px, desktop ~80px — still reads as feathered).
-             2. Atmospheric perspective — `mix-blend-mode: multiply` with a
-                desaturated cool teal (rgb 130,170,175) simultaneously
-                reduces saturation, darkens ~8%, tints toward teal-green.
-                Kid-friendly (not gloomy) because peak alpha only 0.34 and
-                hue stays in the green-teal family.
-             3. Subtle mist         — inner drift layer, max ~9% alpha, 90s
-                linear infinite, `screen` blend. Almost subconscious motion.
-           Positioned at z-5 (below existing vignette z-6, above canvas).
-           pointer-events-none → never blocks taps. */}
-      {!loading && worldState && (
-        <div
-          className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
-          aria-hidden="true"
-          style={{
-            background: [
-              'radial-gradient(ellipse 52% 55% at 50% 52%,',
-              '  transparent 0%,',
-              '  transparent 46%,',
-              '  rgba(148, 178, 178, 0.14) 52%,',
-              '  rgba(132, 168, 172, 0.24) 62%,',
-              '  rgba(120, 158, 168, 0.32) 80%,',
-              '  rgba(115, 152, 165, 0.34) 100%)',
-            ].join(' '),
-            mixBlendMode: 'multiply',
-          }}
-        >
-          <div
-            className="absolute inset-0"
-            style={{
-              background: [
-                'radial-gradient(ellipse 55% 40% at 20% 30%, rgba(240,250,245,0.09), transparent 55%),',
-                'radial-gradient(ellipse 45% 35% at 78% 62%, rgba(220,238,235,0.08), transparent 50%),',
-                'radial-gradient(ellipse 40% 30% at 55% 15%, rgba(230,245,240,0.07), transparent 55%)',
-              ].join(' '),
-              backgroundSize: '180% 180%, 200% 200%, 160% 160%',
-              mixBlendMode: 'screen',
-              animation: 'eqrelMistDrift 90s linear infinite',
-            }}
-          />
-        </div>
-      )}
-
       {/*  ═══ WORLD POLISH — CSS VIGNETTE + SUN WARMTH ═══
            A subtle radial mask darkens the edges of the viewport to give the
            world "cinematic depth" (Kingshot/LordRush trick). The vignette is
