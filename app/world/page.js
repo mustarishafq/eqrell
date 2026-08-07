@@ -874,7 +874,7 @@ function WorldPageInner() {
       </AnimatePresence>
 
       {/* Header — back button + title */}
-      <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between pointer-events-none">
+      <div className="absolute top-0 left-0 right-0 p-1 sm:p-3 flex items-center justify-between pointer-events-none">
         <button
           onClick={() => router.push('/kid?childId=' + childId)}
           className="pointer-events-auto flex items-center gap-1 rounded-xl bg-white/85 backdrop-blur px-3 py-2 text-emerald-900 font-black text-sm shadow active:scale-95"
@@ -898,8 +898,8 @@ function WorldPageInner() {
       {/* Sidebar — Build menu. When any modal overlay is open, we lower the
           sidebar into pointer-events-none so tapping popup buttons above it
           never leaks into a sidebar variant tile / category tab below. */}
-      <div className={`absolute bottom-0 left-0 right-0 p-3 z-30 ${overlayOpen ? 'pointer-events-none' : ''}`}>
-        <div className={`bg-white/90 backdrop-blur rounded-2xl border-2 border-white/60 shadow-xl p-3 ${overlayOpen ? 'pointer-events-none opacity-70' : 'pointer-events-auto'}`}>
+      <div className={`absolute bottom-0 left-0 right-0 p-1 sm:p-3 z-30 ${overlayOpen ? 'pointer-events-none' : ''}`}>
+        <div className={`bg-white/90 backdrop-blur rounded-xl sm:rounded-2xl border-2 border-white/60 shadow-xl p-2 sm:p-3 ${overlayOpen ? 'pointer-events-none opacity-70' : 'pointer-events-auto'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-4 h-4 text-emerald-700" />
             <div className="text-xs font-black uppercase tracking-wider text-emerald-900">
