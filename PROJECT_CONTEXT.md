@@ -128,7 +128,13 @@
 | **kebun** | 🌴 | tin (25), delima (28), anggur (30), zaitun (32), kurma (35) | 25-35 |
 | **ternakan** | 🐔 | reban_ayam (25), kandang_kambing (40), kandang_lembu (90), kandang_unta (100) | 25-100 |
 | **sumber_air** | 💧 | perigi (10, 1×1), kolam (25, 2×2), **tasik** (0, 4×4 LANDMARK — auto-placed) | 0-25 |
-| **awam** | 🏛️ | pasar_payung (50, 2×2), pasar_bangunan (120, 3×3), madrasah (120), perpustakaan (130), balai_rakyat (150) | 50-150 |
+| **awam** | 🏛️ | pasar_payung (50, 2×2), pasar_bangunan (120, 3×3), **madrasah/school** (120, 3×3), **hospital** (200, 3×3) | 50-200 |
+
+**Awam refresh (2026-08-07)**: User replaced library + community hall with new smart-trimmed assets.
+- `waterpark` — new PNG (256×250 portrait, colorful octopus + slides), baseScale bumped to 1.35 for the 4×4 pad
+- `madrasah` — display renamed to **School** (ms: Sekolah); sprite swapped to `/awam/school.webp` (364×245 after trim). Templateid kept for backward-compat with existing worlds
+- `hospital` — NEW premium public building (3×3, 200 pts, red dome + red-cross facade), reflection uses Asy-Syu'ara 26:80 "When I am ill, He cures me", HR Muslim visiting the sick, HR Abu Daud (Allah sends disease + cure)
+- `perpustakaan` & `balai_rakyat` — hidden via `hidden:true` for backward-compat
 
 **Category sidebar order (2026-08-03 v2)**: `Ibadah → Rumah → Taman → Kebun → Ternakan → Sumber Air → Awam`. Once Musalla is built, Ibadah is filtered out, so the visible order becomes **Rumah → Taman → Kebun → …**. Two structural changes this session:
 - **Taman moved AFTER Rumah** (user: "cart for taman should be place after the house, not before the house").

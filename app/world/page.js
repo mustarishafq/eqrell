@@ -3314,6 +3314,28 @@ const BuildingInfoCard = ({ building, lang, onConfirm, onCancel, onMove, anchor,
         ar: '﴿وَتَعَاوَنُوا عَلَى الْبِرِّ وَالتَّقْوَىٰ﴾ — المائدة ٢ 🤝',
       },
     ],
+    // Hospital — added 2026-08-07 (user asset). Merawat orang sakit adalah
+    // ibadah agung; Islam menekankan syifa & kasih sayang kepada yang lemah.
+    hospital: [
+      {
+        ms: '"Dan apabila aku sakit, Dialah yang menyembuhkan aku" — Asy-Syu\'ara 26:80 🏥',
+        en: '"And when I am ill, it is He who cures me" — Ash-Shu\'ara 26:80 🏥',
+        id: '"Dan apabila aku sakit, Dialah yang menyembuhkanku" — Asy-Syu\'ara 26:80 🏥',
+        ar: '﴿وَإِذَا مَرِضْتُ فَهُوَ يَشْفِينِ﴾ — الشعراء ٨٠ 🏥',
+      },
+      {
+        ms: '"Ziarahlah orang sakit — kamu akan sentiasa dalam rahmat Allah" — HR Muslim 💚',
+        en: '"Visit the sick — you will remain in Allah\'s mercy" — Muslim 💚',
+        id: '"Kunjungilah yang sakit — kalian akan tetap dalam rahmat Allah" — HR Muslim 💚',
+        ar: '«عودوا المريض تكونوا في رحمة الله» — مسلم 💚',
+      },
+      {
+        ms: '"Sesungguhnya Allah menurunkan penyakit & juga menurunkan penawarnya" — HR Abu Daud 🏥',
+        en: '"Allah has sent down the disease, and He has sent down its cure too" — Abu Dawud 🏥',
+        id: '"Allah menurunkan penyakit & juga penawarnya" — HR Abu Daud 🏥',
+        ar: '«إن الله أنزل الداء والدواء» — أبو داود 🏥',
+      },
+    ],
   }
   // Category-level fallbacks (kalau templateId spesifik tak dijumpai).
   const REFLECTIONS_BY_CATEGORY = {
