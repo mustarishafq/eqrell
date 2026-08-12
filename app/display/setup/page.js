@@ -186,7 +186,7 @@ export default function DisplaySetupPage() {
           <div className="text-xl">👋</div>
           <div className="flex-1">
             <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-extrabold">{BRAND.mascotVoice.greet[lang] || BRAND.mascotVoice.greet.ms}</div>
-            <div className="text-sm font-black leading-tight">{BRAND.name} — {BRAND.tagline[lang] || BRAND.tagline.ms}</div>
+            <div className="text-sm font-black leading-tight">{BRAND.name}</div>
           </div>
         </div>
 

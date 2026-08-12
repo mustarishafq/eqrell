@@ -18,7 +18,7 @@ const PARENT_QUOTES = {
     { text: 'Anak soleh & solehah bermula di rumah.', by: 'Doa untuk keluarga' },
     { text: 'Rutin yang berkat, hasil yang barakah.', by: 'EQrel' },
     { text: 'Setiap habits adalah sedekah untuk anak.', by: 'EQrel' },
-    { text: 'Bina habits, bina iman.', by: 'EQrel' },
+    { text: 'Doa ibubapa adalah pagar kepada anak.', by: 'EQrel' },
     { text: 'Keluarga yang berdoa bersama, kekal bersama.', by: 'Hadis' },
     { text: 'Ibubapa adalah rumah pertama untuk hati anak.', by: 'EQrel' },
     { text: 'Setiap langkah kecil hari ini, hijrah besar esok.', by: 'EQrel' },
@@ -27,7 +27,7 @@ const PARENT_QUOTES = {
     { text: 'Righteous children begin at home.', by: 'A family prayer' },
     { text: 'Blessed routines, blessed outcomes.', by: 'EQrel' },
     { text: 'Every habit is a gift you give your child.', by: 'EQrel' },
-    { text: 'Build habits, grow iman.', by: 'EQrel' },
+    { text: 'A parent\u2019s du\u2019a shields the child.', by: 'EQrel' },
     { text: 'The family that prays together, stays together.', by: 'Hadith' },
     { text: 'Parents are the first home for a child\u2019s heart.', by: 'EQrel' },
     { text: 'Every small step today, a great journey tomorrow.', by: 'EQrel' },
@@ -94,7 +94,7 @@ export function OnboardingScaffold({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <BrandLogo size="md" showTagline={true} />
+          <BrandLogo size="md" />
         </motion.div>
 
         {/* Mascot */}

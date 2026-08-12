@@ -466,11 +466,7 @@ export default function DisplayPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex items-center gap-2 flex-1">
-            <img src={BRAND.mascot.default} alt="EQ" className="w-8 h-8" />
-            <div>
-              <div className="text-sm font-black leading-none">{BRAND.name}</div>
-              <div className="text-[9px] uppercase tracking-widest font-bold leading-none mt-0.5" style={{ color: '#FFB703' }}>{BRAND.tagline[lang] || BRAND.tagline.ms}</div>
-            </div>
+            <img src="/assets/brand/eqrel_logo.webp" alt="EQrel" className="h-9 w-auto object-contain" />
           </div>
         </div>
 
@@ -538,11 +534,11 @@ export default function DisplayPage() {
 
       {/* ═══ TOP HEADER: EQrel branded logo + prayer strip + nav ═══ */}
       <header className="relative z-20 flex items-stretch gap-2 px-3 pt-3 flex-shrink-0">
-        {/* EQrel logo — image FILLS entire card edge-to-edge with rounded corners */}
+        {/* EQrel logo — image already includes tagline, no overlay text needed */}
         <div className="flex items-center bg-white h-14 rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
           <img
-            src="/eqrel-logo-full.png"
-            alt="EQrel — Build Habits. Grow Iman."
+            src="/assets/brand/eqrel_logo.webp"
+            alt="EQrel"
             className="h-14 w-auto block"
             style={{ backgroundColor: '#FFFFFF', display: 'block' }}
           />

@@ -2,8 +2,8 @@ import './globals.css'
 import { Providers } from './providers'
 
 export const metadata = {
-  title: 'EQrel — Build Habits. Grow Iman.',
-  description: 'Platform Islamic pembinaan kebiasaan untuk keluarga Muslim. Build good habits, grow iman together, one small step at a time.',
+  title: 'EQrel',
+  description: 'Platform Islamic pembinaan kebiasaan untuk keluarga Muslim.',
   applicationName: 'EQrel',
   appleWebApp: {
     capable: true,
