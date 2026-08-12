@@ -44,6 +44,52 @@ export default function TVPreview({
     if (reloadKey) setNonce(n => n + 1)
   }, [reloadKey])
 
+  // ═══════════════════════════════════════════════════════════════════
+  // MacBook/Safari wheel fix — iframe with `pointer-events: none` does
+  // NOT reliably let wheel/trackpad scroll bubble to parent on macOS
+  // Safari & Chrome (known WebKit/Blink quirk). Overlay <div> on top of
+  // iframe helps for mouse-wheel but macOS trackpad may still route the
+  // wheel directly into the iframe. Since /display is same-origin, we
+  // reach into the iframe's contentWindow on `load` and attach a wheel
+  // listener there that forwards deltaY back to the parent via
+  // `window.scrollBy`. This is the only 100% reliable pattern across
+  // Safari macOS, Chrome macOS, Firefox, and Chromium mobile.
+  // ═══════════════════════════════════════════════════════════════════
+  const attachIframeWheelForward = () => {
+    try {
+      const iframe = iframeRef.current
+      if (!iframe) return
+      const doc = iframe.contentDocument
+      const win = iframe.contentWindow
+      if (!doc || !win) return
+      const forward = (e) => {
+        try {
+          // Best-effort: mimic wheel scrolling the parent page
+          window.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: 'auto' })
+          e.preventDefault()
+          e.stopPropagation()
+        } catch (_) {}
+      }
+      // Non-passive so we can preventDefault the iframe's internal scroll
+      doc.addEventListener('wheel', forward, { passive: false, capture: true })
+      // Also handle touchmove on iOS Safari desktop-mode
+      const touchStart = { y: 0 }
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches[0]) touchStart.y = e.touches[0].clientY
+      }, { passive: true, capture: true })
+      doc.addEventListener('touchmove', (e) => {
+        try {
+          if (!e.touches || !e.touches[0]) return
+          const dy = touchStart.y - e.touches[0].clientY
+          touchStart.y = e.touches[0].clientY
+          window.scrollBy({ top: dy, left: 0, behavior: 'auto' })
+        } catch (_) {}
+      }, { passive: true, capture: true })
+    } catch (_) {
+      // cross-origin (shouldn't happen — same origin) or timing issue
+    }
+  }
+
   const reload = () => setNonce(n => n + 1)
   const openInNewTab = () => window.open(src.replace('&preview=1', '').replace('preview=1&', '').replace('preview=1', ''), '_blank')
 
@@ -95,6 +141,8 @@ export default function TVPreview({
               className="border-0 block bg-slate-950"
               title={label}
               sandbox="allow-scripts allow-same-origin"
+              scrolling="no"
+              onLoad={attachIframeWheelForward}
               style={{ pointerEvents: 'none' }}
             />
           </div>
