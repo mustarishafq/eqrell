@@ -95,8 +95,23 @@ export default function TVPreview({
               className="border-0 block bg-slate-950"
               title={label}
               sandbox="allow-scripts allow-same-origin"
+              style={{ pointerEvents: 'none' }}
             />
           </div>
+          {/* Transparent overlay — swallows pointer/wheel events so the page can
+              still be scrolled by mouse wheel when the cursor is over the
+              preview iframe (iframe would otherwise capture the wheel).
+              onWheel handler manually scrolls the outer page. */}
+          <div
+            aria-hidden="true"
+            onWheel={(e) => {
+              // Forward wheel to window scroll so parent page still scrolls
+              window.scrollBy({ top: e.deltaY, left: 0, behavior: 'auto' })
+            }}
+            onTouchMove={(e) => { /* allow native touch scroll to pass */ }}
+            className="absolute inset-0 z-10 cursor-default"
+            style={{ background: 'transparent' }}
+          />
         </div>
       </div>
     </div>
