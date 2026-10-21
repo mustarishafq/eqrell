@@ -13,6 +13,8 @@
 export async function register() {
   // Guard: only run on the main Node.js server (avoid edge runtime).
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
+  // Production builds are precompiled — pre-warm is only useful in dev.
+  if (process.env.NODE_ENV !== 'development') return
 
   // Delay so the HTTP server is actually listening before we curl ourselves.
   const DELAY_MS = 1500
