@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, MapPin, Settings, Volume2, VolumeX, Moon, Sun } from 'lucide-react'
@@ -42,7 +42,7 @@ const PRAYER_LABELS = {
 }
 const AZAN_TRIGGER_KEYS = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 
-export default function DisplayPage() {
+function DisplayPageInner() {
   const router = useRouter()
   const { t: tBase, lang: userLang } = useLang()
   const [config, setConfig] = useState(null)
@@ -920,5 +920,15 @@ export default function DisplayPage() {
         }}
       />
     </div>
+  )
+}
+
+// useSearchParams() must sit under a <Suspense> boundary for Next.js 15
+// static prerender (`next build`). Fallback mirrors the boot splash look.
+export default function DisplayPage() {
+  return (
+    <Suspense fallback={<DisplayLoadingSplash lang="ms" visible />}>
+      <DisplayPageInner />
+    </Suspense>
   )
 }
