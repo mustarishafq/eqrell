@@ -101,26 +101,53 @@ export default function DisplayPage() {
     return () => clearInterval(tt)
   }, [])
 
+  // loaded: first successful load done (config may legitimately be null for new families)
+  // loadError: 'auth' | 'nofamily' | 'network' | 'timeout' — only shown before first success
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const loadedRef = useRef(false)
   const load = useCallback(async () => {
+    const ctrl = new AbortController()
+    const abortT = setTimeout(() => ctrl.abort(), 15_000)
+    const opts = { credentials: 'include', signal: ctrl.signal }
+    const safeJson = async (r) => { try { return await r.json() } catch { return {} } }
     try {
       const [cRes, dRes, lRes] = await Promise.all([
-        fetch('/api/family/display-config', { credentials: 'include' }),
-        fetch('/api/family/display-data', { credentials: 'include' }),
-        fetch('/api/family/prayer-location', { credentials: 'include' }),
+        fetch('/api/family/display-config', opts),
+        fetch('/api/family/display-data', opts),
+        fetch('/api/family/prayer-location', opts),
       ])
-      const cData = await cRes.json()
-      const dData = await dRes.json()
-      const lData = await lRes.json()
-      setConfig(cData.config)
-      setDisplay(dData)
-      setLocation(lData.location)
-      if (lData.location) {
-        const pRes = await fetch('/api/family/prayer-times', { credentials: 'include' })
-        if (pRes.ok) setPrayers(await pRes.json())
+      if (cRes.status === 401 || dRes.status === 401) {
+        if (!loadedRef.current) setLoadError('auth')
+        return
       }
-    } catch (e) { /* ignore */ }
+      if (!dRes.ok) {
+        if (!loadedRef.current) setLoadError(dRes.status === 400 ? 'nofamily' : 'network')
+        return
+      }
+      const cData = cRes.ok ? await safeJson(cRes) : {}
+      const dData = await safeJson(dRes)
+      const lData = lRes.ok ? await safeJson(lRes) : {}
+      setConfig(cData?.config ?? null)
+      setDisplay(dData)
+      setLocation(lData?.location ?? null)
+      loadedRef.current = true
+      setLoaded(true)
+      setLoadError(null)
+      if (lData?.location) {
+        try {
+          const pRes = await fetch('/api/family/prayer-times', opts)
+          if (pRes.ok) setPrayers(await pRes.json())
+        } catch { /* prayer times optional */ }
+      }
+    } catch (e) {
+      if (!loadedRef.current) setLoadError(e?.name === 'AbortError' ? 'timeout' : 'network')
+    } finally {
+      clearTimeout(abortT)
+    }
   }, [])
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
+  const retryLoad = useCallback(() => { setLoadError(null); load() }, [load])
 
   // ═══ Boot splash — show a motivational quote until data is ready ═══
   // Splash logic:
@@ -134,8 +161,10 @@ export default function DisplayPage() {
     const t = setTimeout(() => setMinSplashElapsed(true), 2200)
     return () => clearTimeout(t)
   }, [])
-  const isDataReady = config !== null && display !== null
-  const splashVisible = !(isDataReady && minSplashElapsed)
+  // NOTE: config can be null for families that never saved display settings —
+  // readiness is driven by `loaded`, not by config being non-null.
+  const isDataReady = loaded && display !== null
+  const splashVisible = !(isDataReady && minSplashElapsed) && !loadError
 
   // Photo slideshow rotation — supports both legacy string[] and new {url, focalX, focalY, title}[]
   const rawPhotos = (config?.photos || []).map(p => typeof p === 'string' ? { url: p, focalX: 50, focalY: 50, title: '' } : p).filter(p => p?.url)
@@ -501,6 +530,63 @@ export default function DisplayPage() {
             <li>{lang === 'en' ? 'Visit the URL above' : 'Lawat URL di atas'}</li>
             <li>{lang === 'en' ? 'Or use Google Cast from this phone' : 'Atau guna Google Cast dari phone ini'}</li>
           </ol>
+        </div>
+      </div>
+    )
+  }
+
+  // ═══ Load error screen — never leave the family stuck on the splash ═══
+  if (loadError && !loaded) {
+    const L = (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'en' ? en : lang === 'id' ? id : ms)
+    const errInfo = {
+      auth: {
+        icon: '🔐',
+        title: L('Sesi anda telah tamat', 'Your session has ended', 'Sesi kamu telah berakhir', 'انتهت الجلسة'),
+        desc: L('Sila log masuk semula untuk membuka Paparan Keluarga.', 'Please sign in again to open the Family Display.', 'Silakan masuk lagi untuk membuka Tampilan Keluarga.', 'يرجى تسجيل الدخول مرة أخرى.'),
+      },
+      nofamily: {
+        icon: '👨‍👩‍👧',
+        title: L('Keluarga belum disediakan', 'Family not set up yet', 'Keluarga belum disiapkan', 'لم يتم إعداد العائلة بعد'),
+        desc: L('Lengkapkan profil keluarga di Papan Ibu Bapa dahulu.', 'Complete your family profile in the Parent Dashboard first.', 'Lengkapi profil keluarga di Dasbor Orang Tua dulu.', 'أكمل ملف العائلة أولاً.'),
+      },
+      timeout: {
+        icon: '⏳',
+        title: L('Sambungan terlalu perlahan', 'Connection is too slow', 'Koneksi terlalu lambat', 'الاتصال بطيء جداً'),
+        desc: L('Data keluarga mengambil masa terlalu lama. Semak internet dan cuba lagi.', 'Family data took too long. Check your internet and try again.', 'Data keluarga terlalu lama dimuat. Periksa internet dan coba lagi.', 'استغرق التحميل وقتاً طويلاً. تحقق من الإنترنت.'),
+      },
+      network: {
+        icon: '📡',
+        title: L('Gagal memuatkan Paparan Keluarga', 'Could not load the Family Display', 'Gagal memuat Tampilan Keluarga', 'تعذّر تحميل شاشة العائلة'),
+        desc: L('Berlaku masalah semasa mengambil data keluarga. Sila cuba lagi.', 'Something went wrong while loading family data. Please try again.', 'Terjadi masalah saat memuat data keluarga. Silakan coba lagi.', 'حدث خطأ أثناء التحميل. حاول مرة أخرى.'),
+      },
+    }[loadError] || {}
+    return (
+      <div data-testid="display-load-error" className="min-h-screen w-full flex items-center justify-center p-6 text-center"
+        dir={lang === 'ar' ? 'rtl' : 'ltr'}
+        style={{ background: 'radial-gradient(1400px 900px at 30% 20%, #0d5b4e 0%, #063f36 45%, #021d18 100%)', color: '#FFF8E7' }}>
+        <div className="max-w-lg w-full rounded-3xl border-2 p-8 backdrop-blur-md"
+          style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,183,3,0.35)' }}>
+          <img src="/assets/brand/eqrel_logo.webp" alt="EQrel" className="h-14 w-auto mx-auto mb-5 object-contain" />
+          <div className="text-5xl mb-3">{errInfo.icon}</div>
+          <h1 className="text-2xl md:text-3xl font-black mb-2">{errInfo.title}</h1>
+          <p className="text-sm md:text-base opacity-75 mb-6 leading-relaxed">{errInfo.desc}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {loadError === 'auth' ? (
+              <button data-testid="display-error-login" onClick={() => router.push('/')}
+                className="rounded-xl px-6 py-3 font-extrabold text-slate-900 active:scale-95 shadow-lg" style={{ backgroundColor: '#FFB703' }}>
+                {L('Log Masuk', 'Sign In', 'Masuk', 'تسجيل الدخول')}
+              </button>
+            ) : (
+              <button data-testid="display-error-retry" onClick={retryLoad}
+                className="rounded-xl px-6 py-3 font-extrabold text-slate-900 active:scale-95 shadow-lg" style={{ backgroundColor: '#FFB703' }}>
+                🔄 {L('Cuba Lagi', 'Try Again', 'Coba Lagi', 'حاول مرة أخرى')}
+              </button>
+            )}
+            <button data-testid="display-error-back" onClick={() => router.push('/?parent=1')}
+              className="rounded-xl px-6 py-3 font-extrabold bg-white/10 border border-white/20 active:scale-95">
+              {L('Kembali', 'Go Back', 'Kembali', 'رجوع')}
+            </button>
+          </div>
         </div>
       </div>
     )
