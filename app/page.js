@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles, Plus, X } from 'lucide-react'
 import { mockParent, mockChildren, mockFamily } from '@/lib/mock/parent-data'
@@ -16,6 +16,9 @@ import { LangPicker } from '@/components/eqrel/LangPicker'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { BRAND } from '@/lib/brand'
 import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
+import TasksTab from '@/components/eqrel/tabs/TasksTab'
+import ReportsTab from '@/components/eqrel/tabs/ReportsTab'
+import ProfileTab from '@/components/eqrel/tabs/ProfileTab'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -149,6 +152,16 @@ const ParentDashboard = () => {
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false)
   const [demeritChild, setDemeritChild] = useState(null)   // child pending demerit modal
   const [streak, setStreak] = useState({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
+  const [dataVersion, setDataVersion] = useState(0)   // bump to refresh Tasks/Reports tabs
+  const [pinChangeMode, setPinChangeMode] = useState(null)   // null | 'set' | 'change'
+  const mainScrollRef = useRef(null)
+  useEffect(() => { mainScrollRef.current?.scrollTo?.({ top: 0 }) }, [activeTab])
+  const doLogout = async () => {
+    if (confirm(t.logout_confirm)) {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+      window.location.href = '/login'
+    }
+  }
 
   // Fetch family streak
   const fetchStreak = useCallback(async () => {
@@ -410,6 +423,7 @@ const ParentDashboard = () => {
       </div>
 
       {/* EQ MASCOT — full body, feet overlap card. Scaled down on smaller phones. */}
+      {activeTab === 'home' && (<>
       <div className="relative z-20 flex justify-center flex-shrink-0 pointer-events-none" style={{ height: 'clamp(140px, 20dvh, 220px)' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -440,9 +454,35 @@ const ParentDashboard = () => {
           <Sparkles className="w-3 h-3 text-eq-yellow" fill="#FFB703" />
         </motion.div>
       </div>
+      </>)}
 
       {/* MAIN CONTENT — scrollable when content taller than viewport, so BottomNav always stays visible */}
-      <div className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10 overflow-y-auto overscroll-contain">
+      <div ref={mainScrollRef} className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10 overflow-y-auto overscroll-contain">
+        {activeTab === 'tasks' && (
+          <TasksTab kids={children} lang={lang} icon={ASSETS.navTasks} avatarSrc={resolveAvatarSrc}
+            pendingVerifyCount={pendingVerifyCount} refreshKey={dataVersion}
+            onOpenVerify={() => setVerifySheetOpen(true)}
+            onOpenHabits={(c) => setHabitsSheetChild(c)}
+            onAddChild={openAddSheet} />
+        )}
+        {activeTab === 'reports' && (
+          <ReportsTab lang={lang} icon={ASSETS.navReport} avatarSrc={resolveAvatarSrc} streak={streak} refreshKey={dataVersion} />
+        )}
+        {activeTab === 'profile' && (
+          <ProfileTab lang={lang} icon={ASSETS.navProfile} me={me} family={family} kids={children} avatarSrc={resolveAvatarSrc}
+            onEditChild={openEditSheet} onAddChild={openAddSheet}
+            onChangePin={async () => {
+              try {
+                const r = await fetch('/api/family/pin', { credentials: 'include' })
+                const d = await r.json().catch(() => ({}))
+                setPinChangeMode(d.hasPin ? 'change' : 'set')
+              } catch { setPinChangeMode('set') }
+            }}
+            onDeviceSettings={() => setDeviceSettingsOpen(true)}
+            onRewardShop={() => setRewardShopOpen(true)}
+            onLogout={doLogout} />
+        )}
+        {activeTab === 'home' && (<>
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -691,6 +731,7 @@ const ParentDashboard = () => {
             </button>
           </div>
         </motion.div>
+        </>)}
 
       </div>
 
@@ -727,6 +768,7 @@ const ParentDashboard = () => {
         onClose={() => {
           if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
           setHabitsSheetChild(null)
+          setDataVersion(v => v + 1)
         }}
         child={habitsSheetChild}
         onCountChange={handleHabitCountChange}
@@ -739,6 +781,8 @@ const ParentDashboard = () => {
           setVerifySheetOpen(false)
           // refresh habit counts (verified/removed claims affect done count) for all children
           children.forEach(c => refreshChildHabits(c.id))
+          setDataVersion(v => v + 1)
+          fetchStreak()
         }}
         onCountChange={setPendingVerifyCount}
       />
@@ -754,6 +798,14 @@ const ParentDashboard = () => {
           setKidModeChild(null)
           if (c) window.location.href = `/kid?childId=${encodeURIComponent(c.id)}`
         }}
+      />
+
+      {/* Change parent PIN — opened from Profile tab */}
+      <PinModal
+        open={!!pinChangeMode}
+        mode={pinChangeMode || 'change'}
+        onClose={() => setPinChangeMode(null)}
+        onSuccess={() => setPinChangeMode(null)}
       />
 
       {/* Reward Shop — parent view (catalog + requests) */}

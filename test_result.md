@@ -5342,3 +5342,173 @@ agent_communication:
       
       NO ISSUES FOUND. The mata reward deduction feature is production-ready and working exactly as specified.
 
+
+#====================================================================================================
+# NEW CYCLE — Parent Dashboard Bottom Nav tabs (Tasks / Reports / Profile) + /display fixes
+#====================================================================================================
+metadata:
+  updated_by: "main_agent"
+  update_note: "Bottom nav Tasks/Reports/Profile previously only changed highlight (no screens). Built 3 tab screens + new GET /api/family/report. /display: loading-splash hang fixed + Suspense wrap for next build."
+
+backend:
+  - task: "GET /api/family/report?days=7 - per-child weekly habit report"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Auth via eqrel_session cookie (401 without). 400 if user has no family. days clamped 1..31 (default 7). Returns {range:{from,to,days}, dates[], children:[{id,nickname,avatarId,favColor,habitsTotal,daily:[{date,done,ihsan,points}],totals:{done,ihsan,points,activeDays,claimedPending},topHabits:[{id,title,i18n,icon,count}]}]}. 'done' counts habit_claims status=verified & rubric in [sah,ihsan] on each UTC dateStr; ihsan subset; points = sum pointsAwarded; claimedPending = status 'claimed' in range."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (33/33 assertions across 13 test scenarios)
+          
+          Comprehensive test suite executed successfully. Created /app/backend_test.py with automated tests covering:
+          
+          ✅ TEST 1: No cookie → 401 (auth guard working)
+          ✅ TEST 2: Valid cookie → 200 with correct shape (days=7 default)
+             - Verified response structure: range{from,to,days}, dates[], children[]
+             - Verified children have all required fields: id, nickname, avatarId, favColor, habitsTotal, daily[], totals{}, topHabits[]
+             - Verified habitsTotal > 0 for seeded child (7 habits)
+             - Verified daily array length = 7 with correct date shape
+             - Verified totals has all fields: done, ihsan, points, activeDays, claimedPending
+             - Verified topHabits is array
+          ✅ TEST 3: days param ?days=30 → 30 dates returned
+          ✅ TEST 4: days param ?days=0 → defaults to 7 (0 is falsy, uses default)
+          ✅ TEST 5: days param ?days=abc → defaults to 7 (invalid input)
+          ✅ TEST 6: days param ?days=100 → clamped to 31 (max limit)
+          ✅ TEST 7: Direct Mongo inserts for habit_claims verification (13 assertions)
+             - Inserted 3 claims: today ihsan (30pts), yesterday sah (20pts), today claimed (pending)
+             - Today's daily: done=1, ihsan=1, points=30 ✓
+             - Yesterday's daily: done=1, ihsan=0, points=20 ✓
+             - Totals: done=2, ihsan=1, points=50, activeDays=2, claimedPending=1 ✓
+             - topHabits contains habit with count=2 ✓
+             - Child 2 unaffected (done=0) ✓
+          ✅ TEST 8: Claim with rubric 'belum' correctly excluded from done count
+          ✅ TEST 9: Claim older than range (10 days ago) correctly excluded
+          ✅ TEST 10: User with no familyId → 400 (validation working)
+          ✅ TEST 11: Regression - GET /api/family/streak still works (200 with correct shape)
+          ✅ TEST 12: Regression - GET /api/family/display-config still works (200 with correct shape)
+          ✅ TEST 13: Regression - GET /api/family/display-data still works (200 with correct shape)
+          
+          KEY FINDINGS:
+          - Auth guards working correctly (401 without cookie, 400 without familyId)
+          - days parameter validation working: defaults to 7, clamped 1-31
+          - Response shape correct with all required fields
+          - Date range calculation correct (7 consecutive UTC dates ending today)
+          - Both seeded children returned with correct data
+          - habitsTotal calculation correct (counts active habits per child)
+          - daily array calculation correct (done/ihsan/points per date)
+          - totals calculation correct (aggregates across date range)
+          - activeDays calculation correct (counts days with done > 0)
+          - claimedPending calculation correct (counts status='claimed' in range)
+          - topHabits calculation correct (top 3 habits by verified count)
+          - Rubric filtering correct (only 'sah' and 'ihsan' count as done)
+          - Date range filtering correct (claims outside range excluded)
+          - Cross-child isolation working (child 2 unaffected by child 1's claims)
+          - Regression tests pass (streak, display-config, display-data all working)
+          - All test data cleaned up successfully
+          
+          NO ISSUES FOUND. GET /api/family/report endpoint is production-ready.
+
+frontend:
+  - task: "Parent dashboard bottom nav - Home/Tasks/Reports/Profile tabs"
+    implemented: true
+    working: false
+    file: "/app/app/page.js, /app/components/eqrel/tabs/*.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Home = existing dashboard (mascot shown). Tasks (data-testid tab-tasks): verify button opens VerifySheet, filter chips tasks-filter-{all,pending,waiting,done}, per-child card tasks-child-{id} with 'Manage' (tasks-manage-{id}) opening HabitsSheet. Reports (tab-reports): family summary + per-child 7-day bar chart, refresh button reports-refresh. Profile (tab-profile): account card, family code copy, children avatars (tap = edit ChildSheet, profile-add-child), LangPicker, profile-change-pin (PinModal set/change), profile-device (DeviceSettingsSheet), profile-rewards (RewardShopSheet), profile-display, profile-display-setup, profile-logout (confirm)."
+      - working: false
+        agent: "testing"
+        comment: "CRITICAL BUG: Modal/Sheet close buttons NOT WORKING. Tested on mobile (400x820) and desktop (1280x800). Core navigation WORKS: ✅ Home tab (mascot visible, child rings, tiles: Reward Shop/Zikir/Device/Family Display - NOTE: Verify tile not found in Home tiles), ✅ Tasks tab (visible, mascot hidden, 2 per-child cards, filter chips all/pending/waiting/done present and clickable), ✅ Reports tab (visible, family summary, per-child cards, weekday labels, refresh button), ✅ Profile tab (visible, Test Parent name/email, all 7 buttons present: copy-code/add-child/change-pin/device/rewards/display/logout, 2 children avatars), ✅ Tab switching works, active indicator moves correctly, ✅ Bottom nav works on both viewports. BLOCKING BUG: When clicking buttons that open sheets/modals (Device Settings, Reward Shop, PIN modal, Verify, Manage Habits), sheets DO open correctly, but close button (×) does NOT close them. Backdrop remains and blocks all subsequent interactions. Tested with force=True clicks, ESC key, backdrop clicks - none work. This prevents testing: Verify sheet full flow, Manage Habits sheet, child avatar edit, add child, logout confirm dialog. MISSING: Verify tile not found on Home dashboard (only found in Tasks tab as button). Console: React duplicate-key warning (known/out of scope). Test data cleaned up."
+
+test_plan:
+  current_focus:
+    - "GET /api/family/report?days=7 - per-child weekly habit report"
+    - "Parent dashboard bottom nav - Home/Tasks/Reports/Profile tabs"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Test new /api/family/report endpoint and the 4 bottom nav tabs. Use /app/memory/test_credentials.md (python /app/scripts/seed_test_family.py for cookie; cleanup after). In Playwright, remove the Next.js dev overlay (document.querySelectorAll('nextjs-portal').forEach(e=>e.remove())) because the dev 'Issues' badge overlaps the Profile nav button; also dismiss the Install EQrel prompt. A pre-existing React duplicate-key console warning on Home is known and out of scope."
+  - agent: "testing"
+    message: |
+      🎉 GET /api/family/report ENDPOINT TESTING COMPLETE - ALL TESTS PASSED (33/33)
+      
+      Tested the NEW GET /api/family/report endpoint as requested in the review_request.
+      Created comprehensive test suite: /app/backend_test.py
+      
+      All test scenarios passed:
+      ✅ Auth guards (no cookie → 401, no familyId → 400) - 2 tests
+      ✅ Valid cookie → 200 with correct response shape - 9 assertions
+      ✅ days parameter validation (30, 0, abc, 100) - 4 tests
+      ✅ Direct Mongo inserts for habit_claims verification - 13 assertions
+         - Today verified rubric ihsan pointsAwarded 30 → daily done=1 ihsan=1 points=30
+         - Yesterday verified rubric sah pointsAwarded 20 → daily done=1 ihsan=0 points=20
+         - Today status claimed (no rubric) → claimedPending=1
+         - Totals: done=2, ihsan=1, points=50, activeDays=2, claimedPending=1
+         - topHabits contains habit with count=2
+         - Child 2 unaffected (done=0)
+      ✅ Claim with rubric 'belum' correctly excluded - 1 test
+      ✅ Claim older than range correctly excluded - 1 test
+      ✅ Quick regression tests (streak, display-config, display-data) - 3 tests
+      
+      KEY FINDINGS:
+      - All auth guards working correctly
+      - days parameter: defaults to 7, clamped 1-31 (days=0 defaults to 7 because 0 is falsy)
+      - Response shape correct with all required fields
+      - Date range calculation correct (7 consecutive UTC dates ending today)
+      - Both seeded children returned with correct data
+      - Calculation logic verified:
+        * done counts verified claims with rubric in ['sah', 'ihsan']
+        * ihsan counts verified claims with rubric 'ihsan'
+        * points sums pointsAwarded from verified claims
+        * activeDays counts days with done > 0
+        * claimedPending counts status='claimed' in range
+        * topHabits shows top 3 habits by verified count
+      - Rubric filtering correct (only 'sah' and 'ihsan' count as done, 'belum' excluded)
+      - Date range filtering correct (claims outside range excluded)
+      - Cross-child isolation working perfectly
+      - All regression tests pass (no breaking changes)
+      - All test data cleaned up successfully
+      
+      NO ISSUES FOUND. GET /api/family/report endpoint is production-ready.
+  - agent: "testing"
+    message: |
+      🔴 PARENT DASHBOARD BOTTOM NAV TESTING COMPLETE - CRITICAL BUG FOUND
+      
+      Tested all 4 bottom nav tabs (Home/Tasks/Reports/Profile) on mobile (400x820) and desktop (1280x800) viewports.
+      
+      ✅ WORKING - Core Navigation & Display:
+      - Bottom nav renders correctly on both viewports with 4 buttons (Home/Tasks/Reports/Profile)
+      - Tab switching works perfectly, active indicator moves correctly
+      - Home tab: Mascot visible (img alt=EQ), 2 child progress rings, dashboard tiles present (Reward Shop, Zikir, Device, Family Display)
+      - Tasks tab: [data-testid=tab-tasks] visible, mascot hidden correctly, 2 per-child cards [data-testid^=tasks-child-], filter chips (all/pending/waiting/done) present and clickable, tasks-verify-btn present
+      - Reports tab: [data-testid=tab-reports] visible, family summary [data-testid=reports-family-summary] present, per-child cards with 7 weekday labels, reports-refresh button present and works without error
+      - Profile tab: [data-testid=tab-profile] visible, account card shows "Test Parent" + email, all 7 buttons present (profile-copy-code, profile-add-child, profile-change-pin, profile-device, profile-rewards, profile-display, profile-logout), 2 children avatars visible
+      
+      ❌ CRITICAL BUG - Modal/Sheet Close Functionality:
+      When clicking buttons that open sheets/modals (Device Settings, Reward Shop, PIN modal, Verify, Manage Habits), the sheets DO open correctly, but the close button (×) does NOT close them. The backdrop overlay remains visible and blocks ALL subsequent interactions. Tested multiple close methods (force=True clicks, ESC key, backdrop clicks) - NONE work. This is a BLOCKING bug that prevents:
+      - Full testing of Verify sheet workflow
+      - Testing Manage Habits sheet (tasks-manage-{childId})
+      - Testing child avatar edit (profile-child-{id})
+      - Testing add child flow (profile-add-child)
+      - Testing logout confirmation dialog (profile-logout)
+      
+      ⚠️ MINOR ISSUE:
+      - "Verify" tile not found on Home dashboard (expected per review request, but only found as button in Tasks tab)
+      
+      Screenshots captured: mobile-home-tab.png, mobile-tasks-tab.png, mobile-reports-tab.png, mobile-profile-tab.png, desktop-home-tab.png, desktop-tasks-tab.png, desktop-reports-tab.png, desktop-profile-tab.png, profile-full-view.png, device-settings-sheet.png, reward-shop-sheet.png, pin-modal.png
+      
+      Test data cleaned up successfully.

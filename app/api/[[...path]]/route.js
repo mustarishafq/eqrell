@@ -1785,6 +1785,74 @@ async function handleRoute(request, { params }) {
     // Returns { streak, longestStreak, todayDone, days } where days is last 14 days.
     // Streak = consecutive days (ending today or yesterday if today not yet logged) with
     // at least ONE family child having a verified 'sah'|'ihsan' claim.
+    // GET /family/report?days=7  → per-child daily habit stats for the Reports tab
+    // Returns { range:{from,to,days}, dates[], children:[{id,nickname,avatarId,favColor,habitsTotal,
+    //   daily:[{date,done,ihsan,points}], totals:{done,ihsan,points,claimedPending,activeDays}, topHabits[] }] }
+    if (route === '/family/report' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const url = new URL(request.url)
+      const days = Math.min(31, Math.max(1, parseInt(url.searchParams.get('days') || '7', 10) || 7))
+
+      const fmt = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+      const now = new Date()
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+      const dates = []
+      for (let i = days - 1; i >= 0; i--) { const d = new Date(today); d.setUTCDate(d.getUTCDate() - i); dates.push(fmt(d)) }
+
+      const children = await db.collection('children')
+        .find({ familyId: user.familyId })
+        .sort({ createdAt: 1 })
+        .project({ _id: 0, id: 1, nickname: 1, avatarId: 1, favColor: 1, mataBina: 1 })
+        .toArray()
+      const childIds = children.map(c => c.id)
+      const habits = childIds.length ? await db.collection('habits')
+        .find({ childId: { $in: childIds }, active: { $ne: false } })
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, i18n: 1 })
+        .toArray() : []
+      const claims = childIds.length ? await db.collection('habit_claims')
+        .find({ childId: { $in: childIds }, dateStr: { $in: dates } })
+        .project({ _id: 0, childId: 1, habitId: 1, dateStr: 1, status: 1, rubric: 1, pointsAwarded: 1 })
+        .toArray() : []
+
+      const habitById = Object.fromEntries(habits.map(h => [h.id, h]))
+      const out = children.map(c => {
+        const mine = claims.filter(cl => cl.childId === c.id)
+        const daily = dates.map(date => {
+          const dc = mine.filter(cl => cl.dateStr === date && cl.status === 'verified' && ['sah', 'ihsan'].includes(cl.rubric))
+          return {
+            date,
+            done: dc.length,
+            ihsan: dc.filter(cl => cl.rubric === 'ihsan').length,
+            points: dc.reduce((s, cl) => s + (Number(cl.pointsAwarded) || 0), 0),
+          }
+        })
+        const habitTally = {}
+        mine.filter(cl => cl.status === 'verified' && ['sah', 'ihsan'].includes(cl.rubric))
+          .forEach(cl => { habitTally[cl.habitId] = (habitTally[cl.habitId] || 0) + 1 })
+        const topHabits = Object.entries(habitTally)
+          .sort((a, b) => b[1] - a[1]).slice(0, 3)
+          .map(([hid, count]) => ({ id: hid, title: habitById[hid]?.title || '—', i18n: habitById[hid]?.i18n || null, icon: habitById[hid]?.icon || '⭐', count }))
+        return {
+          ...c,
+          habitsTotal: habits.filter(h => h.childId === c.id).length,
+          daily,
+          totals: {
+            done: daily.reduce((s, d) => s + d.done, 0),
+            ihsan: daily.reduce((s, d) => s + d.ihsan, 0),
+            points: daily.reduce((s, d) => s + d.points, 0),
+            activeDays: daily.filter(d => d.done > 0).length,
+            claimedPending: mine.filter(cl => cl.status === 'claimed').length,
+          },
+          topHabits,
+        }
+      })
+      return json({ range: { from: dates[0], to: dates[dates.length - 1], days }, dates, children: out })
+    }
+
     if (route === '/family/streak' && method === 'GET') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
