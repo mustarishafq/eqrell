@@ -5708,6 +5708,91 @@ backend:
           
           NO ISSUES FOUND. All engagement endpoints are production-ready and working exactly as specified in the review request.
 
+  - task: "Kongsi Pasangan (rota) + Lencana Mod Percaya (kid celebrations)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/engagement.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /family/parents → {parents:[{id,name,picture,isMe,verifiedToday}], rota:{mode,days}, code, familyName}. POST /family/rota {mode:'both'|'weekday', days:{'0'..'6': userId}} — only userIds of the same family kept. Night digest (GET /digest/night + cron + /push/test) now returns duty {id,name,isMe} for the viewer's local weekday when rota mode weekday, team [{id,name,count}] from today's verify_log, autoCount (verifiedBy 'trust'), teamLine; push title 'Giliran anda malam ini' for duty parent, body 'Giliran X malam ini — anda boleh berehat' + url without quick for the other. GET /children/:id/celebrations → unseen family_events type trust_on for that child (with habit title/i18n/icon); POST /children/:id/celebrations/seen {ids} sets kidSeenAt so they are not returned again."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (6/6)
+          
+          Comprehensive test suite executed successfully. Created /app/backend_test_kongsi_celebrations.py with automated tests covering:
+          
+          ✅ TEST 1: GET /family/parents → 2 parents, isMe, verifiedToday, rota default
+             - Auth guard working (401 without cookie)
+             - Returns 2 parents correctly
+             - isMe=true only for caller (parent 1)
+             - isMe=false for other parent (parent 2)
+             - verifiedToday counts present for both parents
+             - rota defaults to {mode:'both', days:{}}
+             - Family code present
+          
+          ✅ TEST 2: POST /family/rota → mode weekday, days saved, invalid userIds dropped
+             - Auth guard working (401 without cookie)
+             - Mode 'weekday' with days 0-6 saved correctly
+             - Day 6 with invalid userId 'not-in-family' correctly dropped
+             - Only userIds from same family kept
+             - verifyRota saved in families collection
+             - Mode 'both' clears days correctly
+          
+          ✅ TEST 3: Night digest duty logic → duty.isMe, push messages
+             - Set rota with all days assigned to parent 2
+             - GET /digest/night as parent 2 → duty.isMe=true
+             - duty.name='Aminah' (first name extraction working)
+             - Push title contains 'Giliran anda' for duty parent
+             - GET /digest/night as parent 1 → duty.isMe=false
+             - Push body contains 'Giliran Aminah' for non-duty parent
+             - Push url has no 'quick' for non-duty parent
+             - Mode 'both' → duty=null (both parents on duty)
+          
+          ✅ TEST 4: Team counts → verify_log from 2 parents + autoCount
+             - Created 2 kid claims today
+             - Verified claim 1 as parent 1 (rubric='sah')
+             - Verified claim 2 as parent 2 (rubric='sah')
+             - GET /digest/night → team array has 2 members
+             - Parent 1 count=1, Parent 2 count=1
+             - teamLine contains both first names ('Test' and 'Aminah')
+             - Created verify_log entry with verifiedBy='trust'
+             - autoCount field correctly counts auto-trust verifications
+          
+          ✅ TEST 5: Celebrations → family_events, GET/POST seen, cross-family isolation
+             - Auth guard working (401 without cookie)
+             - Inserted family_event type='trust_on' for child 1
+             - GET /children/:id/celebrations returns event with title/icon/category
+             - GET for other child returns empty array
+             - POST /children/:id/celebrations/seen {ids} updates kidSeenAt
+             - Returns {ok:true, updated:1}
+             - GET again returns empty (event marked as seen)
+             - Cross-family isolation: other family cannot see events
+          
+          ✅ TEST 6: Regression → morning/night/weekly digests, verify-all, children
+             - GET /digest/morning → 200, kind='morning'
+             - GET /digest/weekly → 200, kind='weekly'
+             - POST /verify-queue/verify-all → 200
+             - GET /children → 200, children array present
+          
+          KEY FINDINGS:
+          - All Kongsi Pasangan (rota) endpoints working correctly
+          - Duty assignment logic working (weekday-based, viewer-aware)
+          - Team counts working (verify_log aggregation by verifiedBy)
+          - Auto-trust count working (verifiedBy='trust')
+          - All Lencana Mod Percaya (celebrations) endpoints working correctly
+          - Cross-family isolation working perfectly
+          - All regression tests passed (no breaking changes)
+          - All test data cleaned up successfully
+          
+          TEST SCRIPT: /app/backend_test_kongsi_celebrations.py (6 comprehensive tests)
+          
+          NO ISSUES FOUND. All Kongsi Pasangan and Lencana Mod Percaya endpoints are production-ready.
+
 frontend:
   - task: "Onboarding Diagnosis wizard /diagnosis"
     implemented: true
@@ -5774,6 +5859,23 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "Test new /api/family/report endpoint and the 4 bottom nav tabs. Use /app/memory/test_credentials.md (python /app/scripts/seed_test_family.py for cookie; cleanup after). In Playwright, remove the Next.js dev overlay (document.querySelectorAll('nextjs-portal').forEach(e=>e.remove())) because the dev 'Issues' badge overlaps the Profile nav button; also dismiss the Install EQrel prompt. A pre-existing React duplicate-key console warning on Home is known and out of scope."
+  - agent: "testing"
+    message: |
+      🎉 KONGSI PASANGAN + LENCANA MOD PERCAYA TESTING COMPLETE - ALL TESTS PASSED (6/6)
+      
+      Tested NEW endpoints for Kongsi Pasangan (rota) and Lencana Mod Percaya (kid celebrations) as requested.
+      
+      ✅ GET /family/parents: 2 parents, isMe, verifiedToday counts, rota default {mode:'both'}
+      ✅ POST /family/rota: mode weekday, days saved, invalid userIds dropped (day 6 with 'not-in-family')
+      ✅ Night digest duty: rota weekday → duty.isMe true/false, push title 'Giliran anda', push body 'Giliran X', url without quick for non-duty
+      ✅ Team counts: verify_log from 2 parents, team array with counts, teamLine with first names, autoCount for verifiedBy='trust'
+      ✅ Celebrations: GET /children/:id/celebrations returns unseen trust_on events, POST seen updates kidSeenAt, cross-family isolation
+      ✅ Regression: morning/night/weekly digests, verify-all, children all 200
+      
+      All test data cleaned up successfully (second parent, claims, verify_log, family_events).
+      Test script: /app/backend_test_kongsi_celebrations.py
+      
+      NO ISSUES FOUND. All Kongsi Pasangan and Lencana Mod Percaya endpoints are production-ready.
   - agent: "testing"
     message: |
       🎉 ENGAGEMENT BACKEND TESTING COMPLETE - ALL TESTS PASSED (112/112)

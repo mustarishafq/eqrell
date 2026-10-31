@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Check, LogOut, Star, Plus, X, HelpCircle } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
+import { TrustCelebration } from '@/components/eqrel/TrustCelebration'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { SESSIONS, SESSION_BY_ID, getSessionLabel, groupHabitsBySession, currentSessionFromClock } from '@/lib/prayerSession'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
@@ -914,6 +915,9 @@ function KidHomeActive({ router, childId, t, lang }) {
           </>
         )}
       </AnimatePresence>
+
+      {/* Lencana Mod Percaya — celebrate habits that became trusted (7 days consistent) */}
+      <TrustCelebration childId={childId} child={child} lang={lang} avatarSrc={avatarSrc} />
     </div>
   )
 }
@@ -1123,6 +1127,10 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
         </div>
         <div className={`font-bold text-sm text-eq-ink leading-tight ${isVerified ? 'line-through opacity-60' : ''}`}>
           {title}
+          {habit.autoVerify && (
+            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black align-middle no-underline" data-testid={`kid-trusted-${habit.id}`}
+              title={lang === 'en' ? 'Trusted' : 'Dipercayai'}>🛡️</span>
+          )}
         </div>
         <div className="text-[11px] mt-0.5 leading-snug font-semibold" style={{
           color: isIhsan ? '#B45309' : isVerified ? '#047857' : isClaimed ? '#059669' : '#6b7280'

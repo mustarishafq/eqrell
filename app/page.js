@@ -22,6 +22,7 @@ import ProfileTab from '@/components/eqrel/tabs/ProfileTab'
 import { QuickVerifySheet } from '@/components/eqrel/QuickVerifySheet'
 import { NotifySettingsSheet } from '@/components/eqrel/NotifySettingsSheet'
 import { DigestCard } from '@/components/eqrel/DigestCard'
+import { CoParentSheet } from '@/components/eqrel/CoParentSheet'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -149,6 +150,7 @@ const ParentDashboard = () => {
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
   const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
+  const [coParentOpen, setCoParentOpen] = useState(false)
   // Deep links from push notifications: ?quick=1 opens Quick Verify, ?tab=reports opens Reports
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -501,6 +503,7 @@ const ParentDashboard = () => {
             onDeviceSettings={() => setDeviceSettingsOpen(true)}
             onDiagnosis={() => (window.location.href = '/diagnosis')}
             onNotifications={() => setNotifyOpen(true)}
+            onCoParent={() => setCoParentOpen(true)}
             onRewardShop={() => setRewardShopOpen(true)}
             onLogout={doLogout} />
         )}
@@ -811,6 +814,7 @@ const ParentDashboard = () => {
         onOpenDetailed={() => { setQuickVerifyOpen(false); setVerifySheetOpen(true) }}
       />
       <NotifySettingsSheet open={notifyOpen} onClose={() => setNotifyOpen(false)} lang={lang} />
+      <CoParentSheet open={coParentOpen} onClose={() => { setCoParentOpen(false); setDataVersion(v => v + 1) }} lang={lang} />
 
       {/* Verify Queue sheet — parent 3-level rubric */}
       <VerifySheet

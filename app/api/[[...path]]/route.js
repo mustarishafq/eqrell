@@ -49,7 +49,7 @@ async function runDigestCron(db) {
     const last = user.notifyLast || {}
     const local = localNow(prefs.tz)
     const sets = {}
-    const opts = { lang: prefs.lang, dateStr: utcToday() }
+    const opts = { lang: prefs.lang, dateStr: utcToday(), viewerId: uid, weekday: local.weekday }
     if (prefs.morning?.enabled && isDue(prefs.morning.time, local, last.morning)) {
       const d = await buildMorningDigest(db, user.familyId, opts)
       await pushToUser(db, uid, d.push); sets['notifyLast.morning'] = local.date; out.morning++
@@ -1905,7 +1905,8 @@ async function handleRoute(request, { params }) {
       const kind = route.split('/')[2]
       const lang = new URL(request.url).searchParams.get('lang') || user.notifyPrefs?.lang || 'ms'
       const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
-      return json(await fn(db, user.familyId, { lang, dateStr: utcToday() }))
+      const local = localNow(user.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+      return json(await fn(db, user.familyId, { lang, dateStr: utcToday(), viewerId: session.userId, weekday: local.weekday }))
     }
 
     // GET/POST /notify/prefs  { tz, lang, morning:{enabled,time}, night:{enabled,time}, weekly:{enabled} }
@@ -1970,7 +1971,8 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
       const kind = ['morning', 'night', 'weekly'].includes(body.kind) ? body.kind : 'night'
       const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
-      const d = await fn(db, user.familyId, { lang: user.notifyPrefs?.lang || 'ms', dateStr: utcToday() })
+      const local = localNow(user.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+      const d = await fn(db, user.familyId, { lang: user.notifyPrefs?.lang || 'ms', dateStr: utcToday(), viewerId: session.userId, weekday: local.weekday })
       const r = await pushToUser(db, session.userId, d.push)
       return json({ ok: true, ...r, push: d.push })
     }
@@ -1998,6 +2000,71 @@ async function handleRoute(request, { params }) {
         .then(r => db.collection('cron_runs').updateOne({ _id: `digests:${runId}` }, { $set: { result: r, doneAt: new Date() } }))
         .catch(e => console.error('digest cron failed', e))
       return json({ ok: true, accepted: true, runId }, 202)
+    }
+
+    // ══════════ KONGSI PASANGAN (co-parent) ══════════
+    // GET /family/parents → { parents:[{id,name,picture,isMe,verifiedToday}], rota:{mode,days}, code, familyName }
+    if (route === '/family/parents' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const family = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0 } })
+      const parents = await db.collection('users').find({ familyId: user.familyId }).sort({ createdAt: 1 }).project({ _id: 0, id: 1, name: 1, picture: 1 }).toArray()
+      const logs = await db.collection('verify_log').find({ familyId: user.familyId, dateStr: utcToday() }).project({ _id: 0, verifiedBy: 1 }).toArray()
+      return json({
+        parents: parents.map(p => ({ ...p, isMe: p.id === session.userId, verifiedToday: logs.filter(l => l.verifiedBy === p.id).length })),
+        rota: family?.verifyRota || { mode: 'both', days: {} },
+        code: family?.code || null,
+        familyName: family?.familyName || family?.name || null,
+      })
+    }
+    // POST /family/rota { mode: 'both'|'weekday', days: { '0'..'6': userId } }
+    if (route === '/family/rota' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const body = await request.json().catch(() => ({}))
+      const ids = new Set((await db.collection('users').find({ familyId: user.familyId }).project({ id: 1 }).toArray()).map(u => u.id))
+      const mode = body.mode === 'weekday' ? 'weekday' : 'both'
+      const days = {}
+      if (mode === 'weekday') for (let d = 0; d < 7; d++) { const v = body.days?.[String(d)]; if (ids.has(v)) days[String(d)] = v }
+      const verifyRota = { mode, days, updatedBy: session.userId, updatedAt: new Date() }
+      await db.collection('families').updateOne({ id: user.familyId }, { $set: { verifyRota } })
+      return json({ rota: verifyRota })
+    }
+
+    // ══════════ LENCANA MOD PERCAYA (kid celebrations) ══════════
+    // GET /children/:id/celebrations → unseen trust badges for this child
+    if (route.match(/^\/children\/[^/]+\/celebrations$/) && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const events = await db.collection('family_events')
+        .find({ familyId: user.familyId, childId, type: 'trust_on', kidSeenAt: { $exists: false } })
+        .sort({ createdAt: 1 }).limit(5).project({ _id: 0 }).toArray()
+      const habits = events.length ? await db.collection('habits').find({ id: { $in: events.map(e => e.habitId) } }).project({ _id: 0, id: 1, title: 1, i18n: 1, icon: 1, category: 1 }).toArray() : []
+      const hMap = Object.fromEntries(habits.map(h => [h.id, h]))
+      return json({ celebrations: events.map(e => ({ id: e.id, habitId: e.habitId, title: hMap[e.habitId]?.title || e.title, i18n: hMap[e.habitId]?.i18n || e.i18n || null, icon: hMap[e.habitId]?.icon || null, category: hMap[e.habitId]?.category || null, createdAt: e.createdAt })) })
+    }
+    // POST /children/:id/celebrations/seen { ids: [] }
+    if (route.match(/^\/children\/[^/]+\/celebrations\/seen$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 20) : []
+      const r = await db.collection('family_events').updateMany({ familyId: user.familyId, childId, id: { $in: ids } }, { $set: { kidSeenAt: new Date() } })
+      return json({ ok: true, updated: r.modifiedCount })
     }
 
     // ══════════ ONBOARDING DIAGNOSIS ══════════

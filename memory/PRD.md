@@ -495,3 +495,5 @@ Admin dashboard for Faizal to see cross-family stats (aggregated, no comparison 
 - Digests (4 langs, FAMILY_QUOTES): Niat Pagi, Laporan Malam, Laporan Perubahan Mingguan (rule-based; Claude later). GET /api/digest/:kind. Home DigestCard (morning 03–12, else night); Reports WeeklyStoryCard.
 - Web Push: web-push + VAPID keys in .env, public/sw.js, lib/pushClient.js, NotifySettingsSheet (Profile → Notifikasi Tenang). Prefs per parent user.notifyPrefs {tz, lang, morning, night, weekly}. Cron .emergent/crons.yml every 15 min → POST /api/cron/digests (Bearer WEBHOOK_CRON_SECRET). Weekly sent Sunday with night slot. iOS needs Add-to-Home-Screen for push.
 - Pending: Claude-written weekly story (user deferred key choice).
+- (Oct 2026) Lencana Mod Percaya: components/eqrel/TrustCelebration.js in Kid Mode (GET/POST /api/children/:id/celebrations[/seen], family_events.kidSeenAt); 🛡️ badge on trusted KidHabitCard.
+- (Oct 2026) Kongsi Pasangan: components/eqrel/CoParentSheet.js (Profile → Kongsi Pasangan). GET /api/family/parents, POST /api/family/rota {mode both|weekday, days}. Night digest/push is duty-aware (duty, team, autoCount, teamLine).

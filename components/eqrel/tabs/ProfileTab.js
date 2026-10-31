@@ -18,7 +18,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 
 export default function ProfileTab({
   lang = 'ms', icon, me, family, kids = [], avatarSrc,
-  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications,
+  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent,
 }) {
   const L = pick(lang)
   const copyCode = async () => {
@@ -92,6 +92,9 @@ export default function ProfileTab({
           <div className="flex-1 font-bold text-sm text-eq-ink">{L('Bahasa', 'Language', 'Bahasa', 'اللغة')}</div>
           <LangPicker variant="compact" />
         </div>
+        <Row emoji="🤝" testId="profile-coparent" onClick={onCoParent}
+          title={L('Kongsi Pasangan', 'Co-Parenting', 'Berbagi Pasangan', 'التربية المشتركة')}
+          sub={L('Jemput pasangan & bergilir sahkan tugasan', 'Invite spouse & take turns verifying', 'Undang pasangan & bergiliran', 'ادعُ شريكك وتناوبا')} />
         <Row emoji="🔔" testId="profile-notifications" onClick={onNotifications}
           title={L('Notifikasi Tenang', 'Calm Notifications', 'Notifikasi Tenang', 'إشعارات هادئة')}
           sub={L('Niat Pagi, Laporan Malam & Mingguan — masa pilihan anda', 'Morning, night & weekly — at your chosen times', 'Niat Pagi, Laporan Malam & Mingguan', 'الصباح والليل والأسبوع — في أوقاتك')} />

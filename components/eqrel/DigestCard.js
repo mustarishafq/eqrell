@@ -75,6 +75,18 @@ export function DigestCard({ lang = 'ms', refreshKey = 0, onQuickVerify, onSetti
           </div>
         ))}
       </div>
+      {(d.duty || d.teamLine) && (
+        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="digest-team">
+          {d.duty && (
+            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${d.duty.isMe ? 'bg-emerald-500 text-white' : 'bg-white border border-indigo-100 text-indigo-800'}`} data-testid="digest-duty">
+              🤝 {d.duty.isMe
+                ? L('Giliran anda malam ini', 'Your turn tonight', 'Giliran Anda malam ini', 'دورك الليلة')
+                : L(`Giliran ${d.duty.name} malam ini — rehatlah`, `${d.duty.name}'s turn tonight — rest`, `Giliran ${d.duty.name} malam ini`, `دور ${d.duty.name} الليلة`)}
+            </span>
+          )}
+          {d.teamLine && <span className="px-2.5 py-1 rounded-full bg-white border border-indigo-100 text-[11px] font-bold text-indigo-800">✓ {L('Disahkan', 'Verified', 'Diverifikasi', 'موثق')}: {d.teamLine}{d.autoCount ? ` · 🛡️ ${d.autoCount}` : ''}</span>}
+        </div>
+      )}
       {d.trustNews?.length > 0 && (
         <div className="mt-2 text-[11px] font-bold text-emerald-800 bg-emerald-50 rounded-xl px-2.5 py-1.5" data-testid="digest-trust-news">
           🛡️ {L('Mod Percaya baru aktif', 'Trust Mode just turned on', 'Mode Percaya baru aktif', 'تم تفعيل وضع الثقة')}: {d.trustNews.map(n => n.i18n?.[lang]?.title || n.title).join(', ')}
