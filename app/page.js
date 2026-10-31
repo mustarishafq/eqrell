@@ -231,6 +231,12 @@ const ParentDashboard = () => {
         const res = await fetch('/api/children', { credentials: 'include' })
         if (!res.ok) return
         const data = await res.json()
+        // First-time parent (no children yet, onboarding not done/skipped) → diagnosis quiz
+        const ob = family?.onboarding
+        if ((data.children || []).length === 0 && !ob?.completedAt && !ob?.skippedAt) {
+          window.location.replace('/diagnosis')
+          return
+        }
         const refreshed = (data.children || []).map(c => {
           if (c.dob) {
             const age = calculateAge(c.dob)
@@ -479,6 +485,7 @@ const ParentDashboard = () => {
               } catch { setPinChangeMode('set') }
             }}
             onDeviceSettings={() => setDeviceSettingsOpen(true)}
+            onDiagnosis={() => (window.location.href = '/diagnosis')}
             onRewardShop={() => setRewardShopOpen(true)}
             onLogout={doLogout} />
         )}

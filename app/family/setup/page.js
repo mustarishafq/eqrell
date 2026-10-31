@@ -41,7 +41,8 @@ export default function FamilySetupPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || t.setup_error_general)
-      router.replace('/')
+      // New family → start the per-child Iman & Habit diagnosis. Joining → dashboard.
+      router.replace(mode === 'join' ? '/' : '/diagnosis')
     } catch (e) {
       setError(e.message)
     } finally {

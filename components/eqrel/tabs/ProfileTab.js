@@ -18,7 +18,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 
 export default function ProfileTab({
   lang = 'ms', icon, me, family, kids = [], avatarSrc,
-  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout,
+  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis,
 }) {
   const L = pick(lang)
   const copyCode = async () => {
@@ -92,6 +92,9 @@ export default function ProfileTab({
           <div className="flex-1 font-bold text-sm text-eq-ink">{L('Bahasa', 'Language', 'Bahasa', 'اللغة')}</div>
           <LangPicker variant="compact" />
         </div>
+        <Row emoji="🩺" testId="profile-diagnosis" onClick={onDiagnosis}
+          title={L('Diagnosis Iman & Habit Anak', 'Child Iman & Habit Diagnosis', 'Diagnosis Iman & Kebiasaan Anak', 'تشخيص الإيمان والعادات')}
+          sub={L('Kuiz ringkas → pelan habit khas setiap anak', 'Quick quiz → a personal habit plan per child', 'Kuis singkat → rencana kebiasaan khusus', 'اختبار قصير ← خطة عادات لكل طفل')} />
         <Row emoji="🔐" testId="profile-change-pin" onClick={onChangePin}
           title={L('Tukar PIN Ibu Bapa', 'Change Parent PIN', 'Ubah PIN Orang Tua', 'تغيير الرمز')}
           sub={L('PIN untuk keluar dari Mod Kanak-kanak', 'PIN used to exit Kid Mode', 'PIN untuk keluar Mode Anak', 'للخروج من وضع الطفل')} />

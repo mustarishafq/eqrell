@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
-import { TEMPLATE_DEFAULT_RECURRING } from '@/lib/prayerSession'
+import { TEMPLATE_DEFAULT_RECURRING, TEMPLATE_DEFAULT_SESSION } from '@/lib/prayerSession'
+import { TEMPLATE_BY_ID } from '@/lib/habitTemplates'
+import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import crypto from 'node:crypto'
 
@@ -1785,6 +1787,106 @@ async function handleRoute(request, { params }) {
     // Returns { streak, longestStreak, todayDone, days } where days is last 14 days.
     // Streak = consecutive days (ending today or yesterday if today not yet logged) with
     // at least ONE family child having a verified 'sah'|'ihsan' claim.
+    // ══════════ ONBOARDING DIAGNOSIS ══════════
+    // POST /onboarding/family { goals[], routine{bedtime,jemaah,meals} } → save family-level answers
+    // POST /onboarding/complete { skipped?: bool } → mark onboarding done (stops auto-redirect)
+    // POST /onboarding/child { childId?, profile{nickname,gender,avatarId,favColor}, age, school, practice{q_*:0..2}, templateIds[] }
+    //      → create (or update) child, store diagnosis, auto-assign habit plan (skips duplicates)
+    if (route.startsWith('/onboarding/') && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('Setup keluarga dulu', 400)
+      const body = await request.json().catch(() => ({}))
+      const families = db.collection('families')
+
+      if (route === '/onboarding/family') {
+        const validGoals = new Set(GOALS.map(g => g.id))
+        const goals = (Array.isArray(body.goals) ? body.goals : []).filter(g => validGoals.has(g)).slice(0, 3)
+        const r = body.routine || {}
+        const routine = {
+          bedtime: ['early', 'mid', 'late'].includes(r.bedtime) ? r.bedtime : null,
+          jemaah: ['often', 'sometimes', 'rarely'].includes(r.jemaah) ? r.jemaah : null,
+          meals: ['daily', 'sometimes', 'rarely'].includes(r.meals) ? r.meals : null,
+        }
+        await families.updateOne({ id: user.familyId }, {
+          $set: { 'onboarding.goals': goals, 'onboarding.routine': routine, 'onboarding.updatedAt': new Date(), 'onboarding.by': session.userId },
+        })
+        return json({ ok: true, goals, routine })
+      }
+
+      if (route === '/onboarding/complete') {
+        const field = body.skipped ? 'onboarding.skippedAt' : 'onboarding.completedAt'
+        await families.updateOne({ id: user.familyId }, { $set: { [field]: new Date() } })
+        return json({ ok: true })
+      }
+
+      if (route === '/onboarding/child') {
+        const p = body.profile || {}
+        const age = Math.max(3, Math.min(12, parseInt(body.age, 10) || 6))
+        const practice = {}
+        for (const q of PRACTICE_QUESTIONS) {
+          const v = parseInt(body.practice?.[q.id], 10)
+          practice[q.id] = Number.isFinite(v) ? Math.max(0, Math.min(2, v)) : 1
+        }
+        const school = ['none', 'morning', 'afternoon'].includes(body.school) ? body.school : 'none'
+        const scores = scoreDiagnosis(practice)
+        const diagnosis = { age, school, practice, ...scores, createdAt: new Date(), by: session.userId }
+        const ageBand = bandFromAge(age)
+
+        let child
+        if (body.childId) {
+          child = await db.collection('children').findOne({ id: body.childId, familyId: user.familyId }, { projection: { _id: 0 } })
+          if (!child) return err('Anak tidak dijumpai', 404)
+          await db.collection('children').updateOne({ id: child.id }, { $set: { diagnosis, ageBand: child.dob ? child.ageBand : ageBand, updatedAt: new Date() } })
+        } else {
+          const nickname = (p.nickname || '').trim().slice(0, 30)
+          if (!nickname) return err('Nama panggilan diperlukan', 400)
+          child = {
+            id: crypto.randomUUID(),
+            familyId: user.familyId,
+            nickname,
+            dob: null,
+            age,
+            gender: p.gender === 'female' ? 'female' : 'male',
+            ageBand,
+            avatarId: typeof p.avatarId === 'string' ? p.avatarId : (p.gender === 'female' ? 'G01' : 'B01'),
+            favColor: typeof p.favColor === 'string' ? p.favColor : 'green',
+            preferredLang: ['ms', 'en', 'id', 'ar'].includes(body.lang) ? body.lang : 'ms',
+            todayCompleted: 0, todayTotal: 0, lightLevel: 100, blackClouds: 0, buildingCount: 0,
+            claimMode: 'parent',
+            mataBina: 0, mataReward: 0,
+            diagnosis,
+            createdBy: session.userId,
+            createdAt: new Date(), updatedAt: new Date(),
+          }
+          await db.collection('children').insertOne(child)
+          delete child._id
+        }
+
+        // Auto-assign the habit plan (validated against templates, no duplicates)
+        const existing = await db.collection('habits').find({ childId: child.id, active: { $ne: false } }).project({ templateId: 1 }).toArray()
+        const have = new Set(existing.map(h => h.templateId).filter(Boolean))
+        const ids = [...new Set((Array.isArray(body.templateIds) ? body.templateIds : []).filter(id => TEMPLATE_BY_ID[id] && !have.has(id)))].slice(0, 12)
+        const now = new Date()
+        const docs = ids.map(id => {
+          const tpl = TEMPLATE_BY_ID[id]
+          return {
+            id: crypto.randomUUID(), familyId: user.familyId, childId: child.id, templateId: id,
+            category: tpl.category, session: TEMPLATE_DEFAULT_SESSION[id] || 'anytime',
+            recurring: TEMPLATE_DEFAULT_RECURRING[id] === 'perPrayer' ? 'perPrayer' : 'daily',
+            title: tpl.title, desc: tpl.desc || '', points: tpl.points ?? 10, frequency: tpl.frequency || 'daily',
+            active: true, source: 'diagnosis', assignedBy: session.userId, createdAt: now, updatedAt: now,
+          }
+        })
+        if (docs.length) await db.collection('habits').insertMany(docs)
+        const fresh = await db.collection('children').findOne({ id: child.id }, { projection: { _id: 0 } })
+        return json({ child: fresh, habitsCreated: docs.length, diagnosis })
+      }
+      return err('Not found', 404)
+    }
+
     // GET /family/report?days=7  → per-child daily habit stats for the Reports tab
     // Returns { range:{from,to,days}, dates[], children:[{id,nickname,avatarId,favColor,habitsTotal,
     //   daily:[{date,done,ihsan,points}], totals:{done,ihsan,points,claimedPending,activeDays}, topHabits[] }] }

@@ -479,3 +479,11 @@ Admin dashboard for Faizal to see cross-family stats (aggregated, no comparison 
 ---
 
 **End of PRD.**
+
+## 🩺 Onboarding — Diagnosis Iman & Habit (Oct 2026)
+- Route `/diagnosis` (app/diagnosis/page.js). New family (create) → /diagnosis; dashboard auto-redirects if 0 children and `families.onboarding.completedAt/skippedAt` unset.
+- Family part: goals (max 3) + routine (bedtime, jemaah, meals). Per child: profile (name, gender, age 3–12, avatar, colour) → school → 9 practice Qs (0/1/2) → analysing animation → Profil Iman & Habit (score, Fasa Benih/Tunas/Pohon, 5 dimensions, strengths/focus) → personal habit plan (pre-ticked, with reasons) → auto-assigned.
+- Engine: lib/diagnosis.js (scoreDiagnosis, buildPlan). API: POST /api/onboarding/family | /child | /complete. Child stores `diagnosis`; habits `source:'diagnosis'`.
+- Profile tab row "Diagnosis Iman & Habit Anak" to re-run for existing/new kids (?childId= supported).
+- Parent Dashboard bottom nav: Tasks / Reports (GET /api/family/report) / Profile tabs built.
+- Diagnosis copy: BM + EN (ID → BM, AR → EN fallback).
