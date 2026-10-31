@@ -1,10 +1,30 @@
 import './globals.css'
 import { Providers } from './providers'
 
+const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+const SHARE_TITLE = 'EQrel — Bina Habit Baik Anak, Suburkan Iman'
+const SHARE_DESC = 'Bina habit baik anak sambil membina dunia Islamik mereka. Untuk keluarga Muslim dengan anak 3–12 tahun.'
+
 export const metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'EQrel',
-  description: 'Platform Islamic pembinaan kebiasaan untuk keluarga Muslim.',
+  description: SHARE_DESC,
   applicationName: 'EQrel',
+  openGraph: {
+    type: 'website',
+    siteName: 'EQrel',
+    locale: 'ms_MY',
+    url: '/',
+    title: SHARE_TITLE,
+    description: SHARE_DESC,
+    images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: 'EQrel — kampung Islamik anak yang tumbuh bersama habit baik' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SHARE_TITLE,
+    description: SHARE_DESC,
+    images: ['/og-image.jpg'],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -16,11 +36,13 @@ export const metadata = {
   manifest: '/manifest.json',
   icons: {
     icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [
-      { url: '/icons/icon-192.png', sizes: '180x180', type: 'image/png' },
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
   },
 }
