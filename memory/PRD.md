@@ -488,3 +488,10 @@ Admin dashboard for Faizal to see cross-family stats (aggregated, no comparison 
 - Parent Dashboard bottom nav: Tasks / Reports (GET /api/family/report) / Profile tabs built.
 - Diagnosis copy: BM + EN (ID → BM, AR → EN fallback).
 - (Oct 2026) Diagnosis: full ms/en/id/ar (Indonesian key = `ind` because `id` is reserved); re-diagnosis keeps `diagnosisHistory` (max 12) + compare card; Reports tab Profil Iman card with 30-day re-diagnosis reminder; shareable 1080×1350 canvas card (lib/shareProfileCard.js, components/eqrel/ShareProfileCard.js) via Web Share API / wa.me fallback.
+
+## 🌿 Parent Calm Mode (Oct 2026) — reduce parent overwhelm
+- Sahkan Pantas: components/eqrel/QuickVerifySheet.js (default for bell, Home verify tile, Tasks verify, push ?quick=1). POST /api/verify-queue/verify-all.
+- Mod Percaya: habit.autoVerify auto-ON after 7 consecutive verified days (lib/engagement.js checkAutoTrust); kid claims on trusted habits auto-verify 'sah'. Parent toggles 🛡️ in Tasks tab (PATCH autoVerify; off → trustOptOut).
+- Digests (4 langs, FAMILY_QUOTES): Niat Pagi, Laporan Malam, Laporan Perubahan Mingguan (rule-based; Claude later). GET /api/digest/:kind. Home DigestCard (morning 03–12, else night); Reports WeeklyStoryCard.
+- Web Push: web-push + VAPID keys in .env, public/sw.js, lib/pushClient.js, NotifySettingsSheet (Profile → Notifikasi Tenang). Prefs per parent user.notifyPrefs {tz, lang, morning, night, weekly}. Cron .emergent/crons.yml every 15 min → POST /api/cron/digests (Bearer WEBHOOK_CRON_SECRET). Weekly sent Sunday with night slot. iOS needs Add-to-Home-Screen for push.
+- Pending: Claude-written weekly story (user deferred key choice).

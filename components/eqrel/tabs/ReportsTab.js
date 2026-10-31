@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { RefreshCw } from 'lucide-react'
 import { pick, colorOf, habitTitle, TabHeader } from './tabUtils'
 import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
+import { WeeklyStoryCard } from '@/components/eqrel/DigestCard'
 import { STAGES, tx } from '@/lib/diagnosis'
 
 const DAY = 86400000
@@ -74,6 +75,8 @@ export default function ReportsTab({ lang = 'ms', icon, avatarSrc, streak = {}, 
 
       {data && (
         <>
+          <WeeklyStoryCard lang={lang} refreshKey={refreshKey + nonce} />
+
           <div className="bg-white rounded-3xl p-3.5 shadow-eq-card flex-shrink-0" data-testid="reports-family-summary">
             <div className="text-[11px] font-black uppercase tracking-wider text-eq-ink/50 mb-2">
               {L('Ringkasan Keluarga', 'Family Summary', 'Ringkasan Keluarga', 'ملخص العائلة')}

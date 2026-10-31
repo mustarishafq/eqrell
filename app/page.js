@@ -19,6 +19,9 @@ import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 import TasksTab from '@/components/eqrel/tabs/TasksTab'
 import ReportsTab from '@/components/eqrel/tabs/ReportsTab'
 import ProfileTab from '@/components/eqrel/tabs/ProfileTab'
+import { QuickVerifySheet } from '@/components/eqrel/QuickVerifySheet'
+import { NotifySettingsSheet } from '@/components/eqrel/NotifySettingsSheet'
+import { DigestCard } from '@/components/eqrel/DigestCard'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -144,6 +147,17 @@ const ParentDashboard = () => {
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
+  const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
+  const [notifyOpen, setNotifyOpen] = useState(false)
+  // Deep links from push notifications: ?quick=1 opens Quick Verify, ?tab=reports opens Reports
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('quick') === '1') setQuickVerifyOpen(true)
+    const tab = sp.get('tab')
+    if (['tasks', 'reports', 'profile'].includes(tab)) setActiveTab(tab)
+  }, [])
+  // Register the service worker early so push keeps working after reloads
+  useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {}) }, [])
   const [zikirOpen, setZikirOpen] = useState(false)
   const [kidModeChild, setKidModeChild] = useState(null)   // child pending Kid Mode entry (PIN gate)
   const [pinModalMode, setPinModalMode] = useState(null)   // 'enter' | 'set' | null
@@ -403,7 +417,7 @@ const ParentDashboard = () => {
           )}
         </div>
         <div className="flex items-center gap-2 pt-3">
-          <button className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label={t.nav_notifications}>
+          <button onClick={() => setQuickVerifyOpen(true)} data-testid="header-bell" className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label={t.nav_notifications}>
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
           </button>
@@ -467,7 +481,7 @@ const ParentDashboard = () => {
         {activeTab === 'tasks' && (
           <TasksTab kids={children} lang={lang} icon={ASSETS.navTasks} avatarSrc={resolveAvatarSrc}
             pendingVerifyCount={pendingVerifyCount} refreshKey={dataVersion}
-            onOpenVerify={() => setVerifySheetOpen(true)}
+            onOpenVerify={() => setQuickVerifyOpen(true)}
             onOpenHabits={(c) => setHabitsSheetChild(c)}
             onAddChild={openAddSheet} />
         )}
@@ -486,10 +500,12 @@ const ParentDashboard = () => {
             }}
             onDeviceSettings={() => setDeviceSettingsOpen(true)}
             onDiagnosis={() => (window.location.href = '/diagnosis')}
+            onNotifications={() => setNotifyOpen(true)}
             onRewardShop={() => setRewardShopOpen(true)}
             onLogout={doLogout} />
         )}
         {activeTab === 'home' && (<>
+        <DigestCard lang={lang} refreshKey={dataVersion} onQuickVerify={() => setQuickVerifyOpen(true)} onSettings={() => setNotifyOpen(true)} />
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -630,7 +646,7 @@ const ParentDashboard = () => {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45, duration: 0.4 }}
-          onClick={() => setVerifySheetOpen(true)}
+          onClick={() => setQuickVerifyOpen(true)}
           className="w-full bg-eq-blue/10 border-2 border-eq-blue/20 rounded-2xl px-3 py-2.5 flex items-center gap-2.5 hover:bg-eq-blue/15 transition-all active:scale-[0.99] flex-shrink-0"
         >
           <img src={ASSETS.verifyClip} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
@@ -780,6 +796,21 @@ const ParentDashboard = () => {
         child={habitsSheetChild}
         onCountChange={handleHabitCountChange}
       />
+
+      {/* Sahkan Pantas — one-tap bulk verify (default entry point) */}
+      <QuickVerifySheet
+        open={quickVerifyOpen}
+        lang={lang}
+        onClose={() => {
+          setQuickVerifyOpen(false)
+          children.forEach(c => refreshChildHabits(c.id))
+          setDataVersion(v => v + 1)
+          fetchStreak()
+        }}
+        onDone={() => setPendingVerifyCount(c => Math.max(0, c - 1))}
+        onOpenDetailed={() => { setQuickVerifyOpen(false); setVerifySheetOpen(true) }}
+      />
+      <NotifySettingsSheet open={notifyOpen} onClose={() => setNotifyOpen(false)} lang={lang} />
 
       {/* Verify Queue sheet — parent 3-level rubric */}
       <VerifySheet

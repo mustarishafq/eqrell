@@ -18,7 +18,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 
 export default function ProfileTab({
   lang = 'ms', icon, me, family, kids = [], avatarSrc,
-  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis,
+  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications,
 }) {
   const L = pick(lang)
   const copyCode = async () => {
@@ -92,6 +92,9 @@ export default function ProfileTab({
           <div className="flex-1 font-bold text-sm text-eq-ink">{L('Bahasa', 'Language', 'Bahasa', 'اللغة')}</div>
           <LangPicker variant="compact" />
         </div>
+        <Row emoji="🔔" testId="profile-notifications" onClick={onNotifications}
+          title={L('Notifikasi Tenang', 'Calm Notifications', 'Notifikasi Tenang', 'إشعارات هادئة')}
+          sub={L('Niat Pagi, Laporan Malam & Mingguan — masa pilihan anda', 'Morning, night & weekly — at your chosen times', 'Niat Pagi, Laporan Malam & Mingguan', 'الصباح والليل والأسبوع — في أوقاتك')} />
         <Row emoji="🩺" testId="profile-diagnosis" onClick={onDiagnosis}
           title={L('Diagnosis Iman & Habit Anak', 'Child Iman & Habit Diagnosis', 'Diagnosis Iman & Kebiasaan Anak', 'تشخيص الإيمان والعادات')}
           sub={L('Kuiz ringkas → pelan habit khas setiap anak', 'Quick quiz → a personal habit plan per child', 'Kuis singkat → rencana kebiasaan khusus', 'اختبار قصير ← خطة عادات لكل طفل')} />

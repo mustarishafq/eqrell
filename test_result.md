@@ -5608,6 +5608,106 @@ backend:
           
           NO ISSUES FOUND. Diagnosis history feature is production-ready and working exactly as specified in the review request.
 
+  - task: "Engagement: Mod Percaya, Sahkan Pantas, digests, notify prefs, web push, cron"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/engagement.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Mod Percaya: habit.autoVerify; kid claim (POST /habits/:id/claim without rubric) on trusted habit → instantly verified rubric sah, autoVerified:true, points applied, response autoVerified:true. checkAutoTrust after any verify: 7 distinct days (today..today-6) with verified sah/ihsan claims → habit.autoVerify=true, trustAuto=true + family_events {type:'trust_on'}; respects trustOptOut. PATCH /habits/:id {autoVerify:false} → trustOptOut true; {autoVerify:true} → trustOptOut false. POST /verify-queue/verify-all {rubric?, childId?, claimIds?} → verifies today's pending claims, returns {verified, points, trustedNow}. GET /digest/morning|night|weekly?lang= → {kind, kids, quote, push:{title,body,url,tag}, ...}; night has totals {done,total,pending} & trustNews; weekly has kids[{pct,pctPrev,delta,lines[]}]. GET/POST /notify/prefs (sanitized: tz IANA, lang, morning/night {enabled,time HH:MM}, weekly {enabled}). GET /push/public-key; POST /push/subscribe {subscription{endpoint https, keys{p256dh,auth}}, tz, lang}; POST /push/unsubscribe; POST /push/test {kind}. POST /cron/digests requires Authorization Bearer WEBHOOK_CRON_SECRET (in /app/.env), 401 otherwise, 400 invalid JSON body, idempotent by X-Webhook-Id (duplicate → 202 {duplicate:true}), returns 202 immediately and runs in background; result stored in cron_runs {_id:'digests:<runId>', result}. Sends due digests when user local time (notifyPrefs.tz) within [time, time+60min) and notifyLast.<kind> != local date."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ COMPREHENSIVE ENGAGEMENT BACKEND TESTING COMPLETE - ALL TESTS PASSED (112/112)
+          
+          Tested all NEW engagement features as requested in the review_request.
+          Created comprehensive test suite: /app/backend_test_engagement.py
+          
+          **TEST 1: Sahkan Pantas (verify-all endpoint) ✓**
+          - Created 3 kid claims today (2 for child 1, 1 for child 2) via POST /habits/:id/claim
+          - GET /verify-queue/items shows all pending claims
+          - POST /verify-queue/verify-all {childId: CHILD_ID_1} verified only child 1's claims (2 verified)
+          - POST /verify-queue/verify-all {} verified remaining claims (child 2)
+          - Response includes {verified, points>0}
+          - Claims now have status='verified', rubric='sah', pointsAwarded=habit.points
+          - Child mataBina increased correctly (applyMataDelta working)
+          - 401 without cookie ✓
+          
+          **TEST 2: Mod Percaya (auto-trust after 7 days) ✓**
+          - Inserted 6 verified sah claims for past 6 days directly in Mongo
+          - Created and verified today's claim via verify-all
+          - Response trustedNow includes the habit
+          - Habit doc now has autoVerify=true, trustAuto=true
+          - family_events has type='trust_on' event
+          - Next claim on that habit (after deleting today's claim):
+            * POST /habits/:id/claim returns autoVerified=true
+            * Claim stored as verified/sah/autoVerified=true
+            * NOT in verify queue
+          
+          **TEST 3: Mod Percaya opt-out ✓**
+          - PATCH /habits/:id {autoVerify:false} → autoVerify=false, trustOptOut=true
+          - checkAutoTrust does NOT re-enable after subsequent verify
+          - PATCH /habits/:id {autoVerify:true} → trustOptOut=false
+          
+          **TEST 4: Single verify endpoint ✓**
+          - POST /verify-queue/items/:claimId/verify still works
+          - Returns {trusted: boolean, points, rubric}
+          
+          **TEST 5: Digests (morning/night/weekly) ✓**
+          - GET /digest/night?lang=ms → kind='night', totals {done,total,pending}, kids array, push {title contains 'Laporan Malam', body, url}
+          - GET /digest/morning?lang=en → kind='morning', quote {text, source}, push.title contains 'Morning Intention'
+          - GET /digest/weekly?lang=id → kind='weekly', kids with pct/pctPrev/delta/lines (non-empty)
+          - lang=ar works correctly
+          - 401 without cookie ✓
+          - 400 when user has no family ✓
+          
+          **TEST 6: Notification preferences ✓**
+          - GET /notify/prefs returns default prefs (morning 05:30, night 21:00, weekly enabled)
+          - POST /notify/prefs with {tz:'Asia/Kuala_Lumpur', lang:'en', morning:{enabled:false,time:'06:15'}, night:{time:'25:99'}}
+            * morning saved correctly (enabled=false, time='06:15')
+            * night time invalid → kept valid default 21:00
+            * tz and lang updated
+          - Bad tz 'Mars/Phobos' rejected (keeps previous valid tz)
+          
+          **TEST 7: Web Push ✓**
+          - GET /push/public-key returns non-empty key
+          - POST /push/subscribe with invalid body → 400
+          - POST /push/subscribe with fake https endpoint + keys → 200, push_subs doc created
+          - POST /push/test → 200 with sent/failed counts (fake endpoint fails gracefully, no crash)
+          - POST /push/unsubscribe removes subscription
+          
+          **TEST 8: Cron endpoint ✓**
+          - POST /cron/digests without bearer → 401
+          - POST /cron/digests with wrong bearer → 401
+          - POST /cron/digests with correct bearer (WEBHOOK_CRON_SECRET from .env) + header X-Webhook-Id + JSON body → 202 quickly
+          - Repeat same id → 202 {duplicate:true}
+          - Invalid non-JSON body → 400
+          - Worker execution verified:
+            * Set test user's notifyPrefs.night.time to current UTC time
+            * Created fake push_sub for user
+            * Called cron → 202
+            * Waited 3s for worker
+            * cron_runs result shows {checked>=1, night>=1}
+            * users.notifyLast.night == today's date
+            * Calling again with new run id does NOT resend (night count 0)
+          
+          **CLEANUP:**
+          - All test data cleaned up successfully:
+            * habit_claims deleted
+            * verify_log deleted
+            * family_events deleted
+            * push_subs deleted
+            * cron_runs test ids deleted
+            * Seeded test family cleaned up via cleanup_test_family.py
+          
+          **TEST SCRIPT:** /app/backend_test_engagement.py (112 comprehensive tests)
+          
+          NO ISSUES FOUND. All engagement endpoints are production-ready and working exactly as specified in the review request.
+
 frontend:
   - task: "Onboarding Diagnosis wizard /diagnosis"
     implemented: true
@@ -5674,6 +5774,23 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "Test new /api/family/report endpoint and the 4 bottom nav tabs. Use /app/memory/test_credentials.md (python /app/scripts/seed_test_family.py for cookie; cleanup after). In Playwright, remove the Next.js dev overlay (document.querySelectorAll('nextjs-portal').forEach(e=>e.remove())) because the dev 'Issues' badge overlaps the Profile nav button; also dismiss the Install EQrel prompt. A pre-existing React duplicate-key console warning on Home is known and out of scope."
+  - agent: "testing"
+    message: |
+      🎉 ENGAGEMENT BACKEND TESTING COMPLETE - ALL TESTS PASSED (112/112)
+      
+      Tested all NEW engagement features (Mod Percaya, Sahkan Pantas, digests, notify prefs, web push, cron) as requested.
+      
+      ✅ Sahkan Pantas (verify-all): Bulk verification working, childId filter working, points awarded correctly
+      ✅ Mod Percaya (auto-trust): 7-day auto-trust working, autoVerified claims bypass queue, opt-out working
+      ✅ Digests: morning/night/weekly all working with correct i18n (ms/en/id/ar)
+      ✅ Notify prefs: GET/POST working, validation working (invalid tz/time rejected)
+      ✅ Web push: subscribe/unsubscribe/test all working, fake endpoints handled gracefully
+      ✅ Cron: Auth working (401 without/with wrong bearer), idempotency working, worker execution verified
+      
+      All test data cleaned up successfully.
+      Test script: /app/backend_test_engagement.py
+      
+      NO ISSUES FOUND. All engagement endpoints are production-ready.
   - agent: "testing"
     message: |
       🎉 GET /api/family/report ENDPOINT TESTING COMPLETE - ALL TESTS PASSED (33/33)

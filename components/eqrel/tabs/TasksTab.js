@@ -34,6 +34,14 @@ export default function TasksTab({ kids = [], lang = 'ms', icon, avatarSrc, pend
   }, [kids])
   useEffect(() => { load() }, [load, refreshKey])
 
+  // Mod Percaya on/off for one habit (auto-enabled by server after 7 consistent days)
+  const toggleTrust = async (childId, h) => {
+    const next = !h.autoVerify
+    if (!next && !confirm(L('Matikan Mod Percaya? Habit ini perlu disahkan semula oleh anda.', 'Turn off Trust Mode? You will need to verify this habit again.', 'Matikan Mode Percaya?', 'إيقاف وضع الثقة؟'))) return
+    setHabitsByChild(prev => ({ ...prev, [childId]: (prev[childId] || []).map(x => x.id === h.id ? { ...x, autoVerify: next } : x) }))
+    await fetch(`/api/habits/${h.id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoVerify: next }) }).catch(() => {})
+  }
+
   const filterLabel = {
     all: L('Semua', 'All', 'Semua', 'الكل'),
     pending: L('Belum', 'To do', 'Belum', 'لم تنجز'),
@@ -63,6 +71,10 @@ export default function TasksTab({ kids = [], lang = 'ms', icon, avatarSrc, pend
         </div>
         <ChevronRight className="w-5 h-5 text-eq-blue" strokeWidth={2.5} />
       </button>
+
+      <div className="text-[11px] text-eq-ink/55 px-1 flex-shrink-0 leading-snug">
+        🛡️ {L('Mod Percaya: habit yang disahkan 7 hari berturut-turut disahkan automatik. Tekan 🛡️ untuk hidup/matikan.', 'Trust Mode: habits verified 7 days in a row auto-verify. Tap 🛡️ to toggle.', 'Mode Percaya: kebiasaan 7 hari berturut-turut terverifikasi otomatis. Ketuk 🛡️.', 'وضع الثقة: العادة الموثقة ٧ أيام متتالية تُعتمد تلقائياً. اضغط 🛡️.')}
+      </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-0.5 flex-shrink-0">
         {FILTERS.map(f => (
@@ -133,6 +145,11 @@ export default function TasksTab({ kids = [], lang = 'ms', icon, avatarSrc, pend
                       )}
                     </div>
                     {Number(h.points) > 0 && <span className="text-[10px] font-black text-amber-600">+{h.points}</span>}
+                    <button onClick={() => toggleTrust(c.id, h)} data-testid={`tasks-trust-${h.id}`}
+                      title={L('Mod Percaya: sah automatik', 'Trust Mode: auto-verify', 'Mode Percaya', 'وضع الثقة')}
+                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black border ${h.autoVerify ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-eq-ink/35 border-eq-cream'}`}>
+                      🛡️{h.autoVerify ? ' Auto' : ''}
+                    </button>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${chip.cls}`}>
                       <ChipIcon className="w-3 h-3" /> {chip.label}
                     </span>

@@ -4,6 +4,69 @@ import { createSession, getSession, destroySession, generateFamilyCode } from '@
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
 import { TEMPLATE_DEFAULT_RECURRING, TEMPLATE_DEFAULT_SESSION } from '@/lib/prayerSession'
 import { TEMPLATE_BY_ID } from '@/lib/habitTemplates'
+import webpush from 'web-push'
+import nodeCrypto from 'crypto'
+import {
+  verifyClaimDoc, checkAutoTrust, buildNightDigest, buildMorningDigest, buildWeeklyDigest,
+  sanitizePrefs, DEFAULT_PREFS, localNow, isDue, utcToday,
+} from '@/lib/engagement'
+
+// ── Web Push (VAPID keys generated for this app, stored in .env) ──
+let _vapidReady = false
+function ensureVapid() {
+  if (_vapidReady) return true
+  const pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY
+  if (!pub || !priv) return false
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:hello@eqrel.app', pub, priv)
+  _vapidReady = true
+  return true
+}
+/** Send a payload to every push subscription of a user; prunes dead subscriptions. */
+async function pushToUser(db, userId, payload) {
+  if (!ensureVapid()) return { sent: 0, failed: 0, reason: 'no-vapid' }
+  const subs = await db.collection('push_subs').find({ userId }).toArray()
+  let sent = 0, failed = 0
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload), { TTL: 6 * 3600 })
+      sent++
+    } catch (e) {
+      failed++
+      if (e?.statusCode === 404 || e?.statusCode === 410) await db.collection('push_subs').deleteOne({ _id: sub._id })
+    }
+  }
+  return { sent, failed }
+}
+/** Cron worker: send due morning/night/weekly digests to every parent with push enabled. */
+async function runDigestCron(db) {
+  const userIds = await db.collection('push_subs').distinct('userId')
+  const out = { checked: 0, morning: 0, night: 0, weekly: 0 }
+  for (const uid of userIds) {
+    const user = await db.collection('users').findOne({ id: uid })
+    if (!user?.familyId) continue
+    out.checked++
+    const prefs = { ...DEFAULT_PREFS, ...(user.notifyPrefs || {}) }
+    const last = user.notifyLast || {}
+    const local = localNow(prefs.tz)
+    const sets = {}
+    const opts = { lang: prefs.lang, dateStr: utcToday() }
+    if (prefs.morning?.enabled && isDue(prefs.morning.time, local, last.morning)) {
+      const d = await buildMorningDigest(db, user.familyId, opts)
+      await pushToUser(db, uid, d.push); sets['notifyLast.morning'] = local.date; out.morning++
+    }
+    if (prefs.night?.enabled && isDue(prefs.night.time, local, last.night)) {
+      const d = await buildNightDigest(db, user.familyId, opts)
+      await pushToUser(db, uid, d.push); sets['notifyLast.night'] = local.date; out.night++
+      // Weekly story rides along with Sunday's night slot
+      if (prefs.weekly?.enabled && local.weekday === 0 && last.weekly !== local.date) {
+        const w = await buildWeeklyDigest(db, user.familyId, opts)
+        await pushToUser(db, uid, w.push); sets['notifyLast.weekly'] = local.date; out.weekly++
+      }
+    }
+    if (Object.keys(sets).length) await db.collection('users').updateOne({ id: uid }, { $set: sets })
+  }
+  return out
+}
 import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import crypto from 'node:crypto'
@@ -449,6 +512,11 @@ async function handleRoute(request, { params }) {
       const allowed = ['title', 'desc', 'category', 'session', 'recurring', 'points', 'frequency', 'active']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
+      if ('autoVerify' in body) {
+        $set.autoVerify = !!body.autoVerify
+        $set.trustOptOut = !body.autoVerify        // parent turned it off → don't auto re-enable
+        if (body.autoVerify) { $set.trustSince = new Date(); $set.trustAuto = false }
+      }
 
       const result = await db.collection('habits').updateOne(
         { id: habitId, familyId: user.familyId },
@@ -553,7 +621,8 @@ async function handleRoute(request, { params }) {
           rubric, note, points, session: claimSession,
           verifiedBy: session.userId, verifiedAt: new Date(),
         })
-        return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
+        const trusted = await checkAutoTrust(db, habit, dateStr)
+        return json({ ok: true, rubric, points, excellence: rubric === 'ihsan', trusted })
       }
 
       // Regular claim (Kid Mode or plain toggle)
@@ -576,6 +645,12 @@ async function handleRoute(request, { params }) {
         { $set: claimData },
         { upsert: true }
       )
+      // Mod Percaya: trusted habit → verify instantly as 'sah' (no parent action needed)
+      if (habit.autoVerify && status === 'claimed') {
+        const doc = await db.collection('habit_claims').findOne(upsertKey)
+        const points = await verifyClaimDoc(db, { claim: doc, habit, rubric: 'sah', verifierId: 'trust', applyMataDelta, auto: true })
+        return json({ ok: true, claim: { ...claimData, status: 'verified', rubric: 'sah', pointsAwarded: points, autoVerified: true }, autoVerified: true })
+      }
       return json({ ok: true, claim: claimData })
     }
 
@@ -733,8 +808,40 @@ async function handleRoute(request, { params }) {
         rubric, note, points,
         verifiedBy: session.userId, verifiedAt: new Date(),
       })
+      const trusted = await checkAutoTrust(db, habit, dateStr)
 
-      return json({ ok: true, rubric, points, excellence: rubric === 'ihsan' })
+      return json({ ok: true, rubric, points, excellence: rubric === 'ihsan', trusted })
+    }
+
+    // POST /verify-queue/verify-all  { rubric?: 'sah'|'ihsan', claimIds?: string[], childId?: string }
+    //   → Sahkan Pantas: verify every pending claim today (optionally filtered) in one tap.
+    if (route === '/verify-queue/verify-all' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const rubric = body.rubric === 'ihsan' ? 'ihsan' : 'sah'
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const q = { familyId: user.familyId, status: 'claimed', dateStr: utcToday() }
+      if (typeof body.childId === 'string') q.childId = body.childId
+      let claims = await db.collection('habit_claims').find(q).toArray()
+      if (Array.isArray(body.claimIds) && body.claimIds.length) {
+        const want = new Set(body.claimIds.map(String))
+        claims = claims.filter(c => want.has(`${c.habitId}__${c.dateStr}`) || want.has(`${c.habitId}__${c.dateStr}__${c.session}`))
+      }
+      const habits = await db.collection('habits').find({ id: { $in: [...new Set(claims.map(c => c.habitId))] }, familyId: user.familyId }).toArray()
+      const hMap = Object.fromEntries(habits.map(h => [h.id, h]))
+      let verified = 0, points = 0
+      const trustedNow = []
+      for (const claim of claims) {
+        const habit = hMap[claim.habitId]
+        if (!habit) continue
+        points += await verifyClaimDoc(db, { claim, habit, rubric, verifierId: session.userId, applyMataDelta })
+        verified++
+      }
+      for (const h of habits) if (await checkAutoTrust(db, h)) trustedNow.push({ habitId: h.id, title: h.title, childId: h.childId })
+      return json({ ok: true, verified, points, rubric, trustedNow })
     }
 
     // ═══ Family Display Config ═══════════════════════════════════
@@ -1787,6 +1894,112 @@ async function handleRoute(request, { params }) {
     // Returns { streak, longestStreak, todayDone, days } where days is last 14 days.
     // Streak = consecutive days (ending today or yesterday if today not yet logged) with
     // at least ONE family child having a verified 'sah'|'ihsan' claim.
+    // ══════════ ENGAGEMENT: digests, notification prefs, web push, cron ══════════
+    // GET /digest/morning|night|weekly?lang=  → in-app cards (same content as push)
+    if (route.match(/^\/digest\/(morning|night|weekly)$/) && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const kind = route.split('/')[2]
+      const lang = new URL(request.url).searchParams.get('lang') || user.notifyPrefs?.lang || 'ms'
+      const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
+      return json(await fn(db, user.familyId, { lang, dateStr: utcToday() }))
+    }
+
+    // GET/POST /notify/prefs  { tz, lang, morning:{enabled,time}, night:{enabled,time}, weekly:{enabled} }
+    if (route === '/notify/prefs' && (method === 'GET' || method === 'POST')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user) return err('unauthorized', 401)
+      const subs = await db.collection('push_subs').countDocuments({ userId: session.userId })
+      if (method === 'GET') return json({ prefs: { ...DEFAULT_PREFS, ...(user.notifyPrefs || {}) }, pushDevices: subs, vapid: !!process.env.VAPID_PUBLIC_KEY })
+      const body = await request.json().catch(() => ({}))
+      const prefs = sanitizePrefs(body, user.notifyPrefs)
+      await db.collection('users').updateOne({ id: session.userId }, { $set: { notifyPrefs: prefs } })
+      return json({ prefs, pushDevices: subs })
+    }
+
+    if (route === '/push/public-key' && method === 'GET') {
+      return json({ publicKey: process.env.VAPID_PUBLIC_KEY || null })
+    }
+
+    // POST /push/subscribe { subscription:{endpoint,keys:{p256dh,auth}}, tz?, lang? }
+    if (route === '/push/subscribe' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const sub = body.subscription || {}
+      if (typeof sub.endpoint !== 'string' || !sub.endpoint.startsWith('https://') || !sub.keys?.p256dh || !sub.keys?.auth) return err('Invalid subscription', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      await db.collection('push_subs').updateOne(
+        { endpoint: sub.endpoint },
+        { $set: { userId: session.userId, familyId: user?.familyId || null, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }, ua: String(request.headers.get('user-agent') || '').slice(0, 200), updatedAt: new Date() },
+          $setOnInsert: { id: crypto.randomUUID(), createdAt: new Date() } },
+        { upsert: true },
+      )
+      if (body.tz || body.lang) {
+        const prefs = sanitizePrefs({ ...(user?.notifyPrefs || {}), tz: body.tz, lang: body.lang }, user?.notifyPrefs)
+        await db.collection('users').updateOne({ id: session.userId }, { $set: { notifyPrefs: prefs } })
+      }
+      return json({ ok: true })
+    }
+
+    if (route === '/push/unsubscribe' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const q = { userId: session.userId }
+      if (typeof body.endpoint === 'string') q.endpoint = body.endpoint
+      const r = await db.collection('push_subs').deleteMany(q)
+      return json({ ok: true, removed: r.deletedCount })
+    }
+
+    // POST /push/test { kind?: 'morning'|'night'|'weekly' } → send that digest now to my devices
+    if (route === '/push/test' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const kind = ['morning', 'night', 'weekly'].includes(body.kind) ? body.kind : 'night'
+      const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
+      const d = await fn(db, user.familyId, { lang: user.notifyPrefs?.lang || 'ms', dateStr: utcToday() })
+      const r = await pushToUser(db, session.userId, d.push)
+      return json({ ok: true, ...r, push: d.push })
+    }
+
+    // POST /cron/digests — called every 15 min by the Emergent scheduler (.emergent/crons.yml)
+    if (route === '/cron/digests' && method === 'POST') {
+      // Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+      const secret = process.env.WEBHOOK_CRON_SECRET || ''
+      const auth = request.headers.get('authorization') || ''
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+      const a = Buffer.from(token), b = Buffer.from(secret)
+      if (!secret || a.length !== b.length || !nodeCrypto.timingSafeEqual(a, b)) return err('unauthorized', 401)
+      const env = await request.json().catch(() => null)
+      if (env === null || typeof env !== 'object') return err('Invalid body', 400)
+      const runId = request.headers.get('x-webhook-id') || env.run_id || `run-${Date.now()}`
+      const db = await getDb()
+      try {
+        await db.collection('cron_runs').insertOne({ _id: `digests:${runId}`, createdAt: new Date() })
+      } catch (e) {
+        if (e?.code === 11000) return json({ ok: true, duplicate: true }, 202)
+        throw e
+      }
+      // Hand off — do not await (dispatcher only waits ~5s)
+      runDigestCron(db)
+        .then(r => db.collection('cron_runs').updateOne({ _id: `digests:${runId}` }, { $set: { result: r, doneAt: new Date() } }))
+        .catch(e => console.error('digest cron failed', e))
+      return json({ ok: true, accepted: true, runId }, 202)
+    }
+
     // ══════════ ONBOARDING DIAGNOSIS ══════════
     // POST /onboarding/family { goals[], routine{bedtime,jemaah,meals} } → save family-level answers
     // POST /onboarding/complete { skipped?: bool } → mark onboarding done (stops auto-redirect)
