@@ -1839,7 +1839,10 @@ async function handleRoute(request, { params }) {
         if (body.childId) {
           child = await db.collection('children').findOne({ id: body.childId, familyId: user.familyId }, { projection: { _id: 0 } })
           if (!child) return err('Anak tidak dijumpai', 404)
-          await db.collection('children').updateOne({ id: child.id }, { $set: { diagnosis, ageBand: child.dob ? child.ageBand : ageBand, updatedAt: new Date() } })
+          const upd = { $set: { diagnosis, age: child.dob ? child.age : age, ageBand: child.dob ? child.ageBand : ageBand, updatedAt: new Date() } }
+          // Keep history so parents can compare month-to-month (last 12 kept)
+          if (child.diagnosis) upd.$push = { diagnosisHistory: { $each: [child.diagnosis], $slice: -12 } }
+          await db.collection('children').updateOne({ id: child.id }, upd)
         } else {
           const nickname = (p.nickname || '').trim().slice(0, 30)
           if (!nickname) return err('Nama panggilan diperlukan', 400)
@@ -1882,7 +1885,9 @@ async function handleRoute(request, { params }) {
         })
         if (docs.length) await db.collection('habits').insertMany(docs)
         const fresh = await db.collection('children').findOne({ id: child.id }, { projection: { _id: 0 } })
-        return json({ child: fresh, habitsCreated: docs.length, diagnosis })
+        const previous = Array.isArray(fresh?.diagnosisHistory) && fresh.diagnosisHistory.length ? fresh.diagnosisHistory[fresh.diagnosisHistory.length - 1] : null
+        delete fresh.diagnosisHistory
+        return json({ child: fresh, habitsCreated: docs.length, diagnosis, previous })
       }
       return err('Not found', 404)
     }
@@ -1908,7 +1913,7 @@ async function handleRoute(request, { params }) {
       const children = await db.collection('children')
         .find({ familyId: user.familyId })
         .sort({ createdAt: 1 })
-        .project({ _id: 0, id: 1, nickname: 1, avatarId: 1, favColor: 1, mataBina: 1 })
+        .project({ _id: 0, id: 1, nickname: 1, avatarId: 1, favColor: 1, mataBina: 1, age: 1, ageBand: 1, gender: 1, diagnosis: 1, diagnosisHistory: { $slice: -1 } })
         .toArray()
       const childIds = children.map(c => c.id)
       const habits = childIds.length ? await db.collection('habits')
@@ -1938,8 +1943,10 @@ async function handleRoute(request, { params }) {
         const topHabits = Object.entries(habitTally)
           .sort((a, b) => b[1] - a[1]).slice(0, 3)
           .map(([hid, count]) => ({ id: hid, title: habitById[hid]?.title || '—', i18n: habitById[hid]?.i18n || null, icon: habitById[hid]?.icon || '⭐', count }))
+        const { diagnosisHistory, ...rest } = c
         return {
-          ...c,
+          ...rest,
+          previousDiagnosis: Array.isArray(diagnosisHistory) && diagnosisHistory.length ? diagnosisHistory[0] : null,
           habitsTotal: habits.filter(h => h.childId === c.id).length,
           daily,
           totals: {

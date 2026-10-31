@@ -5528,18 +5528,127 @@ backend:
           
           NO ISSUES FOUND. All onboarding diagnosis endpoints are production-ready and working exactly as specified in the review request.
 
-frontend:
-  - task: "Onboarding Diagnosis wizard /diagnosis"
+  - task: "Diagnosis history + report diagnosis fields"
     implemented: true
-    working: "NA"
-    file: "/app/app/diagnosis/page.js"
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "New family (create) → /diagnosis; dashboard auto-redirects when 0 children and onboarding not completed/skipped. Steps: intro → goals → routine(3) → child profile → school → 9 practice Qs → analyzing → result (score ring, stage, 5 dims, plan toggles) → done (next child / finish). Profile tab row profile-diagnosis."
+        comment: "POST /onboarding/child with existing childId that already has a diagnosis pushes the old one into child.diagnosisHistory (max 12, $slice -12) and returns {previous}. GET /family/report children now include diagnosis and previousDiagnosis (last history item) and NOT diagnosisHistory. lib/diagnosis.js i18n: Indonesian key renamed to `ind` (ids must stay intact: GOALS solat..., routine options, SCHOOL none/morning/afternoon, STAGES benih/tunas/pohon)."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (11/11) - 100% success rate
+          
+          Comprehensive test suite executed successfully for diagnosis history feature.
+          
+          **TEST RESULTS:**
+          
+          ✅ PART 1: Quick regression of earlier onboarding cases (5 tests)
+             - POST /onboarding/family: goals filtering ['solat','quran','skrin','adab','bogus'] → ['solat','quran','skrin'] ✓
+             - Routine validation: bedtime='late', jemaah='rarely', meals=null (invalid → null) ✓
+             - POST /onboarding/child: new child creation with diagnosis + habits ✓
+               * stage must be one of benih|tunas|pohon ✓
+               * dims keys: ibadah, quran, akhlak, kesihatan, keluarga ✓
+             - POST /onboarding/complete ✓
+             - 401/404 cases: auth guards working ✓
+          
+          ✅ PART 2: NEW history - POST /onboarding/child with existing childId (4 tests)
+             - First diagnosis (childId=CHILD_ID_1, age=7, practice all 0):
+               * response.previous = null ✓
+               * diagnosis.overall = 0, stage = 'benih' ✓
+               * DB: no diagnosisHistory or empty array ✓
+             - Second diagnosis (childId=CHILD_ID_1, age=7, practice all 2):
+               * response.previous equals first diagnosis (overall=0, stage=benih) ✓
+               * diagnosis.overall = 100, stage = 'pohon' ✓
+               * DB: diagnosisHistory length = 1 ✓
+             - Repeat 13 more times (15 total diagnoses):
+               * diagnosisHistory capped at 12 ✓
+             - Response child object does NOT contain diagnosisHistory ✓
+          
+          ✅ PART 3: GET /family/report - diagnosis fields (1 test)
+             - Child 1 (has diagnosis):
+               * Has 'diagnosis' field (latest) ✓
+               * Has 'previousDiagnosis' field (last history item) ✓
+               * NO 'diagnosisHistory' key present ✓
+             - Child 2 (no diagnosis):
+               * diagnosis undefined (key not present) ✓
+               * previousDiagnosis = null ✓
+               * NO 'diagnosisHistory' key present ✓
+             - Other report fields unchanged:
+               * daily array length = 7 ✓
+               * totals keys: done, ihsan, points, activeDays, claimedPending ✓
+          
+          ✅ PART 4: Regression - GET /children still 200 (1 test)
+             - Returns 200 with children array ✓
+          
+          **KEY FINDINGS:**
+          
+          ✅ First diagnosis: previous=null, no diagnosisHistory in DB
+          ✅ Subsequent diagnoses: previous equals last diagnosis, old diagnosis pushed to history
+          ✅ diagnosisHistory capped at 12 using $slice -12
+          ✅ Response child object never contains diagnosisHistory (deleted before return)
+          ✅ GET /family/report: diagnosis + previousDiagnosis present, diagnosisHistory excluded
+          ✅ Children without diagnosis: diagnosis field undefined, previousDiagnosis=null
+          ✅ All regression tests pass (onboarding endpoints, GET /children)
+          
+          **CLEANUP:**
+          
+          ✅ All test data cleaned up successfully:
+             - Test child created in regression tests removed
+             - Habits for test children removed
+             - CHILD_ID_1 diagnosis and diagnosisHistory reset
+             - Seeded test family cleaned up via cleanup_test_family.py
+          
+          **TEST SCRIPT:** /app/backend_test_diagnosis_history.py (11 comprehensive tests)
+          
+          NO ISSUES FOUND. Diagnosis history feature is production-ready and working exactly as specified in the review request.
+
+frontend:
+  - task: "Onboarding Diagnosis wizard /diagnosis"
+    implemented: true
+    working: true
+    file: "/app/app/diagnosis/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New family (create) → /diagnosis; dashboard auto-redirects when 0 children and onboarding not completed/skipped. Steps: intro → goals → routine(3) → child profile → school → 9 practice Qs → analyzing → result (score ring, stage, 5 dims, plan toggles) → done (next child / finish). Profile tab row profile-diagnosis. NEW: 4 languages (ms/en/id/ar) for whole quiz; re-diagnosis of existing child (/diagnosis?childId=) shows diag-compare card (prev vs now per dimension) + diag-assigned-note, plan excludes already-assigned habits; done page has diag-share button → share-modal with share-preview PNG (canvas), share-whatsapp (Web Share API or wa.me fallback + download), share-download, share-close. Reports tab: per child reports-diag-{id} (stage, score, delta, date), reports-diag-due-{id} banner when diagnosis >=30 days old, reports-rediag-{id}, reports-share-{id}; reports-diag-cta-{id} when no diagnosis."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ COMPREHENSIVE UI TEST COMPLETED - ALL FLOWS WORKING ON MOBILE (390×844) AND DESKTOP (1366×800)
+          
+          **TEST A: Auto-redirect and Intro ✓**
+          Auto-redirects from / to /diagnosis for fresh family. Intro screen with diag-start and diag-skip buttons visible. No horizontal overflow.
+          
+          **TEST B: Full flow - Two children ✓**
+          First child (Adam, male, 8): Goals (3 selected, max 3 enforced), Routine (3 questions auto-advance), Profile (name validation working), School (morning), Practice (9 questions level 1, auto-advance), Analyzing (~3.6s), Result (score ring, stage, 5 dimension bars, plan items toggle), Apply, Done (share modal opens/closes). Second child (Siti, female, 4): School none, Practice level 0, Result, Done. Finish → dashboard with both children.
+          
+          **TEST C: Language switching ✓**
+          ID: Text changed to Indonesian. AR: Text changed to Arabic, HTML dir=rtl working. EN: Switched back. All LangPicker buttons (BM/EN/ID/AR) working.
+          
+          **TEST D: Re-diagnosis ✓**
+          Started re-diagnosis for Adam. Skipped to school (family answers exist). Answered all practice level 2. Result showed diag-compare card (50→100, +50 deltas), diag-assigned-note visible, plan items toggle, apply enabled with 0 picked.
+          
+          **TEST E: Dashboard Reports ✓**
+          Reports tab accessible. Diagnosis report cards visible (stage 🌿 Sprout Stage, score 50/100). Re-diagnosis button (reports-rediag-{id}) and share button (reports-share-{id}) found.
+          
+          **TEST F: Skip flow ✓**
+          Fresh family setup. Redirected to /diagnosis. diag-skip clicked → dashboard. Reload did NOT redirect back (skip persisted).
+          
+          **DESKTOP (1366×800) ✓**
+          All flows working identically. No horizontal overflow. Share modal WhatsApp button shows (desktop fallback).
+          
+          **CONSOLE:** Minor React key warning (non-blocking).
+          
+          **VERDICT:** All major flows production-ready. No major issues found.
 
   - task: "Parent dashboard bottom nav - Home/Tasks/Reports/Profile tabs"
     implemented: true
@@ -5705,4 +5814,59 @@ agent_communication:
       **TEST SCRIPT:** /app/backend_test_onboarding_diagnosis.py
       
       NO ISSUES FOUND. All onboarding diagnosis endpoints are production-ready and working exactly as specified in the review request.
+  - agent: "testing"
+    message: |
+      🎉 DIAGNOSIS HISTORY TESTING COMPLETE - ALL TESTS PASSED (11/11)
+      
+      Tested the NEW diagnosis history feature as requested in the review_request.
+      Created comprehensive test suite: /app/backend_test_diagnosis_history.py
+      
+      **ENDPOINTS TESTED:**
+      
+      ✅ POST /onboarding/child with existing childId - diagnosis history tracking
+      ✅ GET /family/report - diagnosis and previousDiagnosis fields
+      
+      **ALL TEST CASES PASSED:**
+      
+      ✅ PART 1: Quick regression (5 tests)
+         - POST /onboarding/family: goals filtering, routine validation ✓
+         - POST /onboarding/child: new child with diagnosis + habits ✓
+         - POST /onboarding/complete ✓
+         - 401/404 auth guards ✓
+      
+      ✅ PART 2: Diagnosis history (4 tests)
+         - First diagnosis: previous=null, no diagnosisHistory ✓
+         - Second diagnosis: previous equals first, diagnosisHistory length=1 ✓
+         - 15 total diagnoses: diagnosisHistory capped at 12 ✓
+         - Response child object does NOT contain diagnosisHistory ✓
+      
+      ✅ PART 3: GET /family/report (1 test)
+         - Child 1: diagnosis (latest) + previousDiagnosis (last history), no diagnosisHistory key ✓
+         - Child 2: diagnosis undefined, previousDiagnosis=null ✓
+         - Other report fields unchanged (daily length 7, totals) ✓
+      
+      ✅ PART 4: Regression (1 test)
+         - GET /children still returns 200 ✓
+      
+      **KEY FINDINGS:**
+      
+      ✅ First diagnosis: previous=null, no diagnosisHistory in DB
+      ✅ Subsequent diagnoses: previous equals last diagnosis, old pushed to history
+      ✅ diagnosisHistory capped at 12 using $slice -12
+      ✅ Response child object never contains diagnosisHistory (deleted before return)
+      ✅ GET /family/report: diagnosis + previousDiagnosis present, diagnosisHistory excluded
+      ✅ Children without diagnosis: diagnosis field undefined, previousDiagnosis=null
+      ✅ All regression tests pass
+      
+      **CLEANUP:**
+      
+      ✅ All test data cleaned up successfully:
+         - Test child removed
+         - Habits removed
+         - CHILD_ID_1 diagnosis and diagnosisHistory reset
+         - Seeded test family cleaned up via cleanup_test_family.py
+      
+      **TEST SCRIPT:** /app/backend_test_diagnosis_history.py
+      
+      NO ISSUES FOUND. Diagnosis history feature is production-ready and working exactly as specified in the review request.
 

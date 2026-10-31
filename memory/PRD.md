@@ -487,3 +487,4 @@ Admin dashboard for Faizal to see cross-family stats (aggregated, no comparison 
 - Profile tab row "Diagnosis Iman & Habit Anak" to re-run for existing/new kids (?childId= supported).
 - Parent Dashboard bottom nav: Tasks / Reports (GET /api/family/report) / Profile tabs built.
 - Diagnosis copy: BM + EN (ID → BM, AR → EN fallback).
+- (Oct 2026) Diagnosis: full ms/en/id/ar (Indonesian key = `ind` because `id` is reserved); re-diagnosis keeps `diagnosisHistory` (max 12) + compare card; Reports tab Profil Iman card with 30-day re-diagnosis reminder; shareable 1080×1350 canvas card (lib/shareProfileCard.js, components/eqrel/ShareProfileCard.js) via Web Share API / wa.me fallback.

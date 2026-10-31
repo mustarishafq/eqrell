@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { RefreshCw } from 'lucide-react'
 import { pick, colorOf, habitTitle, TabHeader } from './tabUtils'
+import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
+import { STAGES, tx } from '@/lib/diagnosis'
+
+const DAY = 86400000
 
 const weekdayShort = (dateStr, lang) => {
   const d = new Date(`${dateStr}T00:00:00Z`)
@@ -153,6 +157,62 @@ export default function ReportsTab({ lang = 'ms', icon, avatarSrc, streak = {}, 
                     </div>
                   </div>
                 )}
+                {/* ── Profil Iman (diagnosis) + monthly re-diagnosis ── */}
+                {(() => {
+                  const dg = c.diagnosis
+                  if (!dg) {
+                    return (
+                      <a href={`/diagnosis?childId=${c.id}`} data-testid={`reports-diag-cta-${c.id}`}
+                        className="mt-3 flex items-center gap-2.5 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 px-3 py-2.5 active:scale-[0.99]">
+                        <span className="text-2xl">🩺</span>
+                        <span className="flex-1 text-[12px] font-bold text-emerald-900 leading-snug">
+                          {L(`Buat Diagnosis Iman & Habit untuk ${c.nickname} — dapatkan pelan habit khas`, `Run the Iman & Habit Diagnosis for ${c.nickname} — get a personal plan`, `Lakukan Diagnosis Iman & Kebiasaan untuk ${c.nickname}`, `قم بتشخيص الإيمان والعادات لـ ${c.nickname}`)}
+                        </span>
+                        <span className="text-emerald-600 font-black">→</span>
+                      </a>
+                    )
+                  }
+                  const st = STAGES.find(s => s.id === dg.stage) || STAGES[0]
+                  const prev = c.previousDiagnosis
+                  const delta = prev ? (dg.overall || 0) - (prev.overall || 0) : null
+                  const ageDays = dg.createdAt ? Math.floor((Date.now() - new Date(dg.createdAt).getTime()) / DAY) : 0
+                  const due = ageDays >= 30
+                  const when = dg.createdAt ? new Date(dg.createdAt).toLocaleDateString(lang === 'ar' ? 'ar' : lang === 'en' ? 'en-GB' : lang === 'id' ? 'id-ID' : 'ms-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+                  return (
+                    <div className="mt-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-amber-50 p-3" data-testid={`reports-diag-${c.id}`}>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-3xl leading-none">{st.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-700">{L('Profil Iman & Habit', 'Iman & Habit Profile', 'Profil Iman & Kebiasaan', 'ملف الإيمان والعادات')}</div>
+                          <div className="font-extrabold text-sm text-emerald-950">{tx(st, lang)} · {dg.overall}/100</div>
+                          <div className="text-[10px] text-emerald-900/55">{L('Diagnosis', 'Diagnosed', 'Diagnosis', 'التشخيص')}: {when}</div>
+                        </div>
+                        {delta !== null && (
+                          <span className={`text-[11px] font-black px-2 py-1 rounded-full ${delta > 0 ? 'bg-emerald-100 text-emerald-700' : delta < 0 ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}
+                            title={L('berbanding diagnosis lepas', 'vs previous diagnosis', 'dibanding diagnosis sebelumnya', 'مقارنة بالتشخيص السابق')}>
+                            {delta > 0 ? `▲ +${delta}` : delta < 0 ? `▼ ${delta}` : '='}
+                          </span>
+                        )}
+                      </div>
+                      {due && (
+                        <div className="mt-2 rounded-xl bg-amber-100/80 px-2.5 py-1.5 text-[11px] font-bold text-amber-800" data-testid={`reports-diag-due-${c.id}`}>
+                          🗓️ {L(`Sudah ${ageDays} hari! Masa untuk diagnosis semula bulanan & lihat kemajuan ${c.nickname}.`, `It's been ${ageDays} days! Time for the monthly re-diagnosis to see ${c.nickname}'s progress.`, `Sudah ${ageDays} hari! Saatnya diagnosis ulang bulanan.`, `مرّ ${ageDays} يوماً! حان وقت التشخيص الشهري.`)}
+                        </div>
+                      )}
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <a href={`/diagnosis?childId=${c.id}`} data-testid={`reports-rediag-${c.id}`}
+                          className={`flex items-center justify-center gap-1 rounded-xl py-2 text-[11px] font-extrabold active:scale-[0.98] ${due ? 'bg-amber-500 text-white' : 'bg-white text-emerald-800 border border-emerald-200'}`}>
+                          🩺 {L('Diagnosis Semula', 'Re-diagnose', 'Diagnosis Ulang', 'أعد التشخيص')}
+                        </a>
+                        <ShareProfileButton lang={lang} testId={`reports-share-${c.id}`}
+                          child={{ nickname: c.nickname, avatarId: c.avatarId, age: dg.age }} diagnosis={dg} previous={prev}
+                          label={L('Kongsi', 'Share', 'Bagikan', 'شارك')}
+                          className="flex items-center justify-center gap-1 rounded-xl py-2 text-[11px] font-extrabold bg-[#25D366] text-white active:scale-[0.98]" />
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {c.totals.done === 0 && (
                   <p className="mt-3 text-center text-[11px] text-eq-ink/50">
                     {L('Belum ada habit disahkan minggu ini. Sahkan tugasan anak untuk lihat kemajuan di sini.', 'No verified habits this week yet. Verify tasks to see progress here.', 'Belum ada kebiasaan diverifikasi minggu ini.', 'لا توجد عادات موثقة هذا الأسبوع.')}
