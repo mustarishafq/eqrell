@@ -11,6 +11,7 @@ import { BRAND } from '@/lib/brand'
 import { BOY_AVATARS, GIRL_AVATARS, AVATAR_BY_ID } from '@/lib/avatars'
 import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
 import { PushPrompt } from '@/components/eqrel/PushPrompt'
+import { CoParentInvite } from '@/components/eqrel/CoParentInvite'
 import { solatCoreFor, SOLAT_WAJIB_AGE } from '@/lib/solatCore'
 import { TEMPLATE_BY_ID as SOLAT_TPL, getTemplateTitle as solatTitle } from '@/lib/habitTemplates'
 import { TEMPLATE_BY_ID, HABIT_CATEGORIES, getTemplateTitle } from '@/lib/habitTemplates'
@@ -685,6 +686,8 @@ function DiagnosisInner() {
                   )}
                 </div>
                 <div className="pt-4 space-y-2">
+                  <CoParentInvite lang={lang} variant="hero" childName={lastResult.nickname}
+                    stageName={(() => { const st = STAGES.find(x => x.id === lastResult.stage); return st ? tx(st, lang) : null })()} />
                   <PushPrompt lang={lang} variant="hero" childName={lastResult.nickname} />
                   <ShareProfileButton lang={lang} testId="diag-share"
                     child={{ nickname: lastResult.nickname, avatarId: lastResult.avatarId, age: lastResult.age }}

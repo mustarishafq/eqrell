@@ -25,6 +25,7 @@ import { DigestCard } from '@/components/eqrel/DigestCard'
 import { CoParentSheet } from '@/components/eqrel/CoParentSheet'
 import { HandoverGuide } from '@/components/eqrel/HandoverGuide'
 import { PushPrompt } from '@/components/eqrel/PushPrompt'
+import { CoParentInvite } from '@/components/eqrel/CoParentInvite'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -523,6 +524,7 @@ const ParentDashboard = () => {
         {activeTab === 'home' && (<>
         <DigestCard lang={lang} refreshKey={dataVersion} onQuickVerify={() => setQuickVerifyOpen(true)} onSettings={() => setNotifyOpen(true)} />
         <PushPrompt lang={lang} variant="card" />
+        <CoParentInvite lang={lang} variant="card" childName={children.length === 1 ? children[0]?.nickname : null} />
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}

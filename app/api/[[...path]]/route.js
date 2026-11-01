@@ -2088,6 +2088,50 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, accepted: true, runId }, 202)
     }
 
+    // ══════════ ONE-TIME ADMIN: purge an account + its whole family ══════════
+    // TEMPORARY — remove after use. Bearer ADMIN_PURGE_SECRET.
+    // POST /admin/purge-account { email, dryRun?: true, confirm: 'DELETE <email>' }
+    if (route === '/admin/purge-account' && method === 'POST') {
+      const secret = process.env.ADMIN_PURGE_SECRET
+      const auth = request.headers.get('authorization') || ''
+      if (!secret || secret.length < 20) return err('Not available', 404)
+      const given = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+      const a = Buffer.from(given), b = Buffer.from(secret)
+      if (a.length !== b.length || !nodeCrypto.timingSafeEqual(a, b)) return err('unauthorized', 401)
+      const body = await request.json().catch(() => ({}))
+      const email = String(body.email || '').trim().toLowerCase()
+      if (!email || !email.includes('@')) return err('email required', 400)
+      const db = await getDb()
+      const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const user = await db.collection('users').findOne({ email: { $regex: `^${escaped}$`, $options: 'i' } })
+      if (!user) return err('User not found', 404)
+      const familyId = user.familyId || null
+      const members = familyId ? await db.collection('users').find({ familyId }).project({ _id: 0, id: 1, email: 1 }).toArray() : [{ id: user.id, email: user.email }]
+      const userIds = members.map(m => m.id)
+      const cols = (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name).filter(n => !n.startsWith('system.'))
+      const plan = {}
+      for (const c of cols) {
+        if (c === 'users' || c === 'families') continue
+        const n = familyId ? await db.collection(c).countDocuments({ familyId }) : 0
+        if (n) plan[c] = n
+      }
+      const sessionsN = await db.collection('sessions').countDocuments({ userId: { $in: userIds } })
+      const pushN = await db.collection('push_subs').countDocuments({ userId: { $in: userIds }, familyId: { $ne: familyId } })
+      const summary = { email: user.email, familyId, members: members.map(m => m.email), byFamily: plan, sessions: sessionsN, extraPushSubs: pushN, families: familyId ? 1 : 0, users: userIds.length }
+      if (body.dryRun !== false) return json({ dryRun: true, ...summary })
+      if (body.confirm !== `DELETE ${email}`) return err(`confirm must be exactly "DELETE ${email}"`, 400)
+      const deleted = {}
+      if (familyId) {
+        for (const c of Object.keys(plan)) deleted[c] = (await db.collection(c).deleteMany({ familyId })).deletedCount
+        deleted.families = (await db.collection('families').deleteOne({ id: familyId })).deletedCount
+      }
+      deleted.sessions = (await db.collection('sessions').deleteMany({ userId: { $in: userIds } })).deletedCount
+      deleted.push_subs_extra = (await db.collection('push_subs').deleteMany({ userId: { $in: userIds } })).deletedCount
+      deleted.users = (await db.collection('users').deleteMany({ id: { $in: userIds } })).deletedCount
+      console.log(`[admin] purged account ${user.email} family=${familyId} users=${deleted.users}`)
+      return json({ dryRun: false, email: user.email, familyId, members: members.map(m => m.email), deleted })
+    }
+
     // ══════════ SOLAT TERAS: pause / resume ══════════
     // POST /children/:id/solat-pause { reason: 'haid'|'sakit', days?: 1..10 }
     // POST /children/:id/solat-resume
@@ -2321,7 +2365,7 @@ async function handleRoute(request, { params }) {
       const childIds = children.map(c => c.id)
       const habits = childIds.length ? await db.collection('habits')
         .find({ childId: { $in: childIds }, active: { $ne: false } })
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, i18n: 1, templateId: 1 })
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, i18n: 1, templateId: 1, core: 1, paused: 1, pausedAt: 1, pauseReason: 1, createdAt: 1 })
         .toArray() : []
       const claims = childIds.length ? await db.collection('habit_claims')
         .find({ childId: { $in: childIds }, dateStr: { $in: dates } })
@@ -2346,9 +2390,34 @@ async function handleRoute(request, { params }) {
         const topHabits = Object.entries(habitTally)
           .sort((a, b) => b[1] - a[1]).slice(0, 3)
           .map(([hid, count]) => ({ id: hid, title: habitById[hid]?.title || '—', i18n: habitById[hid]?.i18n || null, templateId: habitById[hid]?.templateId || null, icon: habitById[hid]?.icon || '⭐', count }))
+        // Kad Solat Mingguan: core prayers × days grid
+        const core = habits.filter(h => h.childId === c.id && h.core)
+          .sort((a, b) => SOLAT_IDS.indexOf(a.templateId) - SOLAT_IDS.indexOf(b.templateId))
+        const solat = core.length ? (() => {
+          const grid = core.map(h => dates.map(date => {
+            const cl = mine.find(x => x.habitId === h.id && x.dateStr === date)
+            if (cl?.status === 'verified' && cl.rubric === 'ihsan') return 'ihsan'
+            if (cl?.status === 'verified' && cl.rubric === 'sah') return 'done'
+            if (cl?.status === 'claimed') return 'pending'
+            if (cl?.rubric === 'belum') return 'missed'
+            if (h.paused && h.pausedAt && date >= fmt(new Date(h.pausedAt))) return 'paused'
+            if (h.createdAt && date < fmt(new Date(h.createdAt))) return 'na'
+            return 'none'
+          }))
+          const cells = grid.flat()
+          return {
+            prayers: core.map(h => ({ habitId: h.id, templateId: h.templateId })),
+            grid,
+            done: cells.filter(x => x === 'done' || x === 'ihsan').length,
+            pending: cells.filter(x => x === 'pending').length,
+            total: cells.filter(x => x !== 'na' && x !== 'paused').length,
+            pauseReason: core.find(h => h.paused)?.pauseReason || null,
+          }
+        })() : null
         const { diagnosisHistory, ...rest } = c
         return {
           ...rest,
+          solat,
           previousDiagnosis: Array.isArray(diagnosisHistory) && diagnosisHistory.length ? diagnosisHistory[0] : null,
           habitsTotal: habits.filter(h => h.childId === c.id).length,
           daily,

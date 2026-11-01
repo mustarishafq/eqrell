@@ -7,6 +7,7 @@ import { pick, colorOf, habitTitle, TabHeader } from './tabUtils'
 import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
 import { WeeklyStoryCard } from '@/components/eqrel/DigestCard'
 import { STAGES, tx } from '@/lib/diagnosis'
+import { SolatWeekCard } from '@/components/eqrel/SolatWeekCard'
 
 const DAY = 86400000
 
@@ -160,6 +161,7 @@ export default function ReportsTab({ lang = 'en', icon, avatarSrc, streak = {}, 
                     </div>
                   </div>
                 )}
+                <SolatWeekCard child={c} dates={data?.dates || []} lang={lang} />
                 {/* ── Profil Iman (diagnosis) + monthly re-diagnosis ── */}
                 {(() => {
                   const dg = c.diagnosis
