@@ -7,7 +7,7 @@ import { TEMPLATE_BY_ID } from '@/lib/habitTemplates'
 import webpush from 'web-push'
 import nodeCrypto from 'crypto'
 import {
-  verifyClaimDoc, checkAutoTrust, buildNightDigest, buildMorningDigest, buildWeeklyDigest,
+  verifyClaimDoc, checkAutoTrust, TRUST_DAYS, buildNightDigest, buildMorningDigest, buildWeeklyDigest,
   sanitizePrefs, DEFAULT_PREFS, localNow, isDue, utcToday,
 } from '@/lib/engagement'
 
@@ -50,6 +50,10 @@ async function runDigestCron(db) {
     const local = localNow(prefs.tz)
     const sets = {}
     const opts = { lang: prefs.lang, dateStr: utcToday(), viewerId: uid, weekday: local.weekday }
+    await unlockDueHabits(db, { familyId: user.familyId })
+    const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, createdAt: 1, onboarding: 1 } })
+    const startedAt = fam?.onboarding?.completedAt || fam?.createdAt
+    const journeyDay = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000) : 99
     if (prefs.morning?.enabled && isDue(prefs.morning.time, local, last.morning)) {
       const d = await buildMorningDigest(db, user.familyId, opts)
       await pushToUser(db, uid, d.push); sets['notifyLast.morning'] = local.date; out.morning++
@@ -58,7 +62,9 @@ async function runDigestCron(db) {
       const d = await buildNightDigest(db, user.familyId, opts)
       await pushToUser(db, uid, d.push); sets['notifyLast.night'] = local.date; out.night++
       // Weekly story rides along with Sunday's night slot
-      if (prefs.weekly?.enabled && local.weekday === 0 && last.weekly !== local.date) {
+      // First story exactly on day 7; afterwards every Sunday (skip Sundays in the first 10 days)
+      const weeklyDue = journeyDay === 7 || (local.weekday === 0 && journeyDay >= 10)
+      if (prefs.weekly?.enabled && weeklyDue && last.weekly !== local.date) {
         const w = await buildWeeklyDigest(db, user.familyId, opts)
         await pushToUser(db, uid, w.push); sets['notifyLast.weekly'] = local.date; out.weekly++
       }
@@ -70,6 +76,20 @@ async function runDigestCron(db) {
 import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import crypto from 'node:crypto'
+
+/** Staged plan: activate habits whose unlockAt has passed (lazy, idempotent). */
+async function unlockDueHabits(db, filter) {
+  const due = await db.collection('habits').find({ ...filter, locked: true, unlockAt: { $lte: new Date() } }).project({ _id: 0, id: 1, familyId: 1, childId: 1, title: 1, templateId: 1 }).toArray()
+  if (!due.length) return 0
+  await db.collection('habits').updateMany({ id: { $in: due.map(h => h.id) } }, { $set: { active: true, locked: false, unlockedAt: new Date(), updatedAt: new Date() } })
+  const byChild = {}
+  due.forEach(h => { (byChild[h.childId] = byChild[h.childId] || []).push(h) })
+  await db.collection('family_events').insertMany(Object.entries(byChild).map(([childId, hs]) => ({
+    id: crypto.randomUUID(), familyId: hs[0].familyId, childId, type: 'habits_unlocked',
+    habitIds: hs.map(h => h.id), templateIds: hs.map(h => h.templateId || null), createdAt: new Date(),
+  })))
+  return due.length
+}
 
 // Helper: determine if a habit is per-prayer recurring, using explicit field or template default
 const isPerPrayerHabit = (habit) => {
@@ -404,6 +424,7 @@ async function handleRoute(request, { params }) {
       // Verify child belongs to family
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
       if (!child) return err('Child not found', 404)
+      await unlockDueHabits(db, { childId, familyId: user.familyId })
 
       const habits = await db.collection('habits')
         .find({ childId, familyId: user.familyId, active: { $ne: false } })
@@ -459,7 +480,26 @@ async function handleRoute(request, { params }) {
         }
       })
 
-      return json({ habits: enriched })
+      // Mod Percaya progress: consecutive verified days (ending today, or yesterday if today not yet done)
+      const days7 = Array.from({ length: 8 }, (_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
+      const recent = await db.collection('habit_claims')
+        .find({ childId, dateStr: { $in: days7 }, status: 'verified', rubric: { $in: ['sah', 'ihsan'] } })
+        .project({ _id: 0, habitId: 1, dateStr: 1 }).toArray()
+      const doneDays = {}
+      recent.forEach(c => { (doneDays[c.habitId] = doneDays[c.habitId] || new Set()).add(c.dateStr) })
+      const streakOf = (hid) => {
+        const set = doneDays[hid] || new Set()
+        let i = set.has(days7[0]) ? 0 : 1, n = 0
+        while (i < days7.length && set.has(days7[i])) { n++; i++ }
+        return Math.min(n, TRUST_DAYS)
+      }
+      enriched.forEach(h => { h.trustStreak = h.autoVerify ? TRUST_DAYS : streakOf(h.id) })
+
+      const locked = await db.collection('habits')
+        .find({ childId, familyId: user.familyId, locked: true })
+        .project({ _id: 0, id: 1, title: 1, templateId: 1, i18n: 1, category: 1, unlockAt: 1, points: 1 }).toArray()
+
+      return json({ habits: enriched, lockedHabits: locked })
     }
 
     // POST /children/:id/habits  → assign a habit (from template or custom)
@@ -2149,10 +2189,14 @@ async function handleRoute(request, { params }) {
         }
 
         // Auto-assign the habit plan (validated against templates, no duplicates)
-        const existing = await db.collection('habits').find({ childId: child.id, active: { $ne: false } }).project({ templateId: 1 }).toArray()
+        const existing = await db.collection('habits').find({ childId: child.id, $or: [{ active: { $ne: false } }, { locked: true }] }).project({ templateId: 1 }).toArray()
         const have = new Set(existing.map(h => h.templateId).filter(Boolean))
         const ids = [...new Set((Array.isArray(body.templateIds) ? body.templateIds : []).filter(id => TEMPLATE_BY_ID[id] && !have.has(id)))].slice(0, 12)
+        // pace 'staged' → lockedTemplateIds start next week (active:false + locked:true, unlockAt +7d)
+        const pace = body.pace === 'staged' ? 'staged' : 'all'
+        const lockedSet = new Set(pace === 'staged' && Array.isArray(body.lockedTemplateIds) ? body.lockedTemplateIds : [])
         const now = new Date()
+        const unlockAt = new Date(now.getTime() + 7 * 86400000)
         const docs = ids.map(id => {
           const tpl = TEMPLATE_BY_ID[id]
           return {
@@ -2160,14 +2204,16 @@ async function handleRoute(request, { params }) {
             category: tpl.category, session: TEMPLATE_DEFAULT_SESSION[id] || 'anytime',
             recurring: TEMPLATE_DEFAULT_RECURRING[id] === 'perPrayer' ? 'perPrayer' : 'daily',
             title: tpl.title, desc: tpl.desc || '', points: tpl.points ?? 10, frequency: tpl.frequency || 'daily',
-            active: true, source: 'diagnosis', assignedBy: session.userId, createdAt: now, updatedAt: now,
+            active: !lockedSet.has(id), source: 'diagnosis', assignedBy: session.userId, createdAt: now, updatedAt: now,
+            ...(lockedSet.has(id) ? { locked: true, unlockAt, stage: 2 } : {}),
           }
         })
         if (docs.length) await db.collection('habits').insertMany(docs)
+        await db.collection('children').updateOne({ id: child.id }, { $set: { planPace: pace, planStartedAt: child.planStartedAt || now } })
         const fresh = await db.collection('children').findOne({ id: child.id }, { projection: { _id: 0 } })
         const previous = Array.isArray(fresh?.diagnosisHistory) && fresh.diagnosisHistory.length ? fresh.diagnosisHistory[fresh.diagnosisHistory.length - 1] : null
         delete fresh.diagnosisHistory
-        return json({ child: fresh, habitsCreated: docs.length, diagnosis, previous })
+        return json({ child: fresh, habitsCreated: docs.length, habitsLocked: docs.filter(d => d.locked).length, diagnosis, previous })
       }
       return err('Not found', 404)
     }

@@ -17,19 +17,21 @@ const statusOf = (h) => {
 export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild }) {
   const L = pick(lang)
   const [habitsByChild, setHabitsByChild] = useState({})
+  const [lockedByChild, setLockedByChild] = useState({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const map = {}
+    const map = {}, lmap = {}
     await Promise.all(kids.map(async (c) => {
       try {
         const r = await fetch(`/api/children/${c.id}/habits`, { credentials: 'include' })
-        if (r.ok) map[c.id] = (await r.json()).habits || []
+        if (r.ok) { const d = await r.json(); map[c.id] = d.habits || []; lmap[c.id] = d.lockedHabits || [] }
       } catch { /* ignore */ }
     }))
     setHabitsByChild(map)
+    setLockedByChild(lmap)
     setLoading(false)
   }, [kids])
   useEffect(() => { load() }, [load, refreshKey])
@@ -148,7 +150,7 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                     <button onClick={() => toggleTrust(c.id, h)} data-testid={`tasks-trust-${h.id}`}
                       title={L('Mod Percaya: sah automatik', 'Trust Mode: auto-verify', 'Mode Percaya', 'وضع الثقة')}
                       className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black border ${h.autoVerify ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-eq-ink/35 border-eq-cream'}`}>
-                      🛡️{h.autoVerify ? ' Auto' : ''}
+                      🛡️{h.autoVerify ? ' Auto' : ` ${h.trustStreak || 0}/7`}
                     </button>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${chip.cls}`}>
                       <ChipIcon className="w-3 h-3" /> {chip.label}
@@ -156,6 +158,19 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                   </div>
                 )
               })}
+              {(lockedByChild[c.id] || []).length > 0 && (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-white/60 px-3 py-2" data-testid={`tasks-locked-${c.id}`}>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-eq-ink/45">
+                    🔒 {L('Dibuka minggu depan', 'Unlocks next week', 'Dibuka minggu depan', 'يُفتح الأسبوع القادم')}
+                    {' · '}{(() => { const d = Math.max(0, Math.ceil((new Date(lockedByChild[c.id][0].unlockAt).getTime() - Date.now()) / 86400000)); return L(`${d} hari lagi`, `in ${d} days`, `${d} hari lagi`, `بعد ${d} أيام`) })()}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {lockedByChild[c.id].map(h => (
+                      <span key={h.id} className="px-2 py-0.5 rounded-full bg-gray-100 text-[11px] font-bold text-eq-ink/55">{habitTitle(h, lang)}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )

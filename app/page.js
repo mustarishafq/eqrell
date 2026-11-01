@@ -23,6 +23,8 @@ import { QuickVerifySheet } from '@/components/eqrel/QuickVerifySheet'
 import { NotifySettingsSheet } from '@/components/eqrel/NotifySettingsSheet'
 import { DigestCard } from '@/components/eqrel/DigestCard'
 import { CoParentSheet } from '@/components/eqrel/CoParentSheet'
+import { HandoverGuide } from '@/components/eqrel/HandoverGuide'
+import { PushPrompt } from '@/components/eqrel/PushPrompt'
 
 const ASSETS = {
   heroLandscape: 'https://customer-assets-4nw71qhi.emergentagent.net/job_pwa-trial-cohort/artifacts/zfnechrx_hero-landscape.webp',
@@ -151,6 +153,17 @@ const ParentDashboard = () => {
   const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [coParentOpen, setCoParentOpen] = useState(false)
+  const [handoverOpen, setHandoverOpen] = useState(false)
+  const [guideHasPin, setGuideHasPin] = useState(false)
+  // Upacara Serahan Pertama — opened once after the diagnosis (?handover=1)
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('handover') !== '1') return
+    fetch('/api/family/pin', { credentials: 'include' }).then(r => r.json()).then(d => setGuideHasPin(!!d.hasPin)).catch(() => {})
+    setHandoverOpen(true)
+    sp.delete('handover')
+    window.history.replaceState(null, '', `${window.location.pathname}${sp.toString() ? `?${sp}` : ''}`)
+  }, [])
   // Deep links from push notifications: ?quick=1 opens Quick Verify, ?tab=reports opens Reports
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -509,6 +522,7 @@ const ParentDashboard = () => {
         )}
         {activeTab === 'home' && (<>
         <DigestCard lang={lang} refreshKey={dataVersion} onQuickVerify={() => setQuickVerifyOpen(true)} onSettings={() => setNotifyOpen(true)} />
+        <PushPrompt lang={lang} variant="card" />
 
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -814,6 +828,8 @@ const ParentDashboard = () => {
         onOpenDetailed={() => { setQuickVerifyOpen(false); setVerifySheetOpen(true) }}
       />
       <NotifySettingsSheet open={notifyOpen} onClose={() => setNotifyOpen(false)} lang={lang} />
+      <HandoverGuide open={handoverOpen} onClose={() => setHandoverOpen(false)} lang={lang} kids={children}
+        hasPin={guideHasPin} onSetPin={() => setPinChangeMode('set')} />
       <CoParentSheet open={coParentOpen} onClose={() => { setCoParentOpen(false); setDataVersion(v => v + 1) }} lang={lang} />
 
       {/* Verify Queue sheet — parent 3-level rubric */}
@@ -847,7 +863,7 @@ const ParentDashboard = () => {
         open={!!pinChangeMode}
         mode={pinChangeMode || 'change'}
         onClose={() => setPinChangeMode(null)}
-        onSuccess={() => setPinChangeMode(null)}
+        onSuccess={() => { setPinChangeMode(null); setGuideHasPin(true) }}
       />
 
       {/* Reward Shop — parent view (catalog + requests) */}

@@ -7,6 +7,7 @@ import { Sparkles, Check, LogOut, Star, Plus, X, HelpCircle } from 'lucide-react
 import { useLang } from '@/lib/i18n/LangProvider'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { TrustCelebration } from '@/components/eqrel/TrustCelebration'
+import { KidWelcome } from '@/components/eqrel/HandoverGuide'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
 import { SESSIONS, SESSION_BY_ID, getSessionLabel, groupHabitsBySession, currentSessionFromClock } from '@/lib/prayerSession'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
@@ -127,6 +128,11 @@ const KidChooser = ({ router, t, lang }) => {
 function KidHomeActive({ router, childId, t, lang }) {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
+  const [welcomeOpen, setWelcomeOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1')
+  const closeWelcome = () => {
+    setWelcomeOpen(false)
+    try { const sp = new URLSearchParams(window.location.search); sp.delete('welcome'); window.history.replaceState(null, '', `${window.location.pathname}?${sp}`) } catch { /* ignore */ }
+  }
   const [rewardRequests, setRewardRequests] = useState([])
   const [customRewards, setCustomRewards] = useState([])
   const [myProposals, setMyProposals] = useState([])
@@ -871,7 +877,7 @@ function KidHomeActive({ router, childId, t, lang }) {
       />
 
       {/* Tutorials */}
-      <Tutorial open={tutWelcome.open} onClose={tutWelcome.close} config={getTutorial('kid_welcome', lang)} />
+      <Tutorial open={tutWelcome.open && !welcomeOpen} onClose={tutWelcome.close} config={getTutorial('kid_welcome', lang)} />
       <Tutorial open={tutCats.open}    onClose={tutCats.close}    config={getTutorial('kid_categories', lang)} />
       <Tutorial open={tutRewards.open} onClose={tutRewards.close} config={getTutorial('kid_rewards', lang)} />
 
@@ -917,7 +923,8 @@ function KidHomeActive({ router, childId, t, lang }) {
       </AnimatePresence>
 
       {/* Lencana Mod Percaya — celebrate habits that became trusted (7 days consistent) */}
-      <TrustCelebration childId={childId} child={child} lang={lang} avatarSrc={avatarSrc} />
+      <KidWelcome open={welcomeOpen} onClose={closeWelcome} lang={lang} child={child} avatarSrc={avatarSrc} habitCount={habits.length} />
+      {!welcomeOpen && <TrustCelebration childId={childId} child={child} lang={lang} avatarSrc={avatarSrc} />}
     </div>
   )
 }

@@ -68,6 +68,12 @@ export default function WorldCanvas({
           },
         },
       })
+      // Real prayer times (Aladhan via /api/family/prayer-times, cached daily per family).
+      // Villagers gather at the Musalla at each actual prayer time instead of a demo loop.
+      fetch('/api/family/prayer-times', { credentials: 'include' })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d?.timings) { try { game.registry.set('prayerTimes', d.timings) } catch { /* destroyed */ } } })
+        .catch(() => {})
       // Expose the running game globally so React can read/write registry
       // (used by drag-from-sidebar to read buildDropTarget after pointer-up)
       if (typeof window !== 'undefined') {

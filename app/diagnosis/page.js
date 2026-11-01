@@ -10,10 +10,11 @@ import { useLang } from '@/lib/i18n/LangProvider'
 import { BRAND } from '@/lib/brand'
 import { BOY_AVATARS, GIRL_AVATARS, AVATAR_BY_ID } from '@/lib/avatars'
 import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
+import { PushPrompt } from '@/components/eqrel/PushPrompt'
 import { TEMPLATE_BY_ID, HABIT_CATEGORIES, getTemplateTitle } from '@/lib/habitTemplates'
 import {
   DIMENSIONS, GOALS, ROUTINE_QUESTIONS, PRACTICE_QUESTIONS, LEVELS, SCHOOL_OPTIONS, STAGES,
-  scoreDiagnosis, buildPlan, tx, qText, stageDesc,
+  scoreDiagnosis, buildPlan, tx, qText, stageDesc, pickWeekOne,
 } from '@/lib/diagnosis'
 
 const COLORS = [
@@ -81,6 +82,7 @@ function DiagnosisInner() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [lastResult, setLastResult] = useState(null)
+  const [pace, setPace] = useState('staged')   // 'staged' (3 now, rest in week 2) | 'all'
   const [assigned, setAssigned] = useState([])   // templateIds already active for an existing child
 
   useEffect(() => {
@@ -136,7 +138,7 @@ function DiagnosisInner() {
   }
   const finishAll = async () => {
     try { await fetch('/api/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({}) }) } catch { /* ignore */ }
-    window.location.href = '/?parent=1'
+    window.location.href = '/?parent=1&handover=1'
   }
   const applyPlan = async () => {
     setSaving(true); setError(null)
@@ -148,11 +150,13 @@ function DiagnosisInner() {
           profile: { nickname: child.nickname, gender: child.gender, avatarId: child.avatarId, favColor: child.favColor },
           age: child.age, school, practice, lang,
           templateIds: plan.filter(x => picked[x.templateId]).map(x => x.templateId),
+          pace: staged ? 'staged' : 'all',
+          lockedTemplateIds: staged ? pickedIds.filter(id => !weekOne.includes(id)) : [],
         }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || L('Gagal menyimpan. Cuba lagi.', 'Could not save. Please try again.', 'Gagal menyimpan. Coba lagi.', 'تعذّر الحفظ. حاول مرة أخرى.'))
-      const res2 = { nickname: d.child?.nickname || child.nickname, avatarId: d.child?.avatarId || child.avatarId, age: child.age, habitsCreated: d.habitsCreated, stage: d.diagnosis?.stage, id: d.child?.id, diagnosis: d.diagnosis, previous: d.previous }
+      const res2 = { nickname: d.child?.nickname || child.nickname, avatarId: d.child?.avatarId || child.avatarId, age: child.age, habitsCreated: d.habitsCreated, habitsLocked: d.habitsLocked || 0, stage: d.diagnosis?.stage, id: d.child?.id, diagnosis: d.diagnosis, previous: d.previous }
       setLastResult(res2)
       setDoneKids(prev => [...prev, res2])
       setExistingKids(prev => prev.some(k => k.id === d.child?.id) ? prev.map(k => k.id === d.child.id ? d.child : k) : [...prev, d.child])
@@ -161,6 +165,10 @@ function DiagnosisInner() {
   }
 
   const scores = useMemo(() => scoreDiagnosis(practice), [practice])
+  const pickedPlan = plan.filter(x => picked[x.templateId])
+  const pickedIds = pickedPlan.map(x => x.templateId)
+  const weekOne = useMemo(() => pickWeekOne(pickedPlan), [plan, picked]) // eslint-disable-line react-hooks/exhaustive-deps
+  const staged = pace === 'staged' && pickedIds.length > 3
   const prevDiag = child.id ? existingKids.find(k => k.id === child.id)?.diagnosis || null : null
   const stage = STAGES.find(s => s.id === scores.stage) || STAGES[0]
 
@@ -568,6 +576,11 @@ function DiagnosisInner() {
                             <span className="flex items-center gap-2">
                               <span className="font-extrabold text-sm text-emerald-950">{getTemplateTitle(tpl, lang)}</span>
                               <span className="text-[10px] font-black text-amber-600">+{tpl.points}</span>
+                              {staged && on && (
+                                <span data-testid={`diag-week-${item.templateId}`} className={`ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full ${weekOne.includes(item.templateId) ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                  {weekOne.includes(item.templateId) ? L('Minggu 1', 'Week 1', 'Minggu 1', 'الأسبوع ١') : `🔒 ${L('Minggu 2', 'Week 2', 'Minggu 2', 'الأسبوع ٢')}`}
+                                </span>
+                              )}
                             </span>
                             <span className="block text-[11px] text-emerald-900/65 leading-snug mt-0.5">{tx(item.reason, lang)}</span>
                           </span>
@@ -588,6 +601,26 @@ function DiagnosisInner() {
                   )}
                   <p className="text-[11px] text-emerald-900/55 text-center mt-2">{L('Tekan untuk buang atau tambah. Habit boleh diubah bila-bila masa di "Urus Habit".', 'Tap to remove or add. Habits can be changed anytime in "Manage Habits".', 'Ketuk untuk menghapus atau menambah. Kebiasaan bisa diubah kapan saja di "Kelola".', 'اضغط للإزالة أو الإضافة. يمكن تعديل العادات في أي وقت من «إدارة العادات».')}</p>
                 </div>
+                {pickedIds.length > 3 && (
+                  <div className="mt-4" data-testid="diag-pace">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700 mb-2">{L('Pilih rentak pelan', 'Choose your pace', 'Pilih ritme rencana', 'اختر وتيرة الخطة')}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        ['staged', '🌱', L('Berperingkat', 'Step by step', 'Bertahap', 'تدريجياً'), L(`3 habit minggu ini, ${pickedIds.length - 3} lagi dibuka automatik minggu depan`, `3 habits this week, ${pickedIds.length - 3} more unlock next week`, `3 kebiasaan minggu ini, ${pickedIds.length - 3} lagi minggu depan`, `٣ عادات هذا الأسبوع و${pickedIds.length - 3} الأسبوع القادم`), L('Disyorkan', 'Recommended', 'Disarankan', 'موصى به')],
+                        ['all', '🚀', L('Terus Semua', 'All at once', 'Langsung Semua', 'الكل الآن'), L(`Semua ${pickedIds.length} habit bermula hari ini`, `All ${pickedIds.length} habits start today`, `Semua ${pickedIds.length} kebiasaan mulai hari ini`, `كل العادات الـ${pickedIds.length} تبدأ اليوم`), null],
+                      ].map(([k, e, t, sub, tag]) => (
+                        <button key={k} onClick={() => setPace(k)} data-testid={`diag-pace-${k}`}
+                          className={`relative text-left rounded-2xl border-2 p-3 transition ${pace === k ? 'border-emerald-500 bg-white shadow' : 'border-gray-200 bg-white/60'}`}>
+                          {tag && <span className="absolute -top-2 right-2 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-400 text-white">{tag}</span>}
+                          <div className="text-2xl">{e}</div>
+                          <div className="font-extrabold text-sm text-emerald-950 mt-1">{t}</div>
+                          <div className="text-[11px] text-emerald-900/60 leading-snug mt-0.5">{sub}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {staged && <p className="text-[11px] text-emerald-900/60 mt-2 leading-snug">{L('Minggu 1 dimulakan dengan 1 habit ibadah, 1 kemenangan mudah dan 1 matlamat anda — supaya anak cepat rasa berjaya.', 'Week 1 starts with 1 worship habit, 1 easy win and 1 of your goals — so your child succeeds early.', 'Minggu 1 dimulai dengan 1 ibadah, 1 kemenangan mudah dan 1 tujuan Anda.', 'يبدأ الأسبوع الأول بعبادة وفوز سهل وهدف من أهدافك.')}</p>}
+                  </div>
+                )}
                 {error && <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-red-700 text-xs text-center font-semibold">{error}</div>}
                 <div className="pt-4 space-y-2">
                   <Primary data-testid="diag-apply" disabled={saving || (!child.id && !plan.some(x => picked[x.templateId]))} onClick={applyPlan}>
@@ -614,6 +647,11 @@ function DiagnosisInner() {
                     {L(`${lastResult.habitsCreated} habit khas telah dipasang. Setiap habit yang disiapkan akan membina kampung Islamik ${lastResult.nickname}.`, `${lastResult.habitsCreated} personal habits are set. Every habit completed builds ${lastResult.nickname}'s Islamic village.`, `${lastResult.habitsCreated} kebiasaan khusus telah dipasang. Setiap kebiasaan yang diselesaikan membangun desa Islami ${lastResult.nickname}.`, `تم إعداد ${lastResult.habitsCreated} عادات خاصة. كل عادة تُنجَز تبني قرية ${lastResult.nickname} الإسلامية.`)}
                   </p>
                   <p className="text-xs text-emerald-700 font-bold mt-3">{L('"Sebaik-baik amalan ialah yang berterusan walaupun sedikit." — HR Bukhari & Muslim', '"The most beloved deeds are those done consistently, even if small." — Bukhari & Muslim', '"Amalan yang paling dicintai Allah adalah yang terus-menerus walaupun sedikit." — HR Bukhari & Muslim', '«أحبُّ الأعمال إلى الله أدومها وإن قلّ» — متفق عليه')}</p>
+                  {lastResult.habitsLocked > 0 && (
+                    <div className="mt-3 rounded-2xl bg-white px-3 py-2 text-[12px] font-bold text-emerald-800 shadow" data-testid="diag-done-staged">
+                      🌱 {L(`${lastResult.habitsCreated - lastResult.habitsLocked} habit bermula hari ini · 🔒 ${lastResult.habitsLocked} lagi dibuka minggu depan`, `${lastResult.habitsCreated - lastResult.habitsLocked} habits start today · 🔒 ${lastResult.habitsLocked} more unlock next week`, `${lastResult.habitsCreated - lastResult.habitsLocked} mulai hari ini · 🔒 ${lastResult.habitsLocked} minggu depan`, `${lastResult.habitsCreated - lastResult.habitsLocked} تبدأ اليوم · 🔒 ${lastResult.habitsLocked} الأسبوع القادم`)}
+                    </div>
+                  )}
                   {doneKids.length > 1 && (
                     <div className="flex -space-x-3 mt-4">
                       {doneKids.map((k, i) => <img key={i} src={avatarSrc(k.avatarId)} alt="" className="w-11 h-11 rounded-full bg-white border-2 border-white object-contain" />)}
@@ -621,6 +659,7 @@ function DiagnosisInner() {
                   )}
                 </div>
                 <div className="pt-4 space-y-2">
+                  <PushPrompt lang={lang} variant="hero" childName={lastResult.nickname} />
                   <ShareProfileButton lang={lang} testId="diag-share"
                     child={{ nickname: lastResult.nickname, avatarId: lastResult.avatarId, age: lastResult.age }}
                     diagnosis={lastResult.diagnosis} previous={lastResult.previous} />
