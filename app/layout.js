@@ -2,8 +2,8 @@ import './globals.css'
 import { Providers } from './providers'
 
 const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-const SHARE_TITLE = 'EQrel — Build Good Habits, Grow Iman'
-const SHARE_DESC = 'Kids build good habits while building their own Islamic world. For Muslim families with children aged 3–12.'
+const SHARE_TITLE = 'EQrel — Build Habits, Grow Iman'
+const SHARE_DESC = 'Build Habits, Grow Iman. Kids grow good habits while building their own Islamic world. For Muslim families with children aged 3–12.'
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -17,13 +17,13 @@ export const metadata = {
     url: '/',
     title: SHARE_TITLE,
     description: SHARE_DESC,
-    images: [{ url: '/og-image.jpg?v=2', width: 1200, height: 630, alt: "EQrel — a child's Islamic village that grows with every good habit" }],
+    images: [{ url: '/og-image.jpg?v=3', width: 1200, height: 630, alt: "EQrel — a child's Islamic village that grows with every good habit" }],
   },
   twitter: {
     card: 'summary_large_image',
     title: SHARE_TITLE,
     description: SHARE_DESC,
-    images: ['/og-image.jpg?v=2'],
+    images: ['/og-image.jpg?v=3'],
   },
   appleWebApp: {
     capable: true,
