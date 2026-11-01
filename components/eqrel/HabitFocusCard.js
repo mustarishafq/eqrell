@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Check, Loader2 } from 'lucide-react'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle } from '@/lib/habitTemplates'
+import { play as playCue } from '@/lib/audio'
+import { haptic } from '@/lib/feedback'
 import { getSessionLabel, groupHabitsBySession, currentSessionFromClock, currentSessionFromPrayerTimes } from '@/lib/prayerSession'
 
 const pick = (lang) => (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'ms' ? ms : lang === 'id' ? id : en)
@@ -35,7 +37,7 @@ function cheer(sessionId, L) {
  * Kid Mode "Now" card — TV-style, time-aware. Shows the ONE habit to do right now
  * (based on prayer-time windows), a big "I did it" button, and what's up next.
  */
-export default function HabitFocusCard({ habits = [], lang = 'en', t, busyHabit, onClaim, onOpenWorld, timings = null }) {
+export default function HabitFocusCard({ habits = [], lang = 'en', t, busyHabit, onClaim, onOpenWorld, timings = null, childId = '' }) {
   const L = pick(lang)
   const [now, setNow] = useState(() => new Date())
   useEffect(() => { const i = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(i) }, [])
@@ -72,6 +74,26 @@ export default function HabitFocusCard({ habits = [], lang = 'en', t, busyHabit,
   const clock = now.toLocaleTimeString(lang === 'ar' ? 'ar' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
   const sessionLabel = getSessionLabel(sessionId, lang)
 
+  // ── Session complete celebration: gentle "Alhamdulillah" + star burst ──
+  // Fires only on the live transition (some pending → all done) for a prayer window,
+  // once per child / window / day — never on page load, never again after undo + redo.
+  const [celebrate, setCelebrate] = useState(0)
+  const prevRef = useRef(null)
+  useEffect(() => {
+    const prev = prevRef.current
+    prevRef.current = { sessionId, done, total }
+    if (!prev || prev.sessionId !== sessionId || sessionId === 'anytime' || total === 0) return
+    if (prev.done < prev.total && done === total) {
+      const day = new Date().toDateString()
+      const storeKey = `eqrel-session-cheer:${childId}:${day}:${sessionId}`
+      try { if (localStorage.getItem(storeKey)) return; localStorage.setItem(storeKey, '1') } catch { /* ignore */ }
+      playCue('alhamdulillah', { volume: 0.45 })
+      haptic.milestone()
+      setCelebrate(Date.now())
+    }
+  }, [sessionId, done, total, childId])
+  useEffect(() => { if (!celebrate) return; const tt = setTimeout(() => setCelebrate(0), 2600); return () => clearTimeout(tt) }, [celebrate])
+
   if (!habits.length) return null
 
   const busyKey = focus ? (focus._isPerPrayer ? `${focus.id}::${focus._sessionInstance}` : focus.id) : null
@@ -83,6 +105,8 @@ export default function HabitFocusCard({ habits = [], lang = 'en', t, busyHabit,
     <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
       className="mt-4 relative overflow-hidden rounded-[28px] shadow-eq-card border-4"
       style={{ backgroundColor: CI.ink, borderColor: CI.green, color: CI.white }} data-testid="kid-focus-card" data-session={sessionId}>
+
+      <AnimatePresence>{celebrate ? <StarBurst key={celebrate} lang={lang} label={sessionLabel} /> : null}</AnimatePresence>
 
       <div className="relative p-4">
         {/* Top bar: LIVE · session · clock */}
@@ -175,5 +199,32 @@ export default function HabitFocusCard({ habits = [], lang = 'en', t, busyHabit,
         )}
       </div>
     </motion.section>
+  )
+}
+
+// 14 CI-yellow / cream stars flying out from the centre + "Alhamdulillah!" pill. Pointer-events none.
+const STAR_COUNT = 14
+function StarBurst({ lang, label }) {
+  const L = pick(lang)
+  const stars = Array.from({ length: STAR_COUNT }, (_, i) => {
+    const a = (i / STAR_COUNT) * Math.PI * 2 + (i % 2 ? 0.2 : 0)
+    const r = 110 + (i % 3) * 38
+    return { x: Math.cos(a) * r, y: Math.sin(a) * r * 0.8, s: 0.8 + (i % 3) * 0.35, c: i % 3 === 0 ? CI.cream : CI.yellow, d: (i % 4) * 0.04 }
+  })
+  return (
+    <motion.div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" initial={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+      data-testid="kid-focus-celebrate" aria-live="polite">
+      {stars.map((st, i) => (
+        <motion.span key={i} className="absolute text-2xl" style={{ color: st.c }}
+          initial={{ x: 0, y: 0, scale: 0, opacity: 0, rotate: 0 }}
+          animate={{ x: st.x, y: st.y, scale: [0, st.s, st.s * 0.7], opacity: [0, 1, 0], rotate: 180 }}
+          transition={{ duration: 1.6, delay: st.d, ease: 'easeOut' }}>★</motion.span>
+      ))}
+      <motion.div className="rounded-3xl px-6 py-3 text-xl font-black shadow-eq-glow border-4" style={{ backgroundColor: CI.ink, borderColor: CI.yellow, color: CI.yellow }}
+        initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: [0.4, 1.12, 1], opacity: 1 }} transition={{ duration: 0.55, ease: 'easeOut' }}>
+        ✨ {L('Alhamdulillah!', 'Alhamdulillah!', 'Alhamdulillah!', 'الحمد لله!')}
+        <span className="block text-[12px] font-extrabold text-center" style={{ color: CI.cream }}>{L(`${label} siap`, `${label} complete`, `${label} selesai`, `اكتمل ${label}`)}</span>
+      </motion.div>
+    </motion.div>
   )
 }

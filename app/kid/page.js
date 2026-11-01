@@ -430,7 +430,7 @@ function KidHomeActive({ router, childId, t, lang }) {
 
         {/* TV-style "Now" card — the one habit to do right now */}
         {!loading && (
-          <HabitFocusCard habits={habits} lang={lang} t={t} busyHabit={busyHabit} onClaim={claimHabit} timings={prayerTimings}
+          <HabitFocusCard habits={habits} lang={lang} t={t} busyHabit={busyHabit} onClaim={claimHabit} timings={prayerTimings} childId={childId}
             onOpenWorld={() => router.push(`/world?childId=${encodeURIComponent(childId)}`)} />
         )}
 
