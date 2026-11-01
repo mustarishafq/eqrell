@@ -114,7 +114,7 @@ function DisplayPageInner() {
   const load = useCallback(async () => {
     const ctrl = new AbortController()
     const abortT = setTimeout(() => ctrl.abort(), 15_000)
-    const opts = { credentials: 'include', signal: ctrl.signal }
+    const opts = { credentials: 'include', signal: ctrl.signal, cache: 'no-store' }
     const safeJson = async (r) => { try { return await r.json() } catch { return {} } }
     try {
       const [cRes, dRes, lRes] = await Promise.all([
@@ -139,6 +139,7 @@ function DisplayPageInner() {
       const cData = cRes.ok ? await safeJson(cRes) : {}
       const dData = await safeJson(dRes)
       const lData = lRes.ok ? await safeJson(lRes) : {}
+      configSigRef.current = JSON.stringify(cData?.config ?? null)
       setConfig(cData?.config ?? null)
       setDisplay(dData)
       setLocation(lData?.location ?? null)
@@ -159,6 +160,26 @@ function DisplayPageInner() {
   }, [])
   loadRef.current = load
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
+
+  // Family photos / display settings: light poll every 15s so a new photo shows on the TV
+  // without restarting it. Only swaps state when the config actually changed.
+  const configSigRef = useRef('')
+  useEffect(() => {
+    const pollConfig = async () => {
+      if (document.hidden) return
+      try {
+        const r = await fetch(`/api/family/display-config?_=${Date.now()}`, { credentials: 'include', cache: 'no-store' })
+        if (!r.ok) return
+        const d = await r.json()
+        const sig = JSON.stringify(d?.config ?? null)
+        if (sig !== configSigRef.current) { configSigRef.current = sig; setConfig(d?.config ?? null) }
+      } catch { /* offline — next tick */ }
+    }
+    const tt = setInterval(pollConfig, 15_000)
+    const onVis = () => { if (!document.hidden) { pollConfig(); loadRef.current?.() } }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(tt); document.removeEventListener('visibilitychange', onVis) }
+  }, [])
   const retryLoad = useCallback(() => { setLoadError(null); load() }, [load])
 
   // ═══ Boot splash — show a motivational quote until data is ready ═══
@@ -189,6 +210,9 @@ function DisplayPageInner() {
       ? p.url.replace('/upload/', '/upload/f_auto,q_auto:eco,w_1280,c_limit/')
       : p.url
   }))
+  // Photos list can shrink/change while the TV is running → keep the index in range
+  const safePhotoIdx = photos.length ? photoIdx % photos.length : 0
+  useEffect(() => { if (photos.length && photoIdx >= photos.length) setPhotoIdx(0) }, [photos.length, photoIdx])
   const slideshowSec = config?.slideshowSec || 10
   useEffect(() => {
     if (photos.length < 2) return
@@ -802,8 +826,8 @@ function DisplayPageInner() {
             {hasPhotos ? (
               <AnimatePresence mode="wait">
                 <motion.img
-                  key={photoIdx}
-                  src={photos[photoIdx].url}
+                  key={`${safePhotoIdx}-${photos[safePhotoIdx].url}`}
+                  src={photos[safePhotoIdx].url}
                   alt=""
                   loading="eager"
                   decoding="async"
@@ -814,7 +838,7 @@ function DisplayPageInner() {
                   className="absolute inset-0 w-full h-full object-cover"
                   style={{
                     willChange: 'opacity',
-                    objectPosition: `${photos[photoIdx].focalX ?? 50}% ${photos[photoIdx].focalY ?? 50}%`,
+                    objectPosition: `${photos[safePhotoIdx].focalX ?? 50}% ${photos[safePhotoIdx].focalY ?? 50}%`,
                   }}
                 />
               </AnimatePresence>
@@ -834,7 +858,7 @@ function DisplayPageInner() {
             )}
 
             {/* Photo caption/title overlay — replaces Family Motto */}
-            {hasPhotos && photos[photoIdx]?.title && (
+            {hasPhotos && photos[safePhotoIdx]?.title && (
               <motion.div
                 key={`title-${photoIdx}`}
                 initial={{ opacity: 0, y: 10 }}
@@ -843,7 +867,7 @@ function DisplayPageInner() {
                 className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-5 pt-14">
                 <div className="text-center">
                   <div className="text-2xl md:text-3xl font-black drop-shadow-lg" style={{ color: '#FFF8E7', textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
-                    {photos[photoIdx].title}
+                    {photos[safePhotoIdx].title}
                   </div>
                 </div>
               </motion.div>

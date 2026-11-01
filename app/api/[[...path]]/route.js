@@ -136,6 +136,8 @@ const CORS = (res) => {
   res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
   res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-ID')
   res.headers.set('Access-Control-Allow-Credentials', 'true')
+  // Never let browsers / TV webviews / CDN cache API responses (stale photos, scores)
+  if (!res.headers.get('Cache-Control')) res.headers.set('Cache-Control', 'no-store, private, max-age=0')
   return res
 }
 

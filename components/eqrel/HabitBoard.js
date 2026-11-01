@@ -114,6 +114,22 @@ const pickSuggestion = (habits, currentSession) => {
 // AutoFitText — single-line text that auto-shrinks font-size to fit container width
 // (Prevents nickname from wrapping to 2 lines; kecil font kalau tak muat)
 // ═══════════════════════════════════════════════════════════════════════════
+// Calls `fn` (on the next frame) only when the element's width really changes.
+function observeWidth(el, fn) {
+  if (typeof ResizeObserver === 'undefined') return () => {}
+  let lastW = el.clientWidth
+  let raf = 0
+  const ro = new ResizeObserver((entries) => {
+    const w = Math.round(entries[0]?.contentRect?.width ?? el.clientWidth)
+    if (Math.abs(w - lastW) < 2) return
+    lastW = w
+    cancelAnimationFrame(raf)
+    raf = requestAnimationFrame(fn)
+  })
+  ro.observe(el)
+  return () => { cancelAnimationFrame(raf); ro.disconnect() }
+}
+
 function AutoFitText({ text, maxPx = 32, minPx = 12, className, style }) {
   const containerRef = useRef(null)
   const textRef = useRef(null)
@@ -137,10 +153,10 @@ function AutoFitText({ text, maxPx = 32, minPx = 12, className, style }) {
     }
     fit()
 
-    // Re-fit on container resize (window resize / TV rotation / etc)
-    const ro = new ResizeObserver(fit)
-    ro.observe(container)
-    return () => ro.disconnect()
+    // Re-fit ONLY when the container WIDTH changes (window resize / TV rotation).
+    // Re-fitting on height changes caused a feedback loop (font reset → height
+    // change → observer fires → reset again) that made the scoreboard shake on TV.
+    return observeWidth(container, fit)
   }, [text, maxPx, minPx])
 
   return (
@@ -187,9 +203,7 @@ function AutoFitMultiText({ text, maxPx = 24, minPx = 11, maxLines = 2, classNam
     }
     fit()
 
-    const ro = new ResizeObserver(fit)
-    ro.observe(container)
-    return () => ro.disconnect()
+    return observeWidth(container, fit)
   }, [text, maxPx, minPx, maxLines])
 
   return (
