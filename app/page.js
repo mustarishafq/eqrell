@@ -25,6 +25,7 @@ import { DigestCard } from '@/components/eqrel/DigestCard'
 import { CoParentSheet } from '@/components/eqrel/CoParentSheet'
 import { HandoverGuide } from '@/components/eqrel/HandoverGuide'
 import { PushPrompt } from '@/components/eqrel/PushPrompt'
+import { RestModeSheet, RestModeBanner } from '@/components/eqrel/RestModeSheet'
 import { CoParentInvite } from '@/components/eqrel/CoParentInvite'
 
 const ASSETS = {
@@ -153,6 +154,7 @@ const ParentDashboard = () => {
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
   const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
+  const [restOpen, setRestOpen] = useState(false)
   const [coParentOpen, setCoParentOpen] = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
   const [guideHasPin, setGuideHasPin] = useState(false)
@@ -518,10 +520,12 @@ const ParentDashboard = () => {
             onDiagnosis={() => (window.location.href = '/diagnosis')}
             onNotifications={() => setNotifyOpen(true)}
             onCoParent={() => setCoParentOpen(true)}
+            onRestMode={() => setRestOpen(true)}
             onRewardShop={() => setRewardShopOpen(true)}
             onLogout={doLogout} />
         )}
         {activeTab === 'home' && (<>
+        <RestModeBanner lang={lang} refreshKey={dataVersion} onOpen={() => setRestOpen(true)} />
         <DigestCard lang={lang} refreshKey={dataVersion} onQuickVerify={() => setQuickVerifyOpen(true)} onSettings={() => setNotifyOpen(true)} />
         <PushPrompt lang={lang} variant="card" />
         <CoParentInvite lang={lang} variant="card" childName={children.length === 1 ? children[0]?.nickname : null} />
@@ -830,6 +834,7 @@ const ParentDashboard = () => {
         onOpenDetailed={() => { setQuickVerifyOpen(false); setVerifySheetOpen(true) }}
       />
       <NotifySettingsSheet open={notifyOpen} onClose={() => setNotifyOpen(false)} lang={lang} />
+      <RestModeSheet open={restOpen} onClose={() => setRestOpen(false)} lang={lang} onChanged={() => setDataVersion(v => v + 1)} />
       <HandoverGuide open={handoverOpen} onClose={() => setHandoverOpen(false)} lang={lang} kids={children}
         hasPin={guideHasPin} onSetPin={() => setPinChangeMode('set')} />
       <CoParentSheet open={coParentOpen} onClose={() => { setCoParentOpen(false); setDataVersion(v => v + 1) }} lang={lang} />

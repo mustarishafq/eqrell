@@ -9,7 +9,7 @@ import webpush from 'web-push'
 import nodeCrypto from 'crypto'
 import {
   verifyClaimDoc, checkAutoTrust, TRUST_DAYS, buildNightDigest, buildMorningDigest, buildWeeklyDigest,
-  sanitizePrefs, DEFAULT_PREFS, localNow, isDue, utcToday,
+  sanitizePrefs, DEFAULT_PREFS, localNow, isDue, utcToday, getRestState, frozenDaysFor, activeRest,
 } from '@/lib/engagement'
 
 // ── Web Push (VAPID keys generated for this app, stored in .env) ──
@@ -52,6 +52,8 @@ async function runDigestCron(db) {
     const sets = {}
     const opts = { lang: prefs.lang, dateStr: utcToday(), viewerId: uid, weekday: local.weekday }
     await unlockDueHabits(db, { familyId: user.familyId })
+    await db.collection('habits').updateMany({ familyId: user.familyId, paused: true, pauseUntil: { $lte: new Date() } },
+      { $set: { paused: false, updatedAt: new Date() }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
     const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, createdAt: 1, onboarding: 1 } })
     const startedAt = fam?.onboarding?.completedAt || fam?.createdAt
     const journeyDay = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000) : 99
@@ -86,7 +88,7 @@ async function ensureSolatCore(db, child, assignedBy = 'system') {
   if (!child?.id) return
   const now = new Date()
   await db.collection('habits').updateMany(
-    { childId: child.id, core: true, paused: true, pauseUntil: { $lte: now } },
+    { childId: child.id, paused: true, pauseUntil: { $lte: now } },
     { $set: { paused: false, updatedAt: now }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
   const wanted = solatCoreFor(childAgeYears(child))
   const existing = await db.collection('habits').find({ childId: child.id, templateId: { $in: SOLAT_IDS }, $or: [{ active: { $ne: false } }, { locked: true }] })
@@ -518,10 +520,11 @@ async function handleRoute(request, { params }) {
         .project({ _id: 0, habitId: 1, dateStr: 1 }).toArray()
       const doneDays = {}
       recent.forEach(c => { (doneDays[c.habitId] = doneDays[c.habitId] || new Set()).add(c.dateStr) })
+      const frozen = await frozenDaysFor(db, user.familyId, childId)
       const streakOf = (hid) => {
         const set = doneDays[hid] || new Set()
         let i = set.has(days7[0]) ? 0 : 1, n = 0
-        while (i < days7.length && set.has(days7[i])) { n++; i++ }
+        while (i < days7.length && (set.has(days7[i]) || frozen.has(days7[i]))) { if (set.has(days7[i])) n++; i++ }
         return Math.min(n, TRUST_DAYS)
       }
       enriched.forEach(h => { h.trustStreak = h.autoVerify ? TRUST_DAYS : streakOf(h.id) })
@@ -537,7 +540,8 @@ async function handleRoute(request, { params }) {
         ? { reason: pausedHabits.find(h => h.core).pauseReason, until: pausedHabits.find(h => h.core).pauseUntil, count: pausedHabits.filter(h => h.core).length }
         : null
 
-      return json({ habits: enriched, lockedHabits: locked, pausedHabits, solatPause, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
+      const restMode = await getRestState(db, user.familyId, childId)
+      return json({ habits: enriched, lockedHabits: locked, pausedHabits, solatPause, restMode, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
     }
 
     // POST /children/:id/habits  → assign a habit (from template or custom)
@@ -1208,7 +1212,8 @@ async function handleRoute(request, { params }) {
       // GET /world/:childId
       if (!action && method === 'GET') {
         const world = await loadOrSeed()
-        return json({ world, child })
+        const restMode = await getRestState(db, user.familyId, childId)
+        return json({ world, child, restMode })
       }
 
       // POST /world/:childId → replace full buildings array (used by auto-save)
@@ -1754,6 +1759,110 @@ async function handleRoute(request, { params }) {
 
     // POST /family/zikir/tap  → increment family-shared zikir counter by 1 (auto-reset new day)
 
+    // ══════════ TV DEVICE LINK (TV-first: TV shows QR + code, parent approves on phone) ══════════
+    // POST /tv/device/start                 (no auth)  → { deviceId, secret, code, expiresAt }
+    // POST /tv/device/connect {deviceId,secret} (no auth) → { status: pending|expired|approved|revoked } (+ session cookie when approved)
+    // GET  /tv/device/lookup?code=          (parent)   → { device: { code, label, expiresAt } }
+    // POST /tv/device/approve {code, name?} (parent)   → links TV to the family
+    // GET  /family/tv-devices               (parent)   → connected TVs
+    // POST /family/tv-devices/:id/revoke    (parent)   → disconnect a TV
+    if (route.startsWith('/tv/device/') || route.startsWith('/family/tv-devices')) {
+      const db = await getDb()
+      const col = db.collection('tv_devices')
+      const sha = (v) => nodeCrypto.createHash('sha256').update(String(v)).digest('hex')
+      const tvLabel = (ua = '') => {
+        const u = String(ua)
+        if (/Tizen/i.test(u)) return 'Samsung TV'
+        if (/Web0S|webOS|NetCast/i.test(u)) return 'LG TV'
+        if (/VIDAA|Hisense/i.test(u)) return 'Hisense TV'
+        if (/MiTV|Xiaomi|PatchWall/i.test(u)) return 'Xiaomi TV'
+        if (/TCL/i.test(u)) return 'TCL TV'
+        if (/BRAVIA|Sony/i.test(u)) return 'Sony TV'
+        if (/AFT[A-Z]/.test(u)) return 'Fire TV'
+        if (/Android TV|GoogleTV|; TV\b|SmartTV|SMART-TV|HbbTV/i.test(u)) return 'Smart TV'
+        if (/Android/i.test(u)) return 'Android device'
+        if (/iPhone|iPad/i.test(u)) return 'iPhone / iPad'
+        return 'Web browser'
+      }
+      const parentOnly = async () => {
+        const session = await getSession()
+        if (!session) return { error: err('unauthorized', 401) }
+        if (session.role === 'tv') return { error: err('forbidden', 403) }
+        const user = await db.collection('users').findOne({ id: session.userId })
+        if (!user?.familyId) return { error: err('No family', 400) }
+        return { session, user }
+      }
+
+      if (route === '/tv/device/start' && method === 'POST') {
+        await col.deleteMany({ status: 'pending', expiresAt: { $lt: new Date(Date.now() - 86400000) } })
+        let code = ''
+        for (let i = 0; i < 8; i++) {
+          code = String(nodeCrypto.randomInt(100000, 1000000))
+          const clash = await col.findOne({ code, status: 'pending', expiresAt: { $gt: new Date() } }, { projection: { _id: 1 } })
+          if (!clash) break
+        }
+        const deviceId = crypto.randomUUID()
+        const secret = nodeCrypto.randomBytes(24).toString('hex')
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+        const ua = request.headers.get('user-agent') || ''
+        await col.insertOne({ id: deviceId, secretHash: sha(secret), code, status: 'pending', label: tvLabel(ua), userAgent: ua.slice(0, 300), createdAt: new Date(), expiresAt })
+        return json({ deviceId, secret, code, expiresAt })
+      }
+
+      if (route === '/tv/device/connect' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const dev = body.deviceId ? await col.findOne({ id: String(body.deviceId) }) : null
+        if (!dev || !body.secret || dev.secretHash !== sha(body.secret)) return json({ status: 'unknown' }, 404)
+        if (dev.revokedAt) return json({ status: 'revoked' })
+        if (dev.status === 'pending') return json({ status: new Date(dev.expiresAt) < new Date() ? 'expired' : 'pending', expiresAt: dev.expiresAt })
+        const owner = await db.collection('users').findOne({ id: dev.approvedBy })
+        if (!owner?.familyId || owner.familyId !== dev.familyId) return json({ status: 'revoked' })
+        await createSession({ userId: owner.id, email: owner.email, familyId: owner.familyId, role: 'tv', tvDeviceId: dev.id })
+        await col.updateOne({ id: dev.id }, { $set: { lastSeenAt: new Date() } })
+        const fam = await db.collection('families').findOne({ id: dev.familyId }, { projection: { _id: 0, familyName: 1 } })
+        return json({ status: 'approved', familyName: fam?.familyName || '', name: dev.name })
+      }
+
+      if (route === '/tv/device/lookup' && method === 'GET') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const code = String(new URL(request.url).searchParams.get('code') || '').replace(/\D/g, '')
+        const dev = /^\d{6}$/.test(code) ? await col.findOne({ code, status: 'pending', expiresAt: { $gt: new Date() } }) : null
+        if (!dev) return err('Code invalid or expired', 404)
+        return json({ device: { code: dev.code, label: dev.label, expiresAt: dev.expiresAt } })
+      }
+
+      if (route === '/tv/device/approve' && method === 'POST') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const body = await request.json().catch(() => ({}))
+        const code = String(body.code || '').replace(/\D/g, '')
+        if (!/^\d{6}$/.test(code)) return err('Invalid code format', 400)
+        const name = String(body.name || '').trim().slice(0, 40) || 'Family TV'
+        const r = await col.findOneAndUpdate(
+          { code, status: 'pending', expiresAt: { $gt: new Date() } },
+          { $set: { status: 'approved', familyId: a.user.familyId, approvedBy: a.user.id, approvedAt: new Date(), name }, $unset: { code: 1 } },
+          { returnDocument: 'after' })
+        const dev = r?.value !== undefined ? r.value : r
+        if (!dev) return err('Code invalid or expired', 404)
+        await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId: a.user.familyId, type: 'tv_linked', deviceId: dev.id, name, createdAt: new Date() })
+        return json({ ok: true, device: { id: dev.id, name, label: dev.label } })
+      }
+
+      if (route === '/family/tv-devices' && method === 'GET') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const list = await col.find({ familyId: a.user.familyId, status: 'approved', revokedAt: { $exists: false } })
+          .sort({ approvedAt: -1 }).project({ _id: 0, id: 1, name: 1, label: 1, approvedAt: 1, lastSeenAt: 1 }).toArray()
+        return json({ devices: list })
+      }
+
+      const rv = route.match(/^\/family\/tv-devices\/([^/]+)\/revoke$/)
+      if (rv && method === 'POST') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const r = await col.updateOne({ id: rv[1], familyId: a.user.familyId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokedBy: a.user.id } })
+        if (!r.matchedCount) return err('TV not found', 404)
+        return json({ ok: true })
+      }
+    }
+
     // POST /family/tv-pair/generate  → parent creates a 6-digit code (valid 15 min) for TV pairing
     if (route === '/family/tv-pair/generate' && method === 'POST') {
       const session = await getSession()
@@ -2088,6 +2197,85 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, accepted: true, runId }, 202)
     }
 
+    // ══════════ MOD MUSAFIR & HARI REHAT (family-wide or per child) ══════════
+    // GET  /family/rest-mode → { restMode (family) | null, children: [{ id, nickname, restMode }] }
+    // POST /family/rest-mode { reason: 'musafir'|'rehat', days?: 1..14, until?: 'YYYY-MM-DD', childId? }
+    //      → pause non-core habits (whole family or one child) + freeze streak days. Solat Teras stays on.
+    // POST /family/rest-mode/end { childId? } → resume now (future frozen days removed; today stays frozen)
+    if (route.startsWith('/family/rest-mode') && (method === 'GET' || method === 'POST')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const familyId = user.familyId
+      const fam = await db.collection('families').findOne({ id: familyId }, { projection: { _id: 0, restMode: 1, frozenDays: 1 } })
+      const famRest = activeRest(fam?.restMode)
+      const kids = await db.collection('children').find({ familyId }).sort({ createdAt: 1 })
+        .project({ _id: 0, id: 1, nickname: 1, name: 1, restMode: 1, frozenDays: 1 }).toArray()
+      const dayStr = (d) => d.toISOString().slice(0, 10)
+      const today = dayStr(new Date())
+      const isRestPause = { $in: ['musafir', 'rehat'] }
+
+      if (method === 'GET' && route === '/family/rest-mode') {
+        return json({ restMode: famRest, children: kids.map(k => ({ id: k.id, nickname: k.nickname || k.name || '', restMode: activeRest(k.restMode) })) })
+      }
+
+      const body = await request.json().catch(() => ({}))
+      const childId = body.childId ? String(body.childId) : null
+      const kid = childId ? kids.find(k => k.id === childId) : null
+      if (childId && !kid) return err('child not found', 404)
+
+      if (method === 'POST' && route === '/family/rest-mode/end') {
+        if (kid) {
+          if (famRest) return err('family_rest_active', 409)
+          const kept = (kid.frozenDays || []).filter(d => d <= today)
+          const r = await db.collection('habits').updateMany({ familyId, childId: kid.id, paused: true, pauseReason: isRestPause },
+            { $set: { paused: false, updatedAt: new Date() }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
+          await db.collection('children').updateOne({ id: kid.id }, { $set: { frozenDays: kept }, $unset: { restMode: 1 } })
+          await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId, childId: kid.id, type: 'rest_mode_off', scope: 'child', createdAt: new Date() })
+          return json({ ok: true, resumed: r.modifiedCount, scope: 'child' })
+        }
+        const kept = (fam?.frozenDays || []).filter(d => d <= today)
+        const r = await db.collection('habits').updateMany({ familyId, paused: true, pauseReason: isRestPause },
+          { $set: { paused: false, updatedAt: new Date() }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
+        await db.collection('families').updateOne({ id: familyId }, { $set: { frozenDays: kept }, $unset: { restMode: 1 } })
+        await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId, type: 'rest_mode_off', scope: 'family', createdAt: new Date() })
+        return json({ ok: true, resumed: r.modifiedCount, scope: 'family' })
+      }
+
+      if (method === 'POST' && route === '/family/rest-mode') {
+        const reason = ['musafir', 'rehat'].includes(body.reason) ? body.reason : null
+        if (!reason) return err('reason must be musafir or rehat', 400)
+        if (kid && famRest) return err('family_rest_active', 409)
+        const now = new Date()
+        const startDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+        let days = parseInt(body.days, 10) || 0
+        if (body.until && /^\d{4}-\d{2}-\d{2}$/.test(String(body.until))) {
+          const end = new Date(`${body.until}T00:00:00Z`)
+          if (isNaN(end.getTime()) || end < startDay) return err('until must be today or later', 400)
+          days = Math.round((end - startDay) / 86400000) + 1
+        }
+        days = Math.max(1, Math.min(14, days || 1))
+        const dates = Array.from({ length: days }, (_, i) => dayStr(new Date(startDay.getTime() + i * 86400000)))
+        const until = new Date(startDay.getTime() + days * 86400000)
+        const restMode = { reason, days, from: dates[0], to: dates[dates.length - 1], until, startedBy: session.userId, startedAt: now, scope: kid ? 'child' : 'family' }
+        if (kid) {
+          await db.collection('children').updateOne({ id: kid.id }, { $set: { restMode }, $addToSet: { frozenDays: { $each: dates } } })
+        } else {
+          await db.collection('families').updateOne({ id: familyId }, { $set: { restMode }, $addToSet: { frozenDays: { $each: dates } } })
+          // Family-wide rest supersedes any per-child rest (their frozen days are kept)
+          await db.collection('children').updateMany({ familyId, restMode: { $exists: true } }, { $unset: { restMode: 1 } })
+        }
+        // Pause every NON-core habit (Solat Teras stays on — jamak/qasar while travelling)
+        const r = await db.collection('habits').updateMany(
+          { familyId, ...(kid ? { childId: kid.id } : {}), active: { $ne: false }, core: { $ne: true }, $or: [{ paused: { $ne: true } }, { pauseReason: isRestPause }] },
+          { $set: { paused: true, pauseReason: reason, pauseUntil: until, pausedAt: now, pausedBy: session.userId, updatedAt: now } })
+        await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId, ...(kid ? { childId: kid.id } : {}), type: 'rest_mode_on', scope: kid ? 'child' : 'family', reason, days, createdAt: now })
+        return json({ ok: true, restMode: kid ? { ...restMode, childId: kid.id } : restMode, paused: r.modifiedCount })
+      }
+    }
+
     // ══════════ SOLAT TERAS: pause / resume ══════════
     // POST /children/:id/solat-pause { reason: 'haid'|'sakit', days?: 1..10 }
     // POST /children/:id/solat-resume
@@ -2397,7 +2585,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return json({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
 
-      const children = await db.collection('children').find({ familyId: user.familyId }).project({ id: 1 }).toArray()
+      const children = await db.collection('children').find({ familyId: user.familyId }).project({ id: 1, frozenDays: 1 }).toArray()
       const childIds = children.map(c => c.id)
       if (childIds.length === 0) return json({ streak: 0, longestStreak: 0, todayDone: false, days: [] })
 
@@ -2424,6 +2612,11 @@ async function handleRoute(request, { params }) {
         return `${y}-${m}-${day}`
       }
 
+      const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, frozenDays: 1, restMode: 1 } })
+      const frozenSet = new Set(fam?.frozenDays || [])
+      // A day frozen for EVERY child (per-child rest) also freezes the family streak
+      const kidSets = children.map(c => new Set(c.frozenDays || []))
+      kidSets[0].forEach(d => { if (kidSets.every(ks => ks.has(d))) frozenSet.add(d) })
       const todayStr = fmt(today)
       const todayDone = doneSet.has(todayStr)
 
@@ -2431,10 +2624,14 @@ async function handleRoute(request, { params }) {
       let streak = 0
       const cursor = new Date(today)
       if (!todayDone) cursor.setUTCDate(cursor.getUTCDate() - 1)
-      while (streak <= LOOKBACK) {
-        if (doneSet.has(fmt(cursor))) {
+      let steps = 0
+      while (steps++ <= LOOKBACK) {
+        const k = fmt(cursor)
+        if (doneSet.has(k)) {
           streak++
           cursor.setUTCDate(cursor.getUTCDate() - 1)
+        } else if (frozenSet.has(k)) {
+          cursor.setUTCDate(cursor.getUTCDate() - 1)   // Mod Musafir / Hari Rehat — frozen, not broken
         } else break
       }
 

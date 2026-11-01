@@ -6,6 +6,7 @@ import { ArrowLeft, Sparkles, Package, Volume2, VolumeX } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { haptic } from '@/lib/feedback'
+import { RestWorldAmbience } from '@/components/eqrel/RestModeSheet'
 import { useLang } from '@/lib/i18n/LangProvider'
 import audio, { installAutoPrime, isMuted, toggleMuted, bismillah, alhamdulillah, astaghfirullah } from '@/lib/audio'
 import {
@@ -101,6 +102,7 @@ function WorldPageInner() {
   const childId = searchParams.get('childId')
   const { lang } = useLang()  // Follow user's global language toggle
   const [child, setChild] = useState(null)
+  const [restMode, setRestMode] = useState(null)   // Mod Musafir / Hari Rehat
   const [worldState, setWorldState] = useState(null)
   // Ref that mirrors worldState — used to detect "first load" inside load()
   // without adding worldState as a dependency of the useCallback (which would
@@ -266,6 +268,7 @@ function WorldPageInner() {
         setWorldState(data.world)
         worldStateRef.current = data.world
         setChild(data.child)
+        setRestMode(data.restMode || null)
         const hasMusalla = (data.world.buildings || []).some(b => b.templateId === 'musalla')
         if (!hasMusalla) {
           const seen = typeof window !== 'undefined' &&
@@ -817,8 +820,10 @@ function WorldPageInner() {
           Each demerit adds a semi-opaque grey layer + drift animation.
           Tapping ANY cloud opens IstighfarModal — 10× Astaghfirullah clears
           one cloud (backend decrements demeritCount by 1 via /demerit endpoint). */}
+      {/* Mod Musafir / Hari Rehat — calm ambience, village stays bright (clouds hidden, not cleared) */}
+      {!loading && worldState && <RestWorldAmbience rest={restMode} lang={lang} />}
       <CloudOverlay
-        demeritCount={worldState?.demeritCount || 0}
+        demeritCount={restMode ? 0 : (worldState?.demeritCount || 0)}
         lang={lang}
         onOpenIstighfar={() => setIstighfarOpen(true)}
       />

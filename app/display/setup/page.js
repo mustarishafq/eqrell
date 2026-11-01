@@ -10,6 +10,7 @@ import PhotoUploader from '@/components/eqrel/PhotoUploader'
 import PhotoEditor from '@/components/eqrel/PhotoEditor'
 import TVPreview from '@/components/eqrel/TVPreview'
 import TVTutorialModal from '@/components/eqrel/TVTutorialModal'
+import ConnectTVSection from '@/components/eqrel/ConnectTVSection'
 import LocationPicker from '@/components/eqrel/LocationPicker'
 import { QURAN_RECITERS, SURAH_LIST, ISLAMIC_PLAYLISTS, buildQuranUrl, buildIslamicPlaylist, resolveCustomPlaylist } from '@/lib/audioLibrary'
 
@@ -314,20 +315,8 @@ export default function DisplaySetupPage() {
           )}
         </section>
 
-        {/* Cast to TV */}
-        <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h2 className="font-extrabold text-emerald-900 text-sm flex items-center gap-2">
-              <span>📺</span> Cast to TV
-            </h2>
-            <button onClick={() => setShowTVTutorial(true)}
-              className="rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-extrabold px-2.5 py-1 active:scale-95 flex items-center gap-1 flex-shrink-0">
-              <span>❓</span> Cara Buka di TV
-            </button>
-          </div>
-          <p className="text-[11px] text-emerald-800/60 mb-3">Buka Chrome/Safari di TV, pergi ke <span className="font-bold">eqrel.app/tv</span>, masukkan kod di bawah</p>
-          <TVPairCode />
-        </section>
+        {/* Connect a TV — TV-first QR link (+ legacy phone code) */}
+        <ConnectTVSection onHelp={() => setShowTVTutorial(true)} legacy={<TVPairCode />} />
 
         {/* Dim Mode */}
         <section className="bg-white rounded-2xl border-2 border-eq-cream p-4 mb-4">
@@ -614,7 +603,7 @@ const TVPairCode = () => {
     return (
       <button onClick={generate} disabled={loading}
         className="w-full rounded-xl bg-emerald-500 text-white font-extrabold py-3 text-sm active:scale-95 disabled:opacity-50">
-        {loading ? 'Menjana...' : '🔑 Jana Kod TV Baru'}
+        {loading ? 'Generating…' : '🔑 Generate TV code'}
       </button>
     )
   }
@@ -622,7 +611,7 @@ const TVPairCode = () => {
   return (
     <div>
       <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4 shadow-lg text-center">
-        <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-black mb-1">Kod Pairing (15 min)</div>
+        <div className="text-[10px] uppercase tracking-widest text-emerald-100 font-black mb-1">Pairing code (15 min)</div>
         <div className="text-5xl font-black tabular-nums tracking-widest my-1" style={{ letterSpacing: '0.3em' }}>{code}</div>
         <div className="flex gap-2 mt-3">
           <button onClick={copy} className="flex-1 rounded-lg bg-white/20 backdrop-blur px-3 py-1.5 text-xs font-extrabold active:scale-95">
@@ -634,9 +623,9 @@ const TVPairCode = () => {
         </div>
       </div>
       <ol className="mt-3 space-y-1 text-[11px] text-emerald-800/75 list-decimal list-inside">
-        <li>Buka browser di TV / Chromecast</li>
-        <li>Lawat <span className="font-bold font-mono">eqrel.app/tv</span></li>
-        <li>Masukkan kod di atas → TV auto-load Family Display</li>
+        <li>Open the browser on the TV</li>
+        <li>Go to <span className="font-bold font-mono">{typeof window !== 'undefined' ? window.location.host : 'eqrel.app'}/tv</span> → “I have a code from the app”</li>
+        <li>Enter the code above → the TV opens the Family Display</li>
       </ol>
     </div>
   )

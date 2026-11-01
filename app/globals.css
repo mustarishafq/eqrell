@@ -87,3 +87,21 @@
   50%  { background-position: 100% 50%, 0% 50%, 50% 100%; }
   100% { background-position: 0% 0%, 100% 100%, 50% 0%; }
 }
+
+/* ═══ TV Lite mode — older / weaker smart-TV browsers (TCL, Hisense, Xiaomi…) ═══
+   Toggled via <html class="eq-lite"> from lib/tvClient.js. Kills costly blur and
+   looping animations; layout is unchanged. */
+html.eq-lite *, html.eq-lite *::before, html.eq-lite *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ═══ Remote-control (D-pad) focus — big, obvious focus ring on TV pages ═══ */
+.tv-focus:focus, .tv-focus:focus-visible {
+  outline: 4px solid #FFB703 !important;
+  outline-offset: 3px;
+  transform: scale(1.04);
+}

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
+import { getTvCreds, connectTvDevice, detectLite, applyLite } from '@/lib/tvClient'
 import { ArrowLeft, MapPin, Settings, Volume2, VolumeX, Moon, Sun } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
@@ -106,6 +107,10 @@ function DisplayPageInner() {
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState(null)
   const loadedRef = useRef(false)
+  const resumeTriedRef = useRef(false)
+  const loadRef = useRef(null)
+  const [isLinkedTv, setIsLinkedTv] = useState(false)
+  useEffect(() => { setIsLinkedTv(forceTv || !!getTvCreds()) }, [forceTv])
   const load = useCallback(async () => {
     const ctrl = new AbortController()
     const abortT = setTimeout(() => ctrl.abort(), 15_000)
@@ -118,6 +123,12 @@ function DisplayPageInner() {
         fetch('/api/family/prayer-location', opts),
       ])
       if (cRes.status === 401 || dRes.status === 401) {
+        // Linked TV whose cookie was wiped → silently re-issue the session from saved device creds
+        if (!resumeTriedRef.current && getTvCreds()) {
+          resumeTriedRef.current = true
+          const res = await connectTvDevice()
+          if (res.status === 'approved') { resumeTriedRef.current = false; setTimeout(() => loadRef.current?.(), 50); return }
+        }
         if (!loadedRef.current) setLoadError('auth')
         return
       }
@@ -146,6 +157,7 @@ function DisplayPageInner() {
       clearTimeout(abortT)
     }
   }, [])
+  loadRef.current = load
   useEffect(() => { load(); const tt = setInterval(load, 60_000); return () => clearInterval(tt) }, [load])
   const retryLoad = useCallback(() => { setLoadError(null); load() }, [load])
 
@@ -542,7 +554,9 @@ function DisplayPageInner() {
       auth: {
         icon: '🔐',
         title: L('Sesi anda telah tamat', 'Your session has ended', 'Sesi kamu telah berakhir', 'انتهت الجلسة'),
-        desc: L('Sila log masuk semula untuk membuka Paparan Keluarga.', 'Please sign in again to open the Family Display.', 'Silakan masuk lagi untuk membuka Tampilan Keluarga.', 'يرجى تسجيل الدخول مرة أخرى.'),
+        desc: isLinkedTv
+          ? L('TV ini telah diputuskan dari keluarga anda. Tekan butang di bawah dan imbas kod QR sekali lagi.', 'This TV was disconnected from your family. Press the button below and scan the QR again.', 'TV ini telah diputus dari keluarga. Tekan tombol di bawah dan pindai QR lagi.', 'تم فصل هذا التلفاز. اضغط الزر أدناه وامسح رمز QR مرة أخرى.')
+          : L('Sila log masuk semula untuk membuka Paparan Keluarga.', 'Please sign in again to open the Family Display.', 'Silakan masuk lagi untuk membuka Tampilan Keluarga.', 'يرجى تسجيل الدخول مرة أخرى.'),
       },
       nofamily: {
         icon: '👨‍👩‍👧',
@@ -572,9 +586,9 @@ function DisplayPageInner() {
           <p className="text-sm md:text-base opacity-75 mb-6 leading-relaxed">{errInfo.desc}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {loadError === 'auth' ? (
-              <button data-testid="display-error-login" onClick={() => router.push('/')}
-                className="rounded-xl px-6 py-3 font-extrabold text-slate-900 active:scale-95 shadow-lg" style={{ backgroundColor: '#FFB703' }}>
-                {L('Log Masuk', 'Sign In', 'Masuk', 'تسجيل الدخول')}
+              <button data-testid="display-error-login" onClick={() => router.push(isLinkedTv ? '/tv' : '/')} autoFocus
+                className="tv-focus rounded-xl px-6 py-3 font-extrabold text-slate-900 active:scale-95 shadow-lg" style={{ backgroundColor: '#FFB703' }}>
+                {isLinkedTv ? `📺 ${L('Sambung TV ini semula', 'Connect this TV again', 'Hubungkan TV ini lagi', 'أعد ربط هذا التلفاز')}` : L('Log Masuk', 'Sign In', 'Masuk', 'تسجيل الدخول')}
               </button>
             ) : (
               <button data-testid="display-error-retry" onClick={retryLoad}
@@ -926,9 +940,14 @@ function DisplayPageInner() {
 // useSearchParams() must sit under a <Suspense> boundary for Next.js 15
 // static prerender (`next build`). Fallback mirrors the boot splash look.
 export default function DisplayPage() {
+  // Lite mode for older / weaker smart-TV browsers: no blur, no looping animations
+  const [lite, setLite] = useState(false)
+  useEffect(() => { setLite(applyLite(detectLite())) }, [])
   return (
-    <Suspense fallback={<DisplayLoadingSplash lang="ms" visible />}>
-      <DisplayPageInner />
-    </Suspense>
+    <MotionConfig reducedMotion={lite ? 'always' : 'user'}>
+      <Suspense fallback={<DisplayLoadingSplash lang="en" visible />}>
+        <DisplayPageInner />
+      </Suspense>
+    </MotionConfig>
   )
 }

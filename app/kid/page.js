@@ -17,6 +17,7 @@ import { getTutorial } from '@/lib/tutorials'
 import { QuizSheet } from '@/components/eqrel/QuizSheet'
 import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 import { haptic, showBurst } from '@/lib/feedback'
+import { KidRestBanner } from '@/components/eqrel/RestModeSheet'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -129,6 +130,7 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
   const [solatPause, setSolatPause] = useState(null)
+  const [restMode, setRestMode] = useState(null)
   const [welcomeOpen, setWelcomeOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1')
   const closeWelcome = () => {
     setWelcomeOpen(false)
@@ -198,6 +200,7 @@ function KidHomeActive({ router, childId, t, lang }) {
       setChild(found || null)
       setHabits(hData.habits || [])
       setSolatPause(hData.solatPause || null)
+      setRestMode(hData.restMode || null)
       setRewardRequests(rData.requests || [])
       setCustomRewards(catData.custom || [])
       setMyProposals(pData.proposals || [])
@@ -694,6 +697,8 @@ function KidHomeActive({ router, childId, t, lang }) {
             </button>
           </div>
         )}
+
+        <KidRestBanner rest={restMode} lang={lang} />
 
         {solatPause && (
           <div className="mt-4 rounded-3xl bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-100 px-4 py-3 flex items-center gap-3" data-testid="kid-solat-paused">

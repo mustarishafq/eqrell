@@ -1,482 +1,197 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Tv, Cast, Smartphone, Chrome, Home, Wifi, KeyRound, Globe, Download, CheckCircle2 } from 'lucide-react'
+import { X, Tv, Cast } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
 
 /**
- * TVTutorialModal — Panduan cara buka EQrel Family Display di TV
- * 3 tab: Browser TV, Cast Phone, Install PWA
- * Fully i18n: ms / en / id / ar (with RTL support for ar)
+ * TVTutorialModal — brand-by-brand guide to open EQrel on a TV (TV-first QR link),
+ * plus a "cast your phone screen" guide for TVs without a usable browser.
+ * Remote-friendly: big focus rings, Back/Escape closes. Langs: en (default), ms, id, ar.
  */
-export default function TVTutorialModal({ open, onClose, defaultTab = 'browser' }) {
-  const { lang, dir } = useLang()
-  const [tab, setTab] = useState(defaultTab)
-  const L = TR[lang] || TR.ms
-  const isRTL = dir === 'rtl'
+const BACK_KEYS = new Set(['Escape', 'GoBack', 'BrowserBack', 'Backspace'])
+const BACK_CODES = new Set([10009, 461, 27])   // Tizen back, webOS back, Esc
 
+const T = {
+  en: {
+    title: 'Open EQrel on your TV', sub: 'Pick your TV — 3 simple steps', fast: 'Every TV with a browser:',
+    fastSteps: (h) => [`Open the browser on the TV and go to ${h}/tv`, 'A QR code appears — scan it with your phone camera', 'Tap “Connect this TV” on your phone. Done — no typing codes!'],
+    bookmark: 'Tip: bookmark the page or add it to the TV home screen so next time it opens in one click.',
+    cast: 'No browser? Cast from phone',
+    brands: {
+      android: { name: 'Android / Google TV', who: 'TCL · Xiaomi · Sony · Philips · Sharp · Haier', steps: (h) => ['Open Google Play on the TV and install “TV Bro” (free browser)', `Open TV Bro and type ${h}/tv`, 'Scan the QR with your phone and tap Connect'], note: 'Xiaomi TVs without Google Play (China ROM): use “Cast from phone”.' },
+      samsung: { name: 'Samsung', who: 'Tizen Smart TV', steps: (h) => ['Press Home → Apps → open “Internet”', `Select the address bar and type ${h}/tv`, 'Scan the QR with your phone and tap Connect'], note: 'Samsung 2018+ also supports AirPlay from iPhone.' },
+      lg: { name: 'LG', who: 'webOS Smart TV', steps: (h) => ['Press Home → open “Web Browser”', `Type ${h}/tv in the address bar`, 'Scan the QR with your phone and tap Connect'], note: 'Use the Magic Remote pointer or arrow keys to move around.' },
+      hisense: { name: 'Hisense / Toshiba', who: 'VIDAA OS', steps: (h) => ['Press Home → Apps → open “Browser”', `Type ${h}/tv`, 'Scan the QR with your phone and tap Connect'], note: 'No Browser app? Update the TV software, or use “Cast from phone”.' },
+      fire: { name: 'Fire TV', who: 'Amazon Fire TV Stick', steps: (h) => ['Open Find → search “Silk Browser” → install', `Open Silk and go to ${h}/tv`, 'Scan the QR with your phone and tap Connect'], note: '' },
+    },
+    castTitle: 'No browser on the TV? Mirror your phone',
+    castBlocks: (h) => [
+      { t: 'Android phone → Chromecast / Google TV / Miracast TV', s: ['Open Quick Settings and tap “Cast”, “Smart View” (Samsung) or “Screen cast” (Xiaomi)', 'Choose your TV', `On the phone open ${h}/display and turn the phone sideways`] },
+      { t: 'iPhone → Apple TV / AirPlay TV (Samsung, LG, Sony 2018+)', s: ['Open Control Centre → “Screen Mirroring”', 'Choose your TV', `Open ${h}/display in Safari and turn the phone sideways`] },
+    ],
+    castNote: 'Keep the phone charging while mirroring. For an always-on display, a low-cost Google TV stick works best.',
+    close: 'Close',
+  },
+  ms: {
+    title: 'Buka EQrel di TV anda', sub: 'Pilih TV anda — 3 langkah mudah', fast: 'Semua TV yang ada pelayar:',
+    fastSteps: (h) => [`Buka pelayar di TV dan pergi ke ${h}/tv`, 'Kod QR akan muncul — imbas dengan kamera telefon', 'Tekan “Sambung TV ini” di telefon. Siap — tak perlu taip kod!'],
+    bookmark: 'Tip: simpan (bookmark) halaman ini atau tambah ke skrin utama TV supaya lain kali buka dengan satu klik.',
+    cast: 'Tiada pelayar? Cast dari telefon',
+    brands: {
+      android: { name: 'Android / Google TV', who: 'TCL · Xiaomi · Sony · Philips · Sharp · Haier', steps: (h) => ['Buka Google Play di TV dan pasang “TV Bro” (pelayar percuma)', `Buka TV Bro dan taip ${h}/tv`, 'Imbas QR dengan telefon dan tekan Sambung'], note: 'TV Xiaomi tanpa Google Play (ROM China): guna “Cast dari telefon”.' },
+      samsung: { name: 'Samsung', who: 'Tizen Smart TV', steps: (h) => ['Tekan Home → Apps → buka “Internet”', `Pilih bar alamat dan taip ${h}/tv`, 'Imbas QR dengan telefon dan tekan Sambung'], note: 'Samsung 2018+ juga sokong AirPlay dari iPhone.' },
+      lg: { name: 'LG', who: 'webOS Smart TV', steps: (h) => ['Tekan Home → buka “Web Browser”', `Taip ${h}/tv di bar alamat`, 'Imbas QR dengan telefon dan tekan Sambung'], note: 'Guna penunjuk Magic Remote atau butang anak panah.' },
+      hisense: { name: 'Hisense / Toshiba', who: 'VIDAA OS', steps: (h) => ['Tekan Home → Apps → buka “Browser”', `Taip ${h}/tv`, 'Imbas QR dengan telefon dan tekan Sambung'], note: 'Tiada app Browser? Kemas kini perisian TV, atau guna “Cast dari telefon”.' },
+      fire: { name: 'Fire TV', who: 'Amazon Fire TV Stick', steps: (h) => ['Buka Find → cari “Silk Browser” → pasang', `Buka Silk dan pergi ke ${h}/tv`, 'Imbas QR dengan telefon dan tekan Sambung'], note: '' },
+    },
+    castTitle: 'TV tiada pelayar? Paparkan skrin telefon',
+    castBlocks: (h) => [
+      { t: 'Telefon Android → Chromecast / Google TV / TV Miracast', s: ['Buka Quick Settings, tekan “Cast”, “Smart View” (Samsung) atau “Screen cast” (Xiaomi)', 'Pilih TV anda', `Di telefon buka ${h}/display dan pusingkan telefon melintang`] },
+      { t: 'iPhone → Apple TV / TV AirPlay (Samsung, LG, Sony 2018+)', s: ['Buka Control Centre → “Screen Mirroring”', 'Pilih TV anda', `Buka ${h}/display di Safari dan pusingkan telefon melintang`] },
+    ],
+    castNote: 'Pastikan telefon dicas semasa cast. Untuk paparan sepanjang masa, Google TV stick murah adalah pilihan terbaik.',
+    close: 'Tutup',
+  },
+  id: {
+    title: 'Buka EQrel di TV kamu', sub: 'Pilih TV kamu — 3 langkah mudah', fast: 'Semua TV yang punya browser:',
+    fastSteps: (h) => [`Buka browser di TV dan kunjungi ${h}/tv`, 'Kode QR muncul — pindai dengan kamera HP', 'Ketuk “Hubungkan TV ini” di HP. Selesai — tanpa ketik kode!'],
+    bookmark: 'Tips: simpan halaman ini atau tambahkan ke layar utama TV agar berikutnya cukup satu klik.',
+    cast: 'Tanpa browser? Cast dari HP',
+    brands: {
+      android: { name: 'Android / Google TV', who: 'TCL · Xiaomi · Sony · Philips · Sharp · Polytron', steps: (h) => ['Buka Google Play di TV dan pasang “TV Bro” (browser gratis)', `Buka TV Bro dan ketik ${h}/tv`, 'Pindai QR dengan HP lalu ketuk Hubungkan'], note: 'TV Xiaomi tanpa Google Play: gunakan “Cast dari HP”.' },
+      samsung: { name: 'Samsung', who: 'Tizen Smart TV', steps: (h) => ['Tekan Home → Apps → buka “Internet”', `Ketik ${h}/tv`, 'Pindai QR dengan HP lalu ketuk Hubungkan'], note: '' },
+      lg: { name: 'LG', who: 'webOS Smart TV', steps: (h) => ['Tekan Home → buka “Web Browser”', `Ketik ${h}/tv`, 'Pindai QR dengan HP lalu ketuk Hubungkan'], note: '' },
+      hisense: { name: 'Hisense / Toshiba', who: 'VIDAA OS', steps: (h) => ['Tekan Home → Apps → buka “Browser”', `Ketik ${h}/tv`, 'Pindai QR dengan HP lalu ketuk Hubungkan'], note: '' },
+      fire: { name: 'Fire TV', who: 'Amazon Fire TV Stick', steps: (h) => ['Cari “Silk Browser” → pasang', `Buka Silk dan kunjungi ${h}/tv`, 'Pindai QR dengan HP lalu ketuk Hubungkan'], note: '' },
+    },
+    castTitle: 'TV tanpa browser? Tampilkan layar HP',
+    castBlocks: (h) => [
+      { t: 'HP Android → Chromecast / Google TV / TV Miracast', s: ['Buka Quick Settings, ketuk “Cast”, “Smart View” atau “Screen cast”', 'Pilih TV kamu', `Di HP buka ${h}/display dan putar HP mendatar`] },
+      { t: 'iPhone → Apple TV / TV AirPlay', s: ['Buka Control Center → “Screen Mirroring”', 'Pilih TV kamu', `Buka ${h}/display di Safari dan putar HP mendatar`] },
+    ],
+    castNote: 'Pastikan HP diisi daya saat cast. Untuk tampilan terus-menerus, Google TV stick murah paling baik.',
+    close: 'Tutup',
+  },
+  ar: {
+    title: 'افتح EQrel على التلفاز', sub: 'اختر تلفازك — ٣ خطوات بسيطة', fast: 'أي تلفاز فيه متصفح:',
+    fastSteps: (h) => [`افتح المتصفح على التلفاز واذهب إلى ${h}/tv`, 'سيظهر رمز QR — امسحه بكاميرا الهاتف', 'اضغط «ربط هذا التلفاز» على الهاتف. انتهى!'],
+    bookmark: 'نصيحة: احفظ الصفحة في المفضلة لفتحها بنقرة واحدة.',
+    cast: 'لا يوجد متصفح؟ بث من الهاتف',
+    brands: {
+      android: { name: 'Android / Google TV', who: 'TCL · Xiaomi · Sony · Philips', steps: (h) => ['ثبّت متصفح «TV Bro» من Google Play', `افتحه واكتب ${h}/tv`, 'امسح الرمز بالهاتف واضغط ربط'], note: '' },
+      samsung: { name: 'Samsung', who: 'Tizen', steps: (h) => ['Home ← Apps ← «Internet»', `اكتب ${h}/tv`, 'امسح الرمز بالهاتف واضغط ربط'], note: '' },
+      lg: { name: 'LG', who: 'webOS', steps: (h) => ['Home ← «Web Browser»', `اكتب ${h}/tv`, 'امسح الرمز بالهاتف واضغط ربط'], note: '' },
+      hisense: { name: 'Hisense / Toshiba', who: 'VIDAA', steps: (h) => ['Home ← Apps ← «Browser»', `اكتب ${h}/tv`, 'امسح الرمز بالهاتف واضغط ربط'], note: '' },
+      fire: { name: 'Fire TV', who: 'Fire TV Stick', steps: (h) => ['ثبّت «Silk Browser»', `اذهب إلى ${h}/tv`, 'امسح الرمز بالهاتف واضغط ربط'], note: '' },
+    },
+    castTitle: 'لا يوجد متصفح؟ اعرض شاشة الهاتف',
+    castBlocks: (h) => [
+      { t: 'هاتف Android ← Chromecast / Miracast', s: ['من الإعدادات السريعة اضغط «Cast» أو «Smart View»', 'اختر التلفاز', `افتح ${h}/display وأدر الهاتف أفقياً`] },
+      { t: 'iPhone ← Apple TV / AirPlay', s: ['مركز التحكم ← «Screen Mirroring»', 'اختر التلفاز', `افتح ${h}/display وأدر الهاتف أفقياً`] },
+    ],
+    castNote: 'اترك الهاتف على الشاحن أثناء البث.',
+    close: 'إغلاق',
+  },
+}
+
+export function guessBrand() {
+  if (typeof navigator === 'undefined') return 'android'
+  const u = navigator.userAgent || ''
+  if (/Tizen/i.test(u)) return 'samsung'
+  if (/Web0S|webOS|NetCast/i.test(u)) return 'lg'
+  if (/VIDAA|Hisense/i.test(u)) return 'hisense'
+  if (/AFT[A-Z]|Silk/.test(u)) return 'fire'
+  return 'android'
+}
+
+export default function TVTutorialModal({ open, onClose, defaultTab }) {
+  const { lang, dir } = useLang()
+  const L = T[lang] || T.en
+  const [tab, setTab] = useState(defaultTab || 'android')
+  const host = typeof window !== 'undefined' ? window.location.host : 'eqrel.app'
+
+  useEffect(() => { if (open) setTab(defaultTab || guessBrand()) }, [open, defaultTab])
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase()
+      if (e.key === 'Backspace' && (tag === 'input' || tag === 'textarea')) return
+      if (BACK_KEYS.has(e.key) || BACK_CODES.has(e.keyCode)) { e.preventDefault(); onClose?.() }
+    }
     window.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    }
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
   }, [open, onClose])
 
   if (!open) return null
-
-  const tabs = [
-    { id: 'browser', label: L.tab_browser, sub: L.tab_browser_sub, icon: Tv },
-    { id: 'cast', label: L.tab_cast, sub: L.tab_cast_sub, icon: Cast },
-    { id: 'pwa', label: L.tab_pwa, sub: L.tab_pwa_sub, icon: Download },
-  ]
+  const brandIds = Object.keys(L.brands)
+  const b = L.brands[tab]
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-         onClick={onClose} dir={dir}>
-      <div
-        className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-emerald-100 bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
-          <Tv className="w-6 h-6" />
+    <div className="fixed inset-0 z-[100] bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} dir={dir} data-testid="tv-guide">
+      <div className="w-full sm:max-w-3xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[94vh] flex flex-col text-emerald-950" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-5 py-4 bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex-shrink-0">
+          <Tv className="w-7 h-7" />
           <div className="flex-1">
-            <h2 className="text-base font-black leading-tight">{L.title}</h2>
-            <p className="text-[11px] text-emerald-50/90">{L.subtitle}</p>
+            <h2 className="text-lg font-black leading-tight">{L.title}</h2>
+            <p className="text-xs text-emerald-50/90">{L.sub}</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center active:scale-95">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} aria-label={L.close} data-testid="tv-guide-close" className="tv-focus w-11 h-11 rounded-full bg-white/20 flex items-center justify-center"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-emerald-100 bg-emerald-50/60 flex-shrink-0">
-          {tabs.map((t) => {
-            const Icon = t.icon
-            const active = tab === t.id
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 border-b-2 transition-all ${active ? 'border-emerald-500 bg-white text-emerald-800' : 'border-transparent text-emerald-800/60 hover:bg-white/60'}`}>
-                <Icon className="w-4 h-4" />
-                <div className="text-[11px] font-extrabold leading-tight">{t.label}</div>
-                <div className="text-[9px] opacity-70 leading-tight hidden sm:block">{t.sub}</div>
+        <div className="overflow-y-auto p-4 sm:p-5 space-y-4">
+          <div className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4">
+            <div className="font-black text-sm text-amber-900 mb-2">⚡ {L.fast}</div>
+            <ol className="space-y-1.5">
+              {L.fastSteps(host).map((s, i) => (
+                <li key={i} className="flex gap-2 text-sm text-amber-950"><span className="w-6 h-6 rounded-full bg-amber-400 text-white text-xs font-black flex items-center justify-center flex-shrink-0">{i + 1}</span><span>{s}</span></li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="flex flex-wrap gap-2" role="tablist">
+            {brandIds.map(id => (
+              <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} data-testid={`tv-guide-tab-${id}`}
+                className={`tv-focus px-4 py-2.5 rounded-2xl text-sm font-extrabold border-2 ${tab === id ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-emerald-100 text-emerald-900'}`}>
+                {L.brands[id].name}
               </button>
-            )
-          })}
-        </div>
+            ))}
+            <button role="tab" aria-selected={tab === 'cast'} onClick={() => setTab('cast')} data-testid="tv-guide-tab-cast"
+              className={`tv-focus px-4 py-2.5 rounded-2xl text-sm font-extrabold border-2 inline-flex items-center gap-1.5 ${tab === 'cast' ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-sky-100 text-sky-900'}`}>
+              <Cast className="w-4 h-4" /> {L.cast}
+            </button>
+          </div>
 
-        {/* Content */}
-        <div className="p-5 overflow-y-auto flex-1">
-          {tab === 'browser' && <BrowserTab L={L} />}
-          {tab === 'cast' && <CastTab L={L} />}
-          {tab === 'pwa' && <PWATab L={L} />}
-        </div>
+          {tab === 'cast' ? (
+            <div className="space-y-3" data-testid="tv-guide-cast">
+              <div className="font-black text-base">{L.castTitle}</div>
+              {L.castBlocks(host).map((blk, i) => (
+                <div key={i} className="rounded-2xl border-2 border-sky-100 bg-sky-50/60 p-4">
+                  <div className="font-extrabold text-sm text-sky-900 mb-2">{blk.t}</div>
+                  <ol className="space-y-1.5">
+                    {blk.s.map((s, j) => <li key={j} className="flex gap-2 text-sm"><span className="font-black text-sky-600">{j + 1}.</span><span>{s}</span></li>)}
+                  </ol>
+                </div>
+              ))}
+              <p className="text-xs text-emerald-900/60">{L.castNote}</p>
+            </div>
+          ) : b && (
+            <div className="rounded-2xl border-2 border-emerald-100 p-4" data-testid={`tv-guide-brand-${tab}`}>
+              <div className="font-black text-base">{b.name}</div>
+              <div className="text-xs text-emerald-900/55 mb-3">{b.who}</div>
+              <ol className="space-y-2">
+                {b.steps(host).map((s, i) => (
+                  <li key={i} className="flex gap-3 text-sm"><span className="w-7 h-7 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center flex-shrink-0">{i + 1}</span><span className="pt-1">{s}</span></li>
+                ))}
+              </ol>
+              {b.note && <p className="mt-3 text-xs text-emerald-900/60">ℹ️ {b.note}</p>}
+            </div>
+          )}
 
-        {/* Footer */}
-        <div className="border-t border-emerald-100 px-5 py-3 bg-emerald-50/50 flex-shrink-0">
-          <button onClick={onClose}
-            className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-2.5 text-sm active:scale-[0.99]">
-            {L.done} ✓
-          </button>
+          <p className="text-xs text-emerald-900/60">🔖 {L.bookmark}</p>
         </div>
       </div>
     </div>
   )
-}
-
-/* ————————————————————— Tab 1: Smart TV Browser ————————————————————— */
-const BrowserTab = ({ L }) => (
-  <div>
-    <div className="rounded-2xl bg-emerald-50 border-2 border-emerald-200 p-3 mb-4">
-      <p className="text-xs text-emerald-900 font-bold flex items-start gap-2">
-        <Tv className="w-4 h-4 mt-0.5 flex-shrink-0" />
-        <span dangerouslySetInnerHTML={{ __html: L.browser_intro }} />
-      </p>
-    </div>
-
-    <StepList
-      steps={[
-        { icon: Wifi, title: L.b_step1_t, desc: L.b_step1_d },
-        { icon: Globe, title: L.b_step2_t, desc: L.b_step2_d },
-        { icon: KeyRound, title: L.b_step3_t, desc: null, highlight: 'eqrel.app/tv' },
-        { icon: Smartphone, title: L.b_step4_t, desc: L.b_step4_d },
-        { icon: CheckCircle2, title: L.b_step5_t, desc: L.b_step5_d },
-      ]}
-    />
-
-    <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-3">
-      <p className="text-[11px] text-amber-900" dangerouslySetInnerHTML={{ __html: `<b>💡 ${L.tip}:</b> ${L.browser_tip}` }} />
-    </div>
-  </div>
-)
-
-/* ————————————————————— Tab 2: Cast dari Phone ————————————————————— */
-const CastTab = ({ L }) => (
-  <div>
-    <div className="rounded-2xl bg-blue-50 border-2 border-blue-200 p-3 mb-4">
-      <p className="text-xs text-blue-900 font-bold flex items-start gap-2">
-        <Cast className="w-4 h-4 mt-0.5 flex-shrink-0" />
-        <span dangerouslySetInnerHTML={{ __html: L.cast_intro }} />
-      </p>
-    </div>
-
-    <StepList
-      steps={[
-        { icon: Wifi, title: L.c_step1_t, desc: L.c_step1_d },
-        { icon: Chrome, title: L.c_step2_t, desc: L.c_step2_d },
-        { icon: Globe, title: L.c_step3_t, desc: L.c_step3_d, highlight: 'eqrel.app/display' },
-        { icon: Cast, title: L.c_step4_t, desc: L.c_step4_d },
-        { icon: CheckCircle2, title: L.c_step5_t, desc: L.c_step5_d },
-      ]}
-    />
-
-    <div className="mt-4 rounded-xl bg-purple-50 border border-purple-200 p-3">
-      <p className="text-[11px] text-purple-900" dangerouslySetInnerHTML={{ __html: `<b>🍎 iPhone / iPad:</b> ${L.cast_ios}` }} />
-    </div>
-  </div>
-)
-
-/* ————————————————————— Tab 3: Install PWA ————————————————————— */
-const PWATab = ({ L }) => (
-  <div>
-    <div className="rounded-2xl bg-purple-50 border-2 border-purple-200 p-3 mb-4">
-      <p className="text-xs text-purple-900 font-bold flex items-start gap-2">
-        <Download className="w-4 h-4 mt-0.5 flex-shrink-0" />
-        <span dangerouslySetInnerHTML={{ __html: L.pwa_intro }} />
-      </p>
-    </div>
-
-    <div className="space-y-3">
-      <BrandCard emoji="📺" color="emerald" title="Android TV / Google TV / Chromecast" sub={L.pwa_android_sub} items={L.pwa_android_steps} />
-      <BrandCard emoji="📱" color="blue" title="Samsung Smart TV (Tizen)" sub={L.pwa_samsung_sub} items={L.pwa_samsung_steps} />
-      <BrandCard emoji="🖥️" color="pink" title="LG Smart TV (WebOS)" sub={L.pwa_lg_sub} items={L.pwa_lg_steps} />
-      <BrandCard emoji="📺" color="amber" title={L.pwa_fallback_title} sub={L.pwa_fallback_sub} paragraph={L.pwa_fallback_body} />
-    </div>
-
-    <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3">
-      <p className="text-[11px] text-emerald-900 leading-relaxed">
-        <Home className="w-3.5 h-3.5 inline mr-1" />
-        <span dangerouslySetInnerHTML={{ __html: `<b>${L.pwa_after_install}:</b> ${L.pwa_after_body}` }} />
-      </p>
-    </div>
-  </div>
-)
-
-/* ————————————————————— Shared: BrandCard ————————————————————— */
-const BrandCard = ({ emoji, color, title, sub, items, paragraph }) => {
-  const colors = {
-    emerald: { border: 'border-emerald-200', chip: 'bg-emerald-100', head: 'text-emerald-900', body: 'text-emerald-900', mono: 'bg-emerald-50' },
-    blue:    { border: 'border-blue-200',    chip: 'bg-blue-100',    head: 'text-blue-900',    body: 'text-blue-900',    mono: 'bg-blue-50' },
-    pink:    { border: 'border-pink-200',    chip: 'bg-pink-100',    head: 'text-pink-900',    body: 'text-pink-900',    mono: 'bg-pink-50' },
-    amber:   { border: 'border-amber-200',   chip: 'bg-amber-100',   head: 'text-amber-900',   body: 'text-amber-900',   mono: 'bg-amber-50' },
-  }
-  const c = colors[color] || colors.emerald
-  return (
-    <div className={`rounded-xl border-2 ${c.border} bg-white p-3`}>
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`w-8 h-8 rounded-lg ${c.chip} flex items-center justify-center text-lg`}>{emoji}</div>
-        <div>
-          <div className={`text-sm font-black ${c.head}`}>{title}</div>
-          <div className="text-[10px] opacity-60">{sub}</div>
-        </div>
-      </div>
-      {items && (
-        <ol className={`text-[11px] ${c.body} space-y-1 list-decimal list-inside leading-relaxed`}>
-          {items.map((it, i) => (
-            <li key={i} dangerouslySetInnerHTML={{ __html: it.replace(/`([^`]+)`/g, `<span class="font-mono ${c.mono} px-1 rounded">$1</span>`) }} />
-          ))}
-        </ol>
-      )}
-      {paragraph && (
-        <p className={`text-[11px] ${c.body} leading-relaxed`} dangerouslySetInnerHTML={{ __html: paragraph }} />
-      )}
-    </div>
-  )
-}
-
-/* ————————————————————— Shared: Step list ————————————————————— */
-const StepList = ({ steps }) => (
-  <div className="space-y-2.5">
-    {steps.map((s, i) => {
-      const Icon = s.icon
-      return (
-        <div key={i} className="flex gap-3 items-start rounded-xl bg-white border-2 border-emerald-100 p-3 hover:border-emerald-200 transition-all">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white flex-shrink-0 shadow-sm">
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-extrabold text-emerald-900 leading-tight">{s.title}</div>
-            {s.desc && <div className="text-[11px] text-emerald-800/75 mt-0.5 leading-relaxed" dangerouslySetInnerHTML={{ __html: s.desc }} />}
-            {s.highlight && (
-              <div className="mt-1.5 inline-block font-mono text-sm font-black text-emerald-800 bg-emerald-100 border border-emerald-300 rounded-lg px-2.5 py-1">
-                {s.highlight}
-              </div>
-            )}
-          </div>
-        </div>
-      )
-    })}
-  </div>
-)
-
-/* ————————————————————— TRANSLATIONS ————————————————————— */
-const TR = {
-  ms: {
-    title: 'Cara Buka di TV',
-    subtitle: 'Panduan mudah untuk parent',
-    done: 'Sudah Faham',
-    tip: 'Tip',
-    tab_browser: 'Browser TV',
-    tab_browser_sub: 'Paling mudah',
-    tab_cast: 'Cast Phone',
-    tab_cast_sub: 'Chromecast',
-    tab_pwa: 'Install PWA',
-    tab_pwa_sub: 'Home screen',
-
-    // Browser tab
-    browser_intro: 'Sesuai untuk <b>Smart TV</b> yang ada browser terbina (Samsung Tizen, LG WebOS, Android TV, Google TV, Chromecast dengan Google TV).',
-    b_step1_t: '1. Pastikan TV bersambung ke internet',
-    b_step1_d: 'TV mesti sambung WiFi/LAN yang sama dengan phone tuan.',
-    b_step2_t: '2. Buka Browser di TV',
-    b_step2_d: 'Cari app "Internet", "Web Browser", atau "Chrome" pada TV. Biasa ada di menu Apps.',
-    b_step3_t: '3. Taip alamat ini di address bar',
-    b_step4_t: '4. Kembali ke phone → Jana Kod',
-    b_step4_d: 'Di skrin Setup phone tuan, tekan butang <b>🔑 Jana Kod TV Baru</b>. Kod 6-digit akan keluar.',
-    b_step5_t: '5. Masukkan kod di TV',
-    b_step5_d: 'Guna remote TV untuk taip 6-digit tadi → TV akan auto-load Family Display. Selamat menikmati!',
-    browser_tip: 'Kod sah untuk 15 minit. Kalau tamat, jana semula dari phone.',
-
-    // Cast tab
-    cast_intro: 'Sesuai kalau TV tuan ada <b>Chromecast</b>, <b>Android TV</b>, atau <b>Google TV</b>. Boleh guna dari Chrome di phone/laptop.',
-    c_step1_t: '1. Phone & TV mesti WiFi yang sama',
-    c_step1_d: 'Kalau tak, phone tak akan nampak TV.',
-    c_step2_t: '2. Buka Chrome browser',
-    c_step2_d: 'Guna Chrome di phone Android, laptop, atau desktop.',
-    c_step3_t: '3. Lawat Family Display',
-    c_step3_d: 'Taip alamat penuh Family Display tuan (bukan /tv):',
-    c_step4_t: '4. Tekan menu ⋮ → Cast',
-    c_step4_d: 'Di Chrome, klik 3-titik menu di kanan atas → pilih <b>Cast…</b> → pilih TV/Chromecast tuan.',
-    c_step5_t: '5. Nikmati di TV besar',
-    c_step5_d: 'Family Display akan mirror ke TV. Nak stop, tekan Cast icon → <b>Stop casting</b>.',
-    cast_ios: 'Untuk AirPlay ke Apple TV — buka Safari → tekan Share → <b>AirPlay</b> → pilih Apple TV tuan.',
-
-    // PWA tab
-    pwa_intro: 'Simpan EQrel sebagai <b>shortcut</b> di home screen TV supaya boleh buka terus tanpa taip URL setiap kali.',
-    pwa_android_sub: 'Ada Chrome browser',
-    pwa_android_steps: [
-      'Buka <b>Chrome</b> di TV → Lawat `eqrel.app/tv`',
-      'Tekan menu <b>⋮</b> (3-titik) di penjuru → <b>Add to Home screen</b> atau <b>Install</b>',
-      'Shortcut EQrel akan muncul di home TV — klik untuk buka full-screen',
-    ],
-    pwa_samsung_sub: 'Internet Browser app',
-    pwa_samsung_steps: [
-      'Buka <b>Internet</b> app dari Apps → Lawat `eqrel.app/tv`',
-      'Tekan <b>Bookmark ★</b> di menu browser → tandakan sebagai favourite',
-      'Bookmark akan muncul di halaman utama browser TV setiap kali buka',
-    ],
-    pwa_lg_sub: 'Web Browser',
-    pwa_lg_steps: [
-      'Buka <b>Web Browser</b> dari Launcher → Lawat `eqrel.app/tv`',
-      'Tekan <b>★ Bookmark</b> untuk simpan',
-      'Pilihannya: <b>Pin to Home</b> untuk letak shortcut terus di menu utama TV',
-    ],
-    pwa_fallback_title: 'TV lama / tiada browser?',
-    pwa_fallback_sub: 'Guna Chromecast/Fire Stick',
-    pwa_fallback_body: 'Beli <b>Chromecast</b> (~RM150) atau <b>Amazon Fire Stick</b> (~RM200) — pasang ke port HDMI TV, kemudian ikut cara di tab <b>Cast Phone</b>.',
-    pwa_after_install: 'Selepas install',
-    pwa_after_body: 'Buka shortcut → masukkan Kod TV → biar terbuka. Family Display akan hidup sepanjang hari sebagai photo frame + habit board keluarga tuan. 🕌',
-  },
-
-  en: {
-    title: 'How to Open on TV',
-    subtitle: 'Simple guide for parents',
-    done: 'Got it',
-    tip: 'Tip',
-    tab_browser: 'TV Browser',
-    tab_browser_sub: 'Easiest',
-    tab_cast: 'Cast Phone',
-    tab_cast_sub: 'Chromecast',
-    tab_pwa: 'Install PWA',
-    tab_pwa_sub: 'Home screen',
-
-    browser_intro: 'Best for <b>Smart TVs</b> with a built-in browser (Samsung Tizen, LG WebOS, Android TV, Google TV, Chromecast with Google TV).',
-    b_step1_t: '1. Make sure the TV is online',
-    b_step1_d: 'The TV must be on the same WiFi/LAN as your phone.',
-    b_step2_t: '2. Open the Browser on your TV',
-    b_step2_d: 'Look for the "Internet", "Web Browser" or "Chrome" app on the TV — usually under Apps.',
-    b_step3_t: '3. Type this address in the URL bar',
-    b_step4_t: '4. Back on your phone → Generate Code',
-    b_step4_d: 'On the Setup screen, tap <b>🔑 Generate New TV Code</b>. A 6-digit code will appear.',
-    b_step5_t: '5. Enter the code on the TV',
-    b_step5_d: 'Use the TV remote to type the 6 digits → the TV will auto-load Family Display. Enjoy!',
-    browser_tip: 'Codes are valid for 15 minutes. If expired, just generate a new one from your phone.',
-
-    cast_intro: 'Great if your TV has <b>Chromecast</b>, <b>Android TV</b>, or <b>Google TV</b>. Works from Chrome on your phone or laptop.',
-    c_step1_t: '1. Phone & TV must share WiFi',
-    c_step1_d: 'Otherwise your phone won\'t see the TV.',
-    c_step2_t: '2. Open Chrome browser',
-    c_step2_d: 'Use Chrome on Android, laptop, or desktop.',
-    c_step3_t: '3. Visit Family Display',
-    c_step3_d: 'Type your full Family Display URL (not /tv):',
-    c_step4_t: '4. Tap menu ⋮ → Cast',
-    c_step4_d: 'In Chrome, click the 3-dot menu top-right → choose <b>Cast…</b> → pick your TV/Chromecast.',
-    c_step5_t: '5. Enjoy on the big screen',
-    c_step5_d: 'Family Display will mirror to the TV. To stop, tap the Cast icon → <b>Stop casting</b>.',
-    cast_ios: 'For AirPlay to Apple TV — open Safari → tap Share → <b>AirPlay</b> → select your Apple TV.',
-
-    pwa_intro: 'Save EQrel as a <b>shortcut</b> on your TV home screen so you can open it directly without typing the URL every time.',
-    pwa_android_sub: 'Has Chrome browser',
-    pwa_android_steps: [
-      'Open <b>Chrome</b> on TV → Visit `eqrel.app/tv`',
-      'Tap the <b>⋮</b> (3-dot) menu → <b>Add to Home screen</b> or <b>Install</b>',
-      'The EQrel shortcut will appear on the TV home — tap to open full-screen',
-    ],
-    pwa_samsung_sub: 'Internet Browser app',
-    pwa_samsung_steps: [
-      'Open <b>Internet</b> app from Apps → Visit `eqrel.app/tv`',
-      'Tap <b>Bookmark ★</b> in the browser menu → mark as favourite',
-      'The bookmark will appear on the browser home page every time you open it',
-    ],
-    pwa_lg_sub: 'Web Browser',
-    pwa_lg_steps: [
-      'Open <b>Web Browser</b> from Launcher → Visit `eqrel.app/tv`',
-      'Tap <b>★ Bookmark</b> to save',
-      'Optionally: <b>Pin to Home</b> to place the shortcut on the main TV menu',
-    ],
-    pwa_fallback_title: 'Old TV / no browser?',
-    pwa_fallback_sub: 'Use Chromecast/Fire Stick',
-    pwa_fallback_body: 'Get a <b>Chromecast</b> (~$35) or <b>Amazon Fire Stick</b> (~$45) — plug into the TV\'s HDMI port, then follow the <b>Cast Phone</b> tab.',
-    pwa_after_install: 'After install',
-    pwa_after_body: 'Open the shortcut → enter the TV Code → leave it running. Family Display will stay on all day as a photo frame + your family\'s habit board. 🕌',
-  },
-
-  id: {
-    title: 'Cara Buka di TV',
-    subtitle: 'Panduan mudah untuk orang tua',
-    done: 'Sudah Paham',
-    tip: 'Tips',
-    tab_browser: 'Browser TV',
-    tab_browser_sub: 'Paling mudah',
-    tab_cast: 'Cast HP',
-    tab_cast_sub: 'Chromecast',
-    tab_pwa: 'Install PWA',
-    tab_pwa_sub: 'Layar utama',
-
-    browser_intro: 'Cocok untuk <b>Smart TV</b> yang punya browser bawaan (Samsung Tizen, LG WebOS, Android TV, Google TV, Chromecast dengan Google TV).',
-    b_step1_t: '1. Pastikan TV terhubung ke internet',
-    b_step1_d: 'TV harus terhubung ke WiFi/LAN yang sama dengan HP Anda.',
-    b_step2_t: '2. Buka Browser di TV',
-    b_step2_d: 'Cari aplikasi "Internet", "Web Browser", atau "Chrome" di TV. Biasanya ada di menu Apps.',
-    b_step3_t: '3. Ketik alamat ini di address bar',
-    b_step4_t: '4. Kembali ke HP → Buat Kode',
-    b_step4_d: 'Di layar Setup HP Anda, tekan tombol <b>🔑 Buat Kode TV Baru</b>. Kode 6-digit akan muncul.',
-    b_step5_t: '5. Masukkan kode di TV',
-    b_step5_d: 'Gunakan remote TV untuk mengetik 6-digit tadi → TV akan auto-load Family Display. Selamat menikmati!',
-    browser_tip: 'Kode berlaku 15 menit. Kalau habis, buat baru dari HP.',
-
-    cast_intro: 'Cocok kalau TV Anda punya <b>Chromecast</b>, <b>Android TV</b>, atau <b>Google TV</b>. Bisa dari Chrome di HP/laptop.',
-    c_step1_t: '1. HP & TV harus WiFi yang sama',
-    c_step1_d: 'Kalau tidak, HP tidak akan lihat TV.',
-    c_step2_t: '2. Buka Chrome browser',
-    c_step2_d: 'Gunakan Chrome di HP Android, laptop, atau desktop.',
-    c_step3_t: '3. Buka Family Display',
-    c_step3_d: 'Ketik alamat lengkap Family Display Anda (bukan /tv):',
-    c_step4_t: '4. Tekan menu ⋮ → Cast',
-    c_step4_d: 'Di Chrome, klik menu 3-titik di kanan atas → pilih <b>Cast…</b> → pilih TV/Chromecast Anda.',
-    c_step5_t: '5. Nikmati di TV besar',
-    c_step5_d: 'Family Display akan mirror ke TV. Untuk stop, tekan icon Cast → <b>Stop casting</b>.',
-    cast_ios: 'Untuk AirPlay ke Apple TV — buka Safari → tekan Share → <b>AirPlay</b> → pilih Apple TV Anda.',
-
-    pwa_intro: 'Simpan EQrel sebagai <b>shortcut</b> di layar utama TV supaya bisa buka langsung tanpa ketik URL setiap kali.',
-    pwa_android_sub: 'Ada Chrome browser',
-    pwa_android_steps: [
-      'Buka <b>Chrome</b> di TV → Buka `eqrel.app/tv`',
-      'Tekan menu <b>⋮</b> (3-titik) di pojok → <b>Add to Home screen</b> atau <b>Install</b>',
-      'Shortcut EQrel akan muncul di layar utama TV — klik untuk buka full-screen',
-    ],
-    pwa_samsung_sub: 'Internet Browser app',
-    pwa_samsung_steps: [
-      'Buka aplikasi <b>Internet</b> dari Apps → Buka `eqrel.app/tv`',
-      'Tekan <b>Bookmark ★</b> di menu browser → tandai sebagai favorit',
-      'Bookmark akan muncul di halaman utama browser TV setiap kali buka',
-    ],
-    pwa_lg_sub: 'Web Browser',
-    pwa_lg_steps: [
-      'Buka <b>Web Browser</b> dari Launcher → Buka `eqrel.app/tv`',
-      'Tekan <b>★ Bookmark</b> untuk simpan',
-      'Opsional: <b>Pin to Home</b> untuk menaruh shortcut di menu utama TV',
-    ],
-    pwa_fallback_title: 'TV lama / tanpa browser?',
-    pwa_fallback_sub: 'Pakai Chromecast/Fire Stick',
-    pwa_fallback_body: 'Beli <b>Chromecast</b> (~Rp500rb) atau <b>Amazon Fire Stick</b> (~Rp650rb) — colokkan ke port HDMI TV, kemudian ikuti tab <b>Cast HP</b>.',
-    pwa_after_install: 'Setelah install',
-    pwa_after_body: 'Buka shortcut → masukkan Kode TV → biarkan menyala. Family Display akan hidup sepanjang hari sebagai photo frame + papan habit keluarga Anda. 🕌',
-  },
-
-  ar: {
-    title: 'كيفية الفتح على التلفاز',
-    subtitle: 'دليل بسيط لأولياء الأمور',
-    done: 'فهمت',
-    tip: 'نصيحة',
-    tab_browser: 'متصفح التلفاز',
-    tab_browser_sub: 'الأسهل',
-    tab_cast: 'بث من الهاتف',
-    tab_cast_sub: 'Chromecast',
-    tab_pwa: 'تثبيت PWA',
-    tab_pwa_sub: 'الشاشة الرئيسية',
-
-    browser_intro: 'مناسب <b>لأجهزة التلفاز الذكية</b> التي بها متصفح مدمج (Samsung Tizen، LG WebOS، Android TV، Google TV، Chromecast مع Google TV).',
-    b_step1_t: '١. تأكد من اتصال التلفاز بالإنترنت',
-    b_step1_d: 'يجب أن يكون التلفاز على نفس شبكة WiFi/LAN الخاصة بهاتفك.',
-    b_step2_t: '٢. افتح المتصفح على التلفاز',
-    b_step2_d: 'ابحث عن تطبيق "Internet" أو "Web Browser" أو "Chrome" على التلفاز، عادةً في قائمة التطبيقات.',
-    b_step3_t: '٣. اكتب هذا العنوان في شريط العناوين',
-    b_step4_t: '٤. ارجع للهاتف → أنشئ الرمز',
-    b_step4_d: 'في شاشة الإعداد بالهاتف، اضغط زر <b>🔑 إنشاء رمز تلفاز جديد</b>. سيظهر رمز من ٦ أرقام.',
-    b_step5_t: '٥. أدخل الرمز في التلفاز',
-    b_step5_d: 'استخدم ريموت التلفاز لكتابة الأرقام الستة → سيتم تحميل Family Display تلقائيًا. استمتع!',
-    browser_tip: 'الرمز صالح لمدة ١٥ دقيقة. إذا انتهت، أنشئ رمزًا جديدًا من الهاتف.',
-
-    cast_intro: 'مناسب إذا كان تلفازك يدعم <b>Chromecast</b> أو <b>Android TV</b> أو <b>Google TV</b>. يعمل من Chrome على الهاتف أو الحاسوب.',
-    c_step1_t: '١. الهاتف والتلفاز على نفس WiFi',
-    c_step1_d: 'وإلا فلن يرى الهاتف التلفاز.',
-    c_step2_t: '٢. افتح متصفح Chrome',
-    c_step2_d: 'استخدم Chrome على هاتف Android أو الحاسوب.',
-    c_step3_t: '٣. افتح Family Display',
-    c_step3_d: 'اكتب العنوان الكامل لـ Family Display (وليس /tv):',
-    c_step4_t: '٤. اضغط قائمة ⋮ → Cast',
-    c_step4_d: 'في Chrome، اضغط قائمة ٣ نقاط أعلى اليمين → اختر <b>Cast…</b> → اختر التلفاز/Chromecast.',
-    c_step5_t: '٥. استمتع على الشاشة الكبيرة',
-    c_step5_d: 'سيتم عرض Family Display على التلفاز. للإيقاف: اضغط أيقونة Cast → <b>Stop casting</b>.',
-    cast_ios: 'للبث AirPlay إلى Apple TV — افتح Safari → اضغط مشاركة → <b>AirPlay</b> → اختر Apple TV.',
-
-    pwa_intro: 'احفظ EQrel كـ <b>اختصار</b> على الشاشة الرئيسية للتلفاز لتفتحه مباشرة دون كتابة العنوان في كل مرة.',
-    pwa_android_sub: 'به متصفح Chrome',
-    pwa_android_steps: [
-      'افتح <b>Chrome</b> على التلفاز → اذهب إلى `eqrel.app/tv`',
-      'اضغط قائمة <b>⋮</b> (٣ نقاط) → <b>Add to Home screen</b> أو <b>Install</b>',
-      'سيظهر اختصار EQrel على الشاشة الرئيسية — اضغطه ليفتح ملء الشاشة',
-    ],
-    pwa_samsung_sub: 'تطبيق Internet Browser',
-    pwa_samsung_steps: [
-      'افتح تطبيق <b>Internet</b> من التطبيقات → اذهب إلى `eqrel.app/tv`',
-      'اضغط <b>Bookmark ★</b> في قائمة المتصفح → أضفه للمفضلة',
-      'سيظهر الإشارة المرجعية في الصفحة الرئيسية للمتصفح كل مرة',
-    ],
-    pwa_lg_sub: 'Web Browser',
-    pwa_lg_steps: [
-      'افتح <b>Web Browser</b> من Launcher → اذهب إلى `eqrel.app/tv`',
-      'اضغط <b>★ Bookmark</b> للحفظ',
-      'اختياري: <b>Pin to Home</b> لوضع الاختصار في القائمة الرئيسية للتلفاز',
-    ],
-    pwa_fallback_title: 'تلفاز قديم / بدون متصفح؟',
-    pwa_fallback_sub: 'استخدم Chromecast/Fire Stick',
-    pwa_fallback_body: 'اشترِ <b>Chromecast</b> أو <b>Amazon Fire Stick</b> — وصّله بمنفذ HDMI في التلفاز، ثم اتبع تعليمات تبويب <b>بث من الهاتف</b>.',
-    pwa_after_install: 'بعد التثبيت',
-    pwa_after_body: 'افتح الاختصار → أدخل رمز التلفاز → اتركه يعمل. سيبقى Family Display مفتوحًا طوال اليوم كإطار صور ولوحة عادات لعائلتك. 🕌',
-  },
 }
