@@ -128,6 +128,7 @@ const KidChooser = ({ router, t, lang }) => {
 function KidHomeActive({ router, childId, t, lang }) {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
+  const [solatPause, setSolatPause] = useState(null)
   const [welcomeOpen, setWelcomeOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1')
   const closeWelcome = () => {
     setWelcomeOpen(false)
@@ -196,6 +197,7 @@ function KidHomeActive({ router, childId, t, lang }) {
       const found = (cData.children || []).find(c => c.id === childId)
       setChild(found || null)
       setHabits(hData.habits || [])
+      setSolatPause(hData.solatPause || null)
       setRewardRequests(rData.requests || [])
       setCustomRewards(catData.custom || [])
       setMyProposals(pData.proposals || [])
@@ -693,6 +695,17 @@ function KidHomeActive({ router, childId, t, lang }) {
           </div>
         )}
 
+        {solatPause && (
+          <div className="mt-4 rounded-3xl bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-100 px-4 py-3 flex items-center gap-3" data-testid="kid-solat-paused">
+            <span className="text-3xl">{solatPause.reason === 'haid' ? '🌸' : '🤒'}</span>
+            <div className="text-[13px] text-rose-900 font-semibold leading-snug">
+              {solatPause.reason === 'haid'
+                ? (lang === 'ms' ? 'Cuti Solat — Allah sayang kamu. Teruskan zikir, doa & selawat ya! 💗' : lang === 'id' ? 'Cuti sholat — Allah sayang kamu. Teruskan zikir & doa ya! 💗' : lang === 'ar' ? 'إجازة الصلاة — الله يحبك. واصلي الذكر والدعاء 💗' : 'Prayer break — Allah loves you. Keep up your dhikr, du’a & salawat! 💗')
+                : (lang === 'ms' ? 'Semoga cepat sembuh! Ibu/Ayah jeda solat seketika. Berdoalah dari katil ya 🤲' : lang === 'id' ? 'Semoga cepat sembuh! Berdoalah ya 🤲' : lang === 'ar' ? 'شفاك الله! ادعُ الله من سريرك 🤲' : 'Get well soon! Prayers are paused for now — make du’a from your bed 🤲')}
+            </div>
+          </div>
+        )}
+
         {/* Habit list — grouped by category or session */}
         <div className="mt-4 space-y-3">
           {loading ? (
@@ -1134,6 +1147,9 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
         </div>
         <div className={`font-bold text-sm text-eq-ink leading-tight ${isVerified ? 'line-through opacity-60' : ''}`}>
           {title}
+          {habit.core && (
+            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-black align-middle" data-testid={`kid-core-${habit.id}`}>🕌</span>
+          )}
           {habit.autoVerify && (
             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black align-middle no-underline" data-testid={`kid-trusted-${habit.id}`}
               title={lang === 'ms' ? 'Dipercayai' : 'Trusted'}>🛡️</span>

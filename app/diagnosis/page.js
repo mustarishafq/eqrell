@@ -11,6 +11,8 @@ import { BRAND } from '@/lib/brand'
 import { BOY_AVATARS, GIRL_AVATARS, AVATAR_BY_ID } from '@/lib/avatars'
 import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
 import { PushPrompt } from '@/components/eqrel/PushPrompt'
+import { solatCoreFor, SOLAT_WAJIB_AGE } from '@/lib/solatCore'
+import { TEMPLATE_BY_ID as SOLAT_TPL, getTemplateTitle as solatTitle } from '@/lib/habitTemplates'
 import { TEMPLATE_BY_ID, HABIT_CATEGORIES, getTemplateTitle } from '@/lib/habitTemplates'
 import {
   DIMENSIONS, GOALS, ROUTINE_QUESTIONS, PRACTICE_QUESTIONS, LEVELS, SCHOOL_OPTIONS, STAGES,
@@ -554,6 +556,30 @@ function DiagnosisInner() {
                     </p>
                   </div>
                 )}
+
+                <div className="mt-4 rounded-3xl p-3.5 bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-lg" data-testid="diag-solat-core">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🕌</span>
+                    <div className="flex-1">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-emerald-100">{L('Solat Teras · sentiasa aktif', 'Core Prayers · always on', 'Sholat Inti · selalu aktif', 'الصلاة الأساسية · دائماً')}</div>
+                      <div className="font-extrabold text-base leading-tight">
+                        {Number(child.age) < SOLAT_WAJIB_AGE
+                          ? L(`Latihan Solat untuk ${n}`, `Prayer practice for ${n}`, `Latihan sholat untuk ${n}`, `تدريب ${n} على الصلاة`)
+                          : L(`Solat 5 waktu ${n}`, `${n}'s 5 daily prayers`, `Sholat 5 waktu ${n}`, `الصلوات الخمس لـ ${n}`)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {solatCoreFor(Number(child.age)).map(id => (
+                      <span key={id} className="px-2.5 py-1 rounded-full bg-white/15 border border-white/25 text-[12px] font-bold">{solatTitle(SOLAT_TPL[id], lang)}</span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-emerald-50/85 mt-2 leading-snug">
+                    {Number(child.age) < SOLAT_WAJIB_AGE
+                      ? L('“Suruhlah anak-anak solat ketika berumur 7 tahun.” Sebelum itu, ajak mereka solat Maghrib & Isyak bersama keluarga.', '“Command your children to pray at seven.” Until then, invite them to pray Maghrib & Isha with the family.', '“Perintahkan anak sholat saat berusia 7 tahun.” Sebelumnya, ajak sholat Maghrib & Isya bersama.', '«مُروا أولادكم بالصلاة لسبع». قبل ذلك ادعُهم لصلاة المغرب والعشاء مع الأسرة.')
+                      : L('Teras EQrel — tidak boleh dibuang, hanya dijeda bila perlu. Setiap solat menyalakan Musalla di kampung anak.', 'The heart of EQrel — cannot be removed, only paused when needed. Every prayer lights up the Musalla in their village.', 'Inti EQrel — tidak bisa dihapus, hanya dijeda.', 'قلب EQrel — لا تُحذف، تُوقف مؤقتاً فقط.')}
+                  </p>
+                </div>
 
                 <div className="mt-4">
                   <div className="flex items-end justify-between">

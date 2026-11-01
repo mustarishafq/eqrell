@@ -18,20 +18,23 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
   const L = pick(lang)
   const [habitsByChild, setHabitsByChild] = useState({})
   const [lockedByChild, setLockedByChild] = useState({})
+  const [metaByChild, setMetaByChild] = useState({})
+  const [pauseMenu, setPauseMenu] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const map = {}, lmap = {}
+    const map = {}, lmap = {}, mmap = {}
     await Promise.all(kids.map(async (c) => {
       try {
         const r = await fetch(`/api/children/${c.id}/habits`, { credentials: 'include' })
-        if (r.ok) { const d = await r.json(); map[c.id] = d.habits || []; lmap[c.id] = d.lockedHabits || [] }
+        if (r.ok) { const d = await r.json(); map[c.id] = d.habits || []; lmap[c.id] = d.lockedHabits || []; mmap[c.id] = { solatPause: d.solatPause, canCutiSolat: d.canCutiSolat, solatWajib: d.solatWajib } }
       } catch { /* ignore */ }
     }))
     setHabitsByChild(map)
     setLockedByChild(lmap)
+    setMetaByChild(mmap)
     setLoading(false)
   }, [kids])
   useEffect(() => { load() }, [load, refreshKey])
@@ -120,6 +123,52 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                 <Settings2 className="w-3.5 h-3.5" /> {L('Urus Habit', 'Manage', 'Kelola', 'إدارة')}
               </button>
             </div>
+            {/* Solat Teras: pause / resume */}
+            {(() => {
+              const m = metaByChild[c.id] || {}
+              const sp = m.solatPause
+              const call = async (path, body) => {
+                setPauseMenu(null)
+                await fetch(`/api/children/${c.id}/${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+                load()
+              }
+              if (sp) {
+                const until = sp.until ? new Date(sp.until).toLocaleDateString(lang === 'ar' ? 'ar' : lang === 'ms' ? 'ms-MY' : lang === 'id' ? 'id-ID' : 'en-GB', { day: 'numeric', month: 'short' }) : ''
+                return (
+                  <div className="mt-2.5 rounded-2xl bg-rose-50 border border-rose-100 px-3 py-2 flex items-center gap-2" data-testid={`tasks-solat-paused-${c.id}`}>
+                    <span className="text-lg">{sp.reason === 'haid' ? '🌸' : '🤒'}</span>
+                    <div className="flex-1 text-[11px] text-rose-900 font-semibold leading-snug">
+                      {sp.reason === 'haid' ? L('Cuti Solat', 'Prayer break (period)', 'Cuti Sholat', 'إجازة الصلاة') : L('Solat dijeda — sakit', 'Prayers paused — illness', 'Sholat dijeda — sakit', 'الصلاة موقوفة — مرض')}
+                      {until ? ` · ${L('hingga', 'until', 'hingga', 'حتى')} ${until}` : ''}
+                    </div>
+                    <button onClick={() => call('solat-resume')} data-testid={`tasks-solat-resume-${c.id}`} className="px-2.5 py-1 rounded-full bg-white border border-rose-200 text-[11px] font-extrabold text-rose-700 active:scale-95">
+                      {L('Sambung', 'Resume', 'Lanjutkan', 'استئناف')}
+                    </button>
+                  </div>
+                )
+              }
+              return (
+                <div className="mt-2 relative">
+                  <button onClick={() => setPauseMenu(pauseMenu === c.id ? null : c.id)} data-testid={`tasks-solat-pause-${c.id}`}
+                    className="text-[11px] font-bold text-eq-ink/50 px-2 py-1 rounded-full hover:bg-eq-cream/60">
+                    ⏸ {L('Jeda Solat Teras', 'Pause core prayers', 'Jeda sholat inti', 'إيقاف الصلاة مؤقتاً')}
+                  </button>
+                  {pauseMenu === c.id && (
+                    <div className="mt-1 rounded-2xl border border-gray-100 bg-white shadow-lg p-2 space-y-1" data-testid={`tasks-solat-menu-${c.id}`}>
+                      {m.canCutiSolat && (
+                        <button onClick={() => call('solat-pause', { reason: 'haid', days: 7 })} data-testid={`tasks-solat-haid-${c.id}`} className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-rose-50 text-[12px] font-bold text-eq-ink">
+                          🌸 {L('Cuti Solat (haid) · 7 hari', 'Prayer break (period) · 7 days', 'Cuti sholat (haid) · 7 hari', 'إجازة الصلاة (حيض) · ٧ أيام')}
+                        </button>
+                      )}
+                      <button onClick={() => call('solat-pause', { reason: 'sakit', days: 1 })} data-testid={`tasks-solat-sick-${c.id}`} className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-amber-50 text-[12px] font-bold text-eq-ink">
+                        🤒 {L('Sakit teruk / di hospital · 1 hari', 'Seriously ill / in hospital · 1 day', 'Sakit parah / di rumah sakit · 1 hari', 'مرض شديد / في المستشفى · يوم')}
+                      </button>
+                      <p className="px-2.5 pb-1 text-[10px] text-eq-ink/50 leading-snug">{L('Solat tetap wajib ketika musafir (jamak/qasar) dan sakit biasa (boleh duduk).', 'Prayer is still required when travelling (combine/shorten) and with mild illness (may sit).', 'Sholat tetap wajib saat safar dan sakit ringan.', 'الصلاة واجبة في السفر (جمع/قصر) والمرض الخفيف.')}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             <div className="mt-2.5 h-2 rounded-full bg-eq-cream/70 overflow-hidden">
               <motion.div className="h-full rounded-full" style={{ backgroundColor: color }} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} />
             </div>

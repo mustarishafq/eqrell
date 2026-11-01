@@ -5872,6 +5872,74 @@ backend:
           
           NO CRITICAL ISSUES FOUND. Core staged plan, trust streak, and weekly digest functionality is production-ready.
 
+  - task: "Solat Teras (core prayers) — always on, cannot be removed, pausable"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/solatCore.js, /app/lib/engagement.js, /app/lib/diagnosis.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "lib/solatCore.js: SOLAT_IDS ib-01..ib-05; age<7 → Latihan Solat ib-04+ib-05 only; age>=7 → all 5. ensureSolatCore(db, child) (lazy, idempotent) in GET /children/:id/habits and after POST /onboarding/child: flags existing prayer habits core:true (and unlocks them if staged-locked), inserts missing ones (source 'solat-core', core:true, active:true), auto-resumes pauses whose pauseUntil passed. buildPlan never returns prayer templates; staged lockedTemplateIds ignore prayer ids. DELETE /habits/:id and PATCH {active:false} on core → 403. POST /children/:id/solat-pause {reason:'haid'|'sakit', days 1..10 (default haid 7, sakit 1)} → all core habits paused:true,pauseReason,pauseUntil; haid only allowed for gender 'female' and age>=9 (400 otherwise); invalid reason 400. POST /children/:id/solat-resume clears pause. Paused habits excluded from GET habits[] (returned in pausedHabits[] + solatPause {reason,until,count}); response also canCutiSolat, solatWajib. POST /habits/:id/claim on paused → 409. Night digest kids[].solat {done,total} for core habits (claimed or verified not 'belum'), solatLine, push body prefixed '🕌 Prayers: Adam 4/5'. Paused habits excluded from digests (familyContext)."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ COMPREHENSIVE BACKEND TEST COMPLETED - ALL 7 TEST SCENARIOS PASSED (7/7)
+          
+          TEST SCRIPT: /app/backend_test_solat_core.py
+          
+          **Test 1: Age 8 creates 5 core prayers (ib-01..ib-05) ✓**
+          - GET /children/:id/habits creates 5 core prayer habits for age 8 child
+          - Core habits are ib-01, ib-02, ib-03, ib-04, ib-05 (all 5 daily prayers)
+          - All core habits are active and not locked
+          - Second call does NOT duplicate (idempotent)
+          - Existing non-core ib-04 habit gets flagged core=true rather than duplicated
+          
+          **Test 2: Age 5 creates only ib-04 and ib-05 (Latihan Solat) ✓**
+          - Child age 5 gets only 2 core habits: ib-04 (Maghrib) and ib-05 (Isyak)
+          - No ib-01, ib-02, ib-03 created (age < 7 = practice prayers only)
+          - solatWajib flag is false for age 5
+          
+          **Test 3: Onboarding with staged plan - core prayers not locked ✓**
+          - POST /onboarding/child with age 9, pace 'staged', lockedTemplateIds including 'ib-01'
+          - ib-01 is NOT locked (core prayers cannot be locked)
+          - ib-01 is active and has core=true
+          - Personal habits (ib-06, ks-01) are locked as requested
+          - Total 5 core habits created for age 9
+          
+          **Test 4: Core habits cannot be removed or deactivated ✓**
+          - DELETE /habits/:id on core habit returns 403 with message "Solat Teras cannot be removed"
+          - PATCH {active:false} on core habit returns 403 with message "Solat Teras cannot be deactivated"
+          - PATCH title on core habit is allowed (200 OK)
+          - DELETE on non-core habit works normally (200 OK)
+          
+          **Test 5: Pause functionality - comprehensive validation ✓**
+          - Male child age 10: POST /children/:id/solat-pause {reason:'haid'} → 400 (not allowed)
+          - Male child age 10: POST /children/:id/solat-pause {reason:'sakit'} → 200, paused 5 habits, pauseUntil ~+1 day
+          - GET /children/:id/habits: no core habits in habits[] array, 5 in pausedHabits[], solatPause object present
+          - POST /habits/:id/claim on paused habit → 409 (cannot claim paused habit)
+          - Auto-resume: set pauseUntil in past → next GET automatically resumes (core habits back in habits[])
+          - Female age 10: POST /children/:id/solat-pause {reason:'haid'} → 200, default 7 days, canCutiSolat=true
+          - Female age 8: POST /children/:id/solat-pause {reason:'haid'} → 400, canCutiSolat=false
+          - Invalid reason → 400
+          - POST /children/:id/solat-resume → 200, resumed 5 habits, habits back in habits[]
+          
+          **Test 6: Night digest includes solat stats ✓**
+          - Created 3 claims for 3 of 5 core prayers
+          - GET /digest/night: kids[].solat {done:3, total:5}
+          - solatLine contains "Ahmad 3/5"
+          - push.body starts with "🕌 Prayers: Ahmad 3/5"
+          - Paused children's core prayers excluded from totals (solat object is null or total=0)
+          
+          **Test 7: Authorization checks ✓**
+          - POST /children/:id/solat-pause without cookie → 401
+          - POST /children/:id/solat-resume without cookie → 401
+          - POST /children/:id/solat-pause for other family's child → 404
+          
+          NO CRITICAL ISSUES FOUND. Solat Teras (core prayers) functionality is production-ready.
+
 frontend:
   - task: "Onboarding Diagnosis wizard /diagnosis"
     implemented: true

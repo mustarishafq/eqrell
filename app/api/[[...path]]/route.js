@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { solatCoreFor, childAgeYears, SOLAT_IDS, SOLAT_WAJIB_AGE, isSolatTpl, canCutiSolat, PAUSE_REASONS } from '@/lib/solatCore'
 import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
@@ -76,6 +77,35 @@ async function runDigestCron(db) {
 import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import crypto from 'node:crypto'
+
+/**
+ * Solat Teras: make sure every child has their age-appropriate core prayers (core:true),
+ * and auto-resume pauses whose time is up. Idempotent; called lazily.
+ */
+async function ensureSolatCore(db, child, assignedBy = 'system') {
+  if (!child?.id) return
+  const now = new Date()
+  await db.collection('habits').updateMany(
+    { childId: child.id, core: true, paused: true, pauseUntil: { $lte: now } },
+    { $set: { paused: false, updatedAt: now }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
+  const wanted = solatCoreFor(childAgeYears(child))
+  const existing = await db.collection('habits').find({ childId: child.id, templateId: { $in: SOLAT_IDS }, $or: [{ active: { $ne: false } }, { locked: true }] })
+    .project({ _id: 0, id: 1, templateId: 1, core: 1, locked: 1 }).toArray()
+  const toFlag = existing.filter(h => wanted.includes(h.templateId) && (!h.core || h.locked)).map(h => h.id)
+  if (toFlag.length) await db.collection('habits').updateMany({ id: { $in: toFlag } }, { $set: { core: true, active: true, locked: false, updatedAt: now }, $unset: { unlockAt: 1 } })
+  const have = new Set(existing.map(h => h.templateId))
+  const missing = wanted.filter(id => !have.has(id) && TEMPLATE_BY_ID[id])
+  if (!missing.length) return
+  await db.collection('habits').insertMany(missing.map(id => {
+    const tpl = TEMPLATE_BY_ID[id]
+    return {
+      id: crypto.randomUUID(), familyId: child.familyId, childId: child.id, templateId: id,
+      category: tpl.category, session: TEMPLATE_DEFAULT_SESSION[id] || 'anytime', recurring: 'daily',
+      title: tpl.title, desc: tpl.desc || '', points: tpl.points ?? 15, frequency: 'daily',
+      active: true, core: true, source: 'solat-core', assignedBy, createdAt: now, updatedAt: now,
+    }
+  }))
+}
 
 /** Staged plan: activate habits whose unlockAt has passed (lazy, idempotent). */
 async function unlockDueHabits(db, filter) {
@@ -425,9 +455,10 @@ async function handleRoute(request, { params }) {
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
       if (!child) return err('Child not found', 404)
       await unlockDueHabits(db, { childId, familyId: user.familyId })
+      await ensureSolatCore(db, child, session.userId)
 
       const habits = await db.collection('habits')
-        .find({ childId, familyId: user.familyId, active: { $ne: false } })
+        .find({ childId, familyId: user.familyId, active: { $ne: false }, paused: { $ne: true } })
         .sort({ createdAt: 1 })
         .project({ _id: 0 })
         .toArray()
@@ -499,7 +530,14 @@ async function handleRoute(request, { params }) {
         .find({ childId, familyId: user.familyId, locked: true })
         .project({ _id: 0, id: 1, title: 1, templateId: 1, i18n: 1, category: 1, unlockAt: 1, points: 1 }).toArray()
 
-      return json({ habits: enriched, lockedHabits: locked })
+      const pausedHabits = await db.collection('habits')
+        .find({ childId, familyId: user.familyId, active: { $ne: false }, paused: true })
+        .project({ _id: 0, id: 1, title: 1, templateId: 1, i18n: 1, core: 1, pauseReason: 1, pauseUntil: 1 }).toArray()
+      const solatPause = pausedHabits.find(h => h.core)
+        ? { reason: pausedHabits.find(h => h.core).pauseReason, until: pausedHabits.find(h => h.core).pauseUntil, count: pausedHabits.filter(h => h.core).length }
+        : null
+
+      return json({ habits: enriched, lockedHabits: locked, pausedHabits, solatPause, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
     }
 
     // POST /children/:id/habits  → assign a habit (from template or custom)
@@ -549,6 +587,10 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
 
+      if (body.active === false) {
+        const cur = await db.collection('habits').findOne({ id: habitId }, { projection: { core: 1 } })
+        if (cur?.core) return err('Solat Teras cannot be deactivated — you can pause it instead', 403)
+      }
       const allowed = ['title', 'desc', 'category', 'session', 'recurring', 'points', 'frequency', 'active']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
@@ -575,6 +617,9 @@ async function handleRoute(request, { params }) {
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
+      const target = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId }, { projection: { core: 1 } })
+      if (!target) return err('Habit not found', 404)
+      if (target.core) return err('Solat Teras cannot be removed — you can pause it instead', 403)
       const result = await db.collection('habits').deleteOne({ id: habitId, familyId: user.familyId })
       if (result.deletedCount === 0) return err('Habit not found', 404)
       // Cascade delete related claims
@@ -598,6 +643,7 @@ async function handleRoute(request, { params }) {
 
       const habit = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId })
       if (!habit) return err('Habit not found', 404)
+      if (habit.paused) return err('This habit is paused', 409)
 
       const dateStr = body.dateStr || new Date().toISOString().slice(0, 10)
       const rubric = body.rubric
@@ -2042,6 +2088,36 @@ async function handleRoute(request, { params }) {
       return json({ ok: true, accepted: true, runId }, 202)
     }
 
+    // ══════════ SOLAT TERAS: pause / resume ══════════
+    // POST /children/:id/solat-pause { reason: 'haid'|'sakit', days?: 1..10 }
+    // POST /children/:id/solat-resume
+    if (route.match(/^\/children\/[^/]+\/solat-(pause|resume)$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Child not found', 404)
+      const now = new Date()
+      if (route.endsWith('/solat-resume')) {
+        const r = await db.collection('habits').updateMany({ childId, core: true, paused: true },
+          { $set: { paused: false, updatedAt: now }, $unset: { pauseReason: 1, pauseUntil: 1, pausedAt: 1 } })
+        return json({ ok: true, resumed: r.modifiedCount })
+      }
+      const body = await request.json().catch(() => ({}))
+      const reason = PAUSE_REASONS.includes(body.reason) ? body.reason : null
+      if (!reason) return err('reason must be haid or sakit', 400)
+      if (reason === 'haid' && !canCutiSolat(child)) return err('Cuti Solat is only for girls aged 9 and above', 400)
+      const days = Math.max(1, Math.min(10, Number(body.days) || (reason === 'haid' ? 7 : 1)))
+      const pauseUntil = new Date(now.getTime() + days * 86400000)
+      await ensureSolatCore(db, child, session.userId)
+      const r = await db.collection('habits').updateMany({ childId, core: true, active: { $ne: false } },
+        { $set: { paused: true, pauseReason: reason, pauseUntil, pausedAt: now, pausedBy: session.userId, updatedAt: now } })
+      return json({ ok: true, paused: r.modifiedCount, reason, until: pauseUntil })
+    }
+
     // ══════════ KONGSI PASANGAN (co-parent) ══════════
     // GET /family/parents → { parents:[{id,name,picture,isMe,verifiedToday}], rota:{mode,days}, code, familyName }
     if (route === '/family/parents' && method === 'GET') {
@@ -2194,7 +2270,7 @@ async function handleRoute(request, { params }) {
         const ids = [...new Set((Array.isArray(body.templateIds) ? body.templateIds : []).filter(id => TEMPLATE_BY_ID[id] && !have.has(id)))].slice(0, 12)
         // pace 'staged' → lockedTemplateIds start next week (active:false + locked:true, unlockAt +7d)
         const pace = body.pace === 'staged' ? 'staged' : 'all'
-        const lockedSet = new Set(pace === 'staged' && Array.isArray(body.lockedTemplateIds) ? body.lockedTemplateIds : [])
+        const lockedSet = new Set((pace === 'staged' && Array.isArray(body.lockedTemplateIds) ? body.lockedTemplateIds : []).filter(id => !isSolatTpl(id)))
         const now = new Date()
         const unlockAt = new Date(now.getTime() + 7 * 86400000)
         const docs = ids.map(id => {
@@ -2210,6 +2286,7 @@ async function handleRoute(request, { params }) {
         })
         if (docs.length) await db.collection('habits').insertMany(docs)
         await db.collection('children').updateOne({ id: child.id }, { $set: { planPace: pace, planStartedAt: child.planStartedAt || now } })
+        await ensureSolatCore(db, { ...child, age: child.dob ? child.age : age }, session.userId)
         const fresh = await db.collection('children').findOne({ id: child.id }, { projection: { _id: 0 } })
         const previous = Array.isArray(fresh?.diagnosisHistory) && fresh.diagnosisHistory.length ? fresh.diagnosisHistory[fresh.diagnosisHistory.length - 1] : null
         delete fresh.diagnosisHistory

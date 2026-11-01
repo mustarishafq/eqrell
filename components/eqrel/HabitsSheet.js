@@ -676,6 +676,12 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           >
                             <Edit3 className="w-4 h-4 text-blue-500/80" />
                           </button>
+                          {habit.core ? (
+                            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black flex-shrink-0" data-testid={`habit-core-${habit.id}`}
+                              title={lang === 'ms' ? 'Solat Teras — tidak boleh dibuang, boleh dijeda di tab Tasks' : 'Core prayer — cannot be removed, can be paused in the Tasks tab'}>
+                              🕌 {lang === 'ms' ? 'Teras' : lang === 'id' ? 'Inti' : lang === 'ar' ? 'أساسي' : 'Core'}
+                            </span>
+                          ) : (
                           <button
                             onClick={() => removeHabit(habit.id)}
                             className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0"
@@ -683,6 +689,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           >
                             <Trash2 className="w-4 h-4 text-red-500/70" />
                           </button>
+                          )}
                         </div>
                       </div>
                     )

@@ -75,6 +75,11 @@ export function DigestCard({ lang = 'en', refreshKey = 0, onQuickVerify, onSetti
           </div>
         ))}
       </div>
+      {d.solatLine && (
+        <div className="mt-2 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] font-bold text-emerald-800" data-testid="digest-solat">
+          🕌 {L('Solat hari ini', 'Prayers today', 'Sholat hari ini', 'صلوات اليوم')}: {d.solatLine}
+        </div>
+      )}
       {(d.duty || d.teamLine) && (
         <div className="mt-2 flex flex-wrap gap-1.5" data-testid="digest-team">
           {d.duty && (
