@@ -311,3 +311,16 @@ test_plan:
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+frontend:
+  - task: "Kid Mode TV-style Habit Focus 'Now' card"
+    implemented: true
+    working: "NA"
+    file: "/app/components/eqrel/HabitFocusCard.js, /app/app/kid/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Card kid-focus-card (data-session) under greeting: kid-focus-session, kid-focus-clock, kid-focus-title, kid-focus-done-btn (claims focus habit via existing claimHabit, focus advances), kid-focus-progress, kid-focus-next (up to 2 tappable), kid-focus-alldone + kid-focus-world when session/day done. Session from real prayer times (/api/family/prayer-times) else clock. Core prayers prioritised. Main agent smoke-tested: claim advanced focus Subuh → Wudu."

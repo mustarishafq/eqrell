@@ -18,6 +18,7 @@ import { QuizSheet } from '@/components/eqrel/QuizSheet'
 import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 import { haptic, showBurst } from '@/lib/feedback'
 import { KidRestBanner } from '@/components/eqrel/RestModeSheet'
+import HabitFocusCard from '@/components/eqrel/HabitFocusCard'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -131,6 +132,11 @@ function KidHomeActive({ router, childId, t, lang }) {
   const [habits, setHabits] = useState([])
   const [solatPause, setSolatPause] = useState(null)
   const [restMode, setRestMode] = useState(null)
+  const [prayerTimings, setPrayerTimings] = useState(null)   // real prayer windows for the Now card (optional)
+  useEffect(() => {
+    fetch('/api/family/prayer-times', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null)).then(d => setPrayerTimings(d?.timings || null)).catch(() => {})
+  }, [])
   const [welcomeOpen, setWelcomeOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('welcome') === '1')
   const closeWelcome = () => {
     setWelcomeOpen(false)
@@ -421,6 +427,12 @@ function KidHomeActive({ router, childId, t, lang }) {
             {child ? t.kid_greeting(child.nickname) : '…'}
           </motion.h1>
         </div>
+
+        {/* TV-style "Now" card — the one habit to do right now */}
+        {!loading && (
+          <HabitFocusCard habits={habits} lang={lang} t={t} busyHabit={busyHabit} onClaim={claimHabit} timings={prayerTimings}
+            onOpenWorld={() => router.push(`/world?childId=${encodeURIComponent(childId)}`)} />
+        )}
 
         {/* Progress stats */}
         {!loading && (
@@ -1095,7 +1107,7 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
   else if (isPerPrayerAggregate) {
     // Show progress "N/5 hari ini" instead of the daily-habit labels
     const doneCount = sessionsClaimed.length
-    const sessionLabel = getSessionLabel(currentSession, t)
+    const sessionLabel = getSessionLabel(currentSession, lang)
     if (currentSessionClaimed) {
       statusLabel = lang === 'ar' ? `تم ✓ (${doneCount}/5)`
                   : lang === 'en' ? `Done for ${sessionLabel} ✓  ·  ${doneCount}/5 today`
