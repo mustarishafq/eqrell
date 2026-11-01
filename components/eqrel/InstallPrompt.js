@@ -1,206 +1,195 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Share, Plus, Download, Sparkles } from 'lucide-react'
+import { X, Share, PlusSquare, Download, Copy, Check } from 'lucide-react'
 import { useLang } from '@/lib/i18n/LangProvider'
+import {
+  isStandalone, detectPlatform, getLocalInstalled, getServerInstalled, markInstalledIfStandalone,
+  getInstallEvent, onInstallEvent, promptInstall,
+} from '@/lib/pwaInstall'
 
 const DISMISS_KEY = 'eqrel-install-dismissed'
 const DISMISS_DAYS = 3
+const pick = (lang) => (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'ms' ? ms : lang === 'id' ? id : en)
 
+/**
+ * Install state shared by the banner and the Profile row.
+ * mode: 'installed' | 'native' (one-tap) | 'ios-safari' | 'ios-other' | 'open-in-safari' | 'manual' | 'none'
+ */
+export function useInstallState() {
+  const [state, setState] = useState({ mode: 'none', checked: false, platform: null })
+  useEffect(() => {
+    const p = detectPlatform()
+    const compute = (bip) => {
+      if (isStandalone() || getLocalInstalled()) return 'installed'
+      if (bip) return 'native'
+      if (p.os === 'ios') return p.inApp ? 'open-in-safari' : p.browser === 'safari' ? 'ios-safari' : (p.browser === 'chrome' || p.browser === 'edge') ? 'ios-other' : 'open-in-safari'
+      if (p.os === 'android' && p.browser === 'firefox') return 'manual'
+      if (p.os === 'android' && p.inApp) return 'manual'
+      return 'none'      // Chrome/Edge/Samsung without the install event → already installed or not installable here
+    }
+    let alive = true
+    setState({ mode: compute(getInstallEvent()), checked: false, platform: p })
+    if (isStandalone()) markInstalledIfStandalone()
+    const off = onInstallEvent((bip) => alive && setState(s => ({ ...s, mode: compute(bip) })))
+    getServerInstalled(p.os).then(yes => { if (alive) setState(s => ({ ...s, checked: true, mode: yes ? 'installed' : s.mode })) })
+    return () => { alive = false; off() }
+  }, [])
+  return state
+}
+
+/** Bottom banner — shows only when NOT installed. One tap = native install where the browser supports it. */
 export function InstallPrompt() {
-  const { t } = useLang()
+  const { lang } = useLang()
+  const L = pick(lang)
+  const { mode, checked, platform } = useInstallState()
   const [visible, setVisible] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(false)
-  const [deferredPrompt, setDeferredPrompt] = useState(null)
-  const [platform, setPlatform] = useState('other') // 'ios' | 'android' | 'other'
+  const [guide, setGuide] = useState(false)
+  const [firstTime, setFirstTime] = useState(true)
 
   useEffect(() => {
-    // Skip if already installed as PWA
-    if (typeof window === 'undefined') return
-    if (window.matchMedia('(display-mode: standalone)').matches) return
-    if (window.navigator.standalone === true) return // iOS Safari standalone
+    if (!checked || mode === 'installed' || mode === 'none') { setVisible(false); return }
+    try {
+      const d = localStorage.getItem(DISMISS_KEY)
+      if (d) { setFirstTime(false); if ((Date.now() - parseInt(d, 10)) / 86400000 < DISMISS_DAYS) return }
+    } catch { /* ignore */ }
+    const tt = setTimeout(() => setVisible(true), 1200)
+    return () => clearTimeout(tt)
+  }, [mode, checked])
 
-    // Check dismiss cooldown
-    const dismissedAt = localStorage.getItem(DISMISS_KEY)
-    if (dismissedAt) {
-      const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
-      if (daysSince < DISMISS_DAYS) return
-    }
-
-    // Detect platform
-    const ua = navigator.userAgent.toLowerCase()
-    const isIOS = /iphone|ipad|ipod/.test(ua) && !window.MSStream
-    const isAndroid = /android/.test(ua)
-
-    if (isIOS) setPlatform('ios')
-    else if (isAndroid) setPlatform('android')
-
-    // Listen for install prompt event (Android/Chrome)
-    const handleBeforeInstall = (e) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-    }
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall)
-
-    // Show prompt after 3 seconds delay (let user see dashboard first)
-    const timer = setTimeout(() => setVisible(true), 3000)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
-      clearTimeout(timer)
-    }
-  }, [])
-
-  const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, Date.now().toString())
-    setVisible(false)
-    setShowTutorial(false)
-  }
-
-  const handleInstall = async () => {
-    if (platform === 'ios') {
-      setShowTutorial(true)
+  const dismiss = () => { try { localStorage.setItem(DISMISS_KEY, String(Date.now())) } catch { /* ignore */ } setVisible(false); setGuide(false) }
+  const install = async () => {
+    if (mode === 'native') {
+      const r = await promptInstall()
+      if (r === 'accepted') setVisible(false)
+      else if (r === 'unavailable') setGuide(true)
       return
     }
-    if (deferredPrompt) {
-      deferredPrompt.prompt()
-      const { outcome } = await deferredPrompt.userChoice
-      if (outcome === 'accepted') {
-        setVisible(false)
-      }
-      setDeferredPrompt(null)
-    } else {
-      // Fallback: show tutorial for android too
-      setShowTutorial(true)
-    }
+    setGuide(true)
   }
 
+  const native = mode === 'native'
   return (
     <>
       <AnimatePresence>
-        {visible && !showTutorial && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-20 inset-x-3 z-50 max-w-md mx-auto"
-          >
-            <div className="bg-gradient-to-br from-eq-green to-emerald-600 text-white rounded-2xl shadow-2xl p-3 pr-2 flex items-center gap-3 border-2 border-white/20">
-              <div className="w-11 h-11 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-6 h-6 text-eq-yellow" fill="#FFB703" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-extrabold text-sm leading-tight">{t.install_title}</div>
-                <div className="text-white/85 text-[11px] leading-tight mt-0.5">
-                  {t.install_body}
+        {visible && !guide && (
+          <motion.div initial={{ y: 120, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 120, opacity: 0 }}
+            transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+            className="fixed bottom-20 inset-x-3 z-50 max-w-md mx-auto" data-testid="install-banner" data-mode={mode}>
+            <div className="bg-white rounded-3xl shadow-2xl border-2 border-eq-green p-3.5">
+              <div className="flex items-center gap-3">
+                <img src="/icons/icon-192.png" alt="" className="w-12 h-12 rounded-2xl flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-extrabold text-sm text-eq-ink leading-tight">
+                    {firstTime ? L('Pasang EQrel di telefon anda', 'Get the EQrel app on your phone', 'Pasang EQrel di HP kamu', 'ثبّت تطبيق EQrel على هاتفك') : L('Pasang EQrel', 'Install EQrel', 'Pasang EQrel', 'ثبّت EQrel')}
+                  </div>
+                  <div className="text-[11px] text-eq-ink/60 leading-snug mt-0.5">
+                    {native
+                      ? L('Satu tekan · percuma · buka terus dari skrin utama', 'One tap · free · opens right from your home screen', 'Satu ketuk · gratis · buka dari layar utama', 'نقرة واحدة · مجاناً · يفتح من الشاشة الرئيسية')
+                      : L('2 langkah mudah — kami tunjukkan caranya', '2 quick steps — we’ll show you where to tap', '2 langkah mudah — kami tunjukkan', 'خطوتان سريعتان — سنريك أين تضغط')}
+                  </div>
                 </div>
+                <button onClick={dismiss} aria-label="close" data-testid="install-dismiss" className="w-8 h-8 rounded-full flex items-center justify-center text-eq-ink/50 flex-shrink-0"><X className="w-4 h-4" /></button>
               </div>
-              <button
-                onClick={handleInstall}
-                className="bg-eq-yellow text-eq-ink font-bold text-xs px-3 py-2 rounded-xl shadow active:scale-95 flex-shrink-0"
-              >
-                {t.install_cta}
-              </button>
-              <button
-                onClick={dismiss}
-                className="w-7 h-7 flex items-center justify-center text-white/80 hover:text-white flex-shrink-0"
-                aria-label={t.install_close}
-              >
-                <X className="w-4 h-4" />
+              <button onClick={install} data-testid="install-cta"
+                className="mt-3 w-full rounded-2xl bg-eq-green text-white font-extrabold text-sm py-3 inline-flex items-center justify-center gap-2 active:scale-[0.98]">
+                {native ? <Download className="w-4 h-4" /> : <PlusSquare className="w-4 h-4" />}
+                {native ? L('Pasang sekarang', 'Install now', 'Pasang sekarang', 'ثبّت الآن') : L('Tunjukkan caranya', 'Show me how', 'Tunjukkan caranya', 'أرني الطريقة')}
               </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* iOS Tutorial Modal */}
-      <AnimatePresence>
-        {showTutorial && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 pointer-events-none"
-          >
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
-              style={{ zIndex: 0 }}
-              onClick={() => setShowTutorial(false)}
-            />
-            <motion.div
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 40, opacity: 0 }}
-              className="relative bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl pointer-events-auto"
-              style={{ zIndex: 10 }}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="text-eq-ink font-extrabold text-xl">{t.install_title}</h3>
-                  <p className="text-eq-ink/60 text-sm mt-0.5">
-                    {platform === 'ios' ? t.install_tutorial_ios : t.install_tutorial_other}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowTutorial(false)}
-                  className="w-8 h-8 rounded-full hover:bg-eq-cream flex items-center justify-center"
-                  aria-label={t.install_close}
-                >
-                  <X className="w-5 h-5 text-eq-ink/60" />
-                </button>
-              </div>
-
-              <div className="space-y-3 mt-4">
-                {platform === 'ios' ? (
-                  <>
-                    <Step num="1" text={t.install_ios_1_text} icon={<Share className="w-5 h-5" />} suffix={t.install_ios_1_suffix} />
-                    <Step num="2" text={t.install_ios_2_text} icon={<Plus className="w-5 h-5" />} suffix={t.install_ios_2_suffix} />
-                    <Step num="3" text={t.install_ios_3_text} />
-                  </>
-                ) : (
-                  <>
-                    <Step num="1" text={t.install_and_1_text} suffix={t.install_and_1_suffix} />
-                    <Step num="2" text={t.install_and_2_text} icon={<Download className="w-5 h-5" />} suffix={t.install_and_2_suffix} />
-                    <Step num="3" text={t.install_and_3_text} />
-                  </>
-                )}
-              </div>
-
-              <div className="mt-5 bg-eq-cream/60 rounded-xl p-3">
-                <p className="text-eq-ink/80 text-xs leading-relaxed">
-                  <strong className="text-eq-green">{t.install_final_pre}</strong>{t.install_final_body}
-                </p>
-              </div>
-
-              <button
-                onClick={dismiss}
-                className="w-full mt-4 bg-eq-green text-white font-bold py-3 rounded-xl active:scale-95"
-              >
-                {t.install_understand}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <InstallGuide open={guide} mode={mode} platform={platform} onClose={() => setGuide(false)} onDone={dismiss} />
     </>
   )
 }
 
-const Step = ({ num, text, icon, suffix }) => (
-  <div className="flex items-start gap-3">
-    <div className="w-7 h-7 rounded-full bg-eq-green text-white font-extrabold text-sm flex items-center justify-center flex-shrink-0">
-      {num}
-    </div>
-    <div className="text-eq-ink text-sm leading-snug pt-0.5">
-      {text}
-      {icon && (
-        <span className="inline-flex items-center justify-center w-7 h-7 mx-1 bg-eq-cream rounded-lg align-middle">
-          {icon}
-        </span>
+/** Guided "Add to Home Screen" (iPhone/iPad and browsers without one-tap install), with an arrow to the right button. */
+export function InstallGuide({ open, mode, platform, onClose, onDone }) {
+  const { lang } = useLang()
+  const L = pick(lang)
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(async () => {
+    try { await navigator.clipboard?.writeText(window.location.origin); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
+  }, [])
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  // Where the Share button lives: iPhone Safari = bottom centre, iPad Safari / iOS Chrome & Edge = top right
+  const arrowTop = mode === 'ios-other' || (mode === 'ios-safari' && platform?.iPad)
+  const showArrow = mode === 'ios-safari' || mode === 'ios-other'
+
+  let steps = []
+  if (mode === 'ios-safari') steps = [
+    [<Share key="i" className="w-5 h-5" />, L('Tekan butang Kongsi', 'Tap the Share button', 'Ketuk tombol Bagikan', 'اضغط زر المشاركة'), L(platform?.iPad ? 'di bahagian atas skrin' : 'di bar bawah Safari (iOS baharu: tekan ••• dahulu)', platform?.iPad ? 'at the top of the screen' : 'in Safari’s bottom bar (newer iOS: tap ••• first)', platform?.iPad ? 'di bagian atas layar' : 'di bilah bawah Safari (iOS baru: ketuk ••• dulu)', platform?.iPad ? 'أعلى الشاشة' : 'في شريط Safari السفلي (في iOS الأحدث اضغط ••• أولاً)')],
+    [<PlusSquare key="i" className="w-5 h-5" />, L('Pilih “Add to Home Screen”', 'Choose “Add to Home Screen”', 'Pilih “Add to Home Screen”', 'اختر «إضافة إلى الشاشة الرئيسية»'), L('scroll ke bawah sedikit jika tak nampak', 'scroll down a little if you don’t see it', 'gulir sedikit jika tidak terlihat', 'مرّر قليلاً إن لم تجده')],
+    [<Check key="i" className="w-5 h-5" />, L('Tekan “Add” — siap!', 'Tap “Add” — done!', 'Ketuk “Add” — selesai!', 'اضغط «إضافة» — تم!'), L('EQrel kini di skrin utama anda', 'EQrel is now on your home screen', 'EQrel kini di layar utama', 'EQrel الآن على شاشتك الرئيسية')],
+  ]
+  else if (mode === 'ios-other') steps = [
+    [<Share key="i" className="w-5 h-5" />, L('Tekan ikon Kongsi', 'Tap the Share icon', 'Ketuk ikon Bagikan', 'اضغط أيقونة المشاركة'), L('di bar alamat, atas kanan', 'in the address bar, top right', 'di bilah alamat, kanan atas', 'في شريط العنوان أعلى اليمين')],
+    [<PlusSquare key="i" className="w-5 h-5" />, L('Pilih “Add to Home Screen”', 'Choose “Add to Home Screen”', 'Pilih “Add to Home Screen”', 'اختر «إضافة إلى الشاشة الرئيسية»'), L('perlukan iOS 16.4 ke atas', 'needs iOS 16.4 or newer', 'perlu iOS 16.4+', 'يتطلب iOS 16.4 أو أحدث')],
+    [<Check key="i" className="w-5 h-5" />, L('Tekan “Add” — siap!', 'Tap “Add” — done!', 'Ketuk “Add” — selesai!', 'اضغط «إضافة» — تم!'), ''],
+  ]
+  else if (mode === 'open-in-safari') steps = [
+    [<Copy key="i" className="w-5 h-5" />, L('Salin pautan EQrel', 'Copy the EQrel link', 'Salin tautan EQrel', 'انسخ رابط EQrel'), L('app ini tidak boleh memasang terus', 'this app can’t install websites', 'aplikasi ini tidak bisa memasang', 'هذا التطبيق لا يمكنه التثبيت')],
+    [<Share key="i" className="w-5 h-5" />, L('Buka dalam Safari', 'Open it in Safari', 'Buka di Safari', 'افتحه في Safari'), L('atau tekan ••• → “Open in Safari/Browser”', 'or tap ••• → “Open in Safari / Browser”', 'atau ketuk ••• → “Open in Safari”', 'أو اضغط ••• ← «فتح في Safari»')],
+    [<PlusSquare key="i" className="w-5 h-5" />, L('Kemudian Kongsi → “Add to Home Screen”', 'Then Share → “Add to Home Screen”', 'Lalu Bagikan → “Add to Home Screen”', 'ثم مشاركة ← «إضافة إلى الشاشة الرئيسية»'), ''],
+  ]
+  else steps = [
+    [<span key="i" className="font-black">⋮</span>, L('Buka menu pelayar', 'Open the browser menu', 'Buka menu browser', 'افتح قائمة المتصفح'), L('butang ⋮ atau ☰', 'the ⋮ or ☰ button', 'tombol ⋮ atau ☰', 'زر ⋮ أو ☰')],
+    [<Download key="i" className="w-5 h-5" />, L('Pilih “Install” atau “Add to Home screen”', 'Choose “Install” or “Add to Home screen”', 'Pilih “Install” atau “Add to Home screen”', 'اختر «تثبيت» أو «إضافة إلى الشاشة»'), ''],
+    [<Check key="i" className="w-5 h-5" />, L('Sahkan — siap!', 'Confirm — done!', 'Konfirmasi — selesai!', 'أكّد — تم!'), ''],
+  ]
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center p-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} data-testid="install-guide" data-mode={mode}>
+          {showArrow && (
+            <motion.div className={`fixed z-[81] text-5xl pointer-events-none ${arrowTop ? 'top-2 right-6' : 'bottom-1 left-1/2 -translate-x-1/2'}`}
+              animate={{ y: arrowTop ? [-4, -14, -4] : [4, 14, 4] }} transition={{ duration: 1.1, repeat: Infinity }} data-testid="install-arrow">
+              {arrowTop ? '⬆️' : '⬇️'}
+            </motion.div>
+          )}
+          <motion.div onClick={e => e.stopPropagation()} initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 40 }}
+            className={`w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl ${showArrow && !arrowTop ? 'mb-16' : ''} ${arrowTop ? 'mt-16 self-start sm:self-center' : ''}`}>
+            <div className="flex items-start gap-3">
+              <img src="/icons/icon-192.png" alt="" className="w-12 h-12 rounded-2xl" />
+              <div className="flex-1">
+                <h3 className="font-extrabold text-lg text-eq-ink leading-tight">{L('Tambah EQrel ke skrin utama', 'Add EQrel to your home screen', 'Tambahkan EQrel ke layar utama', 'أضف EQrel إلى الشاشة الرئيسية')}</h3>
+                <p className="text-[12px] text-eq-ink/60">{mode === 'ios-safari' || mode === 'ios-other'
+                  ? L('Apple tidak benarkan pasang satu-tekan — hanya 3 tekan', 'Apple doesn’t allow one-tap installs — it’s just 3 taps', 'Apple tidak mengizinkan satu ketuk — cukup 3 ketuk', 'لا تسمح Apple بالتثبيت بنقرة — فقط 3 نقرات')
+                  : L('Ikut langkah ini', 'Follow these steps', 'Ikuti langkah ini', 'اتبع الخطوات')}</p>
+              </div>
+              <button onClick={onClose} aria-label="close" className="w-8 h-8 rounded-full flex items-center justify-center text-eq-ink/50"><X className="w-4 h-4" /></button>
+            </div>
+            <ol className="mt-4 space-y-3">
+              {steps.map(([icon, title, sub], i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="w-9 h-9 rounded-xl bg-eq-cream text-eq-green flex items-center justify-center flex-shrink-0">{icon}</span>
+                  <div className="pt-0.5">
+                    <div className="text-sm font-extrabold text-eq-ink">{i + 1}. {title}</div>
+                    {sub && <div className="text-[11px] text-eq-ink/55">{sub}</div>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {mode === 'open-in-safari' && (
+              <button onClick={copy} data-testid="install-copy-link" className="mt-4 w-full rounded-2xl border-2 border-eq-green text-eq-green font-extrabold text-sm py-2.5 inline-flex items-center justify-center gap-2">
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? L('Disalin!', 'Copied!', 'Disalin!', 'تم النسخ!') : L('Salin pautan', 'Copy link', 'Salin tautan', 'نسخ الرابط')}
+              </button>
+            )}
+            <button onClick={onDone || onClose} data-testid="install-guide-done" className="mt-3 w-full rounded-2xl bg-eq-green text-white font-extrabold text-sm py-3 active:scale-[0.98]">
+              {L('Faham', 'Got it', 'Mengerti', 'فهمت')}
+            </button>
+          </motion.div>
+        </motion.div>
       )}
-      {suffix && <span className="text-eq-ink/70"> {suffix}</span>}
-    </div>
-  </div>
-)
+    </AnimatePresence>
+  )
+}

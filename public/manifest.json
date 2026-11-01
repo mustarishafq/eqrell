@@ -2,6 +2,7 @@
   "name": "EQrel",
   "short_name": "EQrel",
   "description": "Build Habits, Grow Iman — Islamic habit-building for Muslim families",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FFF8E7",

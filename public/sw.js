@@ -2,6 +2,17 @@
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
 
+// Page navigations: network first, friendly offline page if there is no connection.
+// (A real fetch handler also keeps the app installable on browsers that still require one.)
+const OFFLINE_HTML = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>EQrel</title>'
+  + '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#FFF8E7;font-family:system-ui;color:#0F2E25;text-align:center">'
+  + '<div><div style="font-size:56px">📡</div><h2 style="margin:8px 0">You are offline</h2><p style="opacity:.7">Check your internet connection and try again.</p>'
+  + '<button onclick="location.reload()" style="margin-top:12px;background:#00B894;color:#fff;border:0;border-radius:14px;padding:12px 22px;font-weight:800;font-size:15px">Try again</button></div></body>'
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return
+  event.respondWith(fetch(event.request).catch(() => new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })))
+})
+
 self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { title: 'EQrel', body: event.data && event.data.text() } }

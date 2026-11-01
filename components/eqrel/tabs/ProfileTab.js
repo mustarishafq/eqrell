@@ -3,6 +3,9 @@
 import { ChevronRight, Copy, LogOut, Plus } from 'lucide-react'
 import { LangPicker } from '@/components/eqrel/LangPicker'
 import { pick, colorOf, TabHeader } from './tabUtils'
+import { useState } from 'react'
+import { useInstallState, InstallGuide } from '@/components/eqrel/InstallPrompt'
+import { promptInstall } from '@/lib/pwaInstall'
 
 const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
   <button onClick={onClick} data-testid={testId}
@@ -95,6 +98,7 @@ export default function ProfileTab({
         <Row emoji="🤝" testId="profile-coparent" onClick={onCoParent}
           title={L('Kongsi Pasangan', 'Co-Parenting', 'Berbagi Pasangan', 'التربية المشتركة')}
           sub={L('Jemput pasangan & bergilir sahkan tugasan', 'Invite spouse & take turns verifying', 'Undang pasangan & bergiliran', 'ادعُ شريكك وتناوبا')} />
+        <InstallAppRow lang={lang} />
         <Row emoji="✈️" testId="profile-rest-mode" onClick={onRestMode}
           title={L('Mod Musafir & Hari Rehat', 'Travel & Rest Days', 'Mode Safar & Hari Istirahat', 'وضع السفر والراحة')}
           sub={L('Jeda habit & bekukan streak — Solat Teras kekal', 'Pause habits & freeze streaks — core prayers stay on', 'Jeda kebiasaan & bekukan streak', 'إيقاف العادات وتجميد السلسلة')} />
@@ -127,5 +131,37 @@ export default function ProfileTab({
       </div>
       <div className="h-2" />
     </div>
+  )
+}
+
+/** Profile → "Install the app": shows Installed ✓, one-tap install, or the guided steps (iPhone). */
+function InstallAppRow({ lang }) {
+  const L = pick(lang)
+  const { mode, platform } = useInstallState()
+  const [guide, setGuide] = useState(false)
+  const installed = mode === 'installed'
+  const onClick = async () => {
+    if (installed) return
+    if (mode === 'native') { const r = await promptInstall(); if (r === 'unavailable') setGuide(true); return }
+    setGuide(true)
+  }
+  const sub = installed
+    ? L('Sudah dipasang di peranti ini ✓', 'Installed on this device ✓', 'Sudah terpasang ✓', 'مثبّت على هذا الجهاز ✓')
+    : mode === 'native'
+      ? L('Pasang dengan satu tekan', 'Install with one tap', 'Pasang dengan satu ketuk', 'ثبّت بنقرة واحدة')
+      : L('Tambah ke skrin utama — kami tunjukkan caranya', 'Add to your home screen — we’ll show you how', 'Tambahkan ke layar utama', 'أضفه إلى الشاشة الرئيسية')
+  return (
+    <>
+      <button onClick={onClick} data-testid="profile-install-app" data-mode={mode} disabled={installed}
+        className="w-full flex items-center gap-3 px-3 py-3 text-left active:bg-eq-cream/40 transition-colors">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 bg-eq-cream/60">📲</div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm text-eq-ink">{L('Pasang App EQrel', 'Install the EQrel app', 'Pasang Aplikasi EQrel', 'ثبّت تطبيق EQrel')}</div>
+          <div className={`text-[11px] leading-tight truncate ${installed ? 'text-emerald-700 font-bold' : 'text-eq-ink/55'}`}>{sub}</div>
+        </div>
+        {!installed && <ChevronRight className="w-4 h-4 text-eq-ink/35 flex-shrink-0" />}
+      </button>
+      <InstallGuide open={guide} mode={mode === 'none' ? 'manual' : mode} platform={platform} onClose={() => setGuide(false)} />
+    </>
   )
 }

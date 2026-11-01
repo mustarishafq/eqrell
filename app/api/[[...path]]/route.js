@@ -270,11 +270,25 @@ async function handleRoute(request, { params }) {
       }
 
       return json({
-        user: { id: user.id, email: user.email, name: user.name, picture: user.picture, role: user.role },
+        user: { id: user.id, email: user.email, name: user.name, picture: user.picture, role: user.role, appInstalled: user.appInstalled || null },
         family,
         parents,
         needsFamilySetup: !user.familyId || !user.role,
       })
+    }
+
+    // POST /me/app-installed { platform: 'ios'|'android'|'desktop' } → remember the home-screen app is installed
+    // (iOS home-screen apps don't share storage with Safari, so the browser asks the server)
+    if (route === '/me/app-installed' && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'tv') return json({ ok: true, skipped: true })
+      const body = await request.json().catch(() => ({}))
+      const platform = ['ios', 'android', 'desktop'].includes(body.platform) ? body.platform : null
+      if (!platform) return err('platform must be ios, android or desktop', 400)
+      const db = await getDb()
+      await db.collection('users').updateOne({ id: session.userId }, { $set: { [`appInstalled.${platform}`]: new Date() } })
+      return json({ ok: true, platform })
     }
 
     // POST /auth/logout
