@@ -15,7 +15,7 @@ import { FAMILY_QUOTES } from '@/lib/familyQuotes'
  *                  unmount / stop rendering the splash)
  *   visible      : boolean — when false, splash fades out
  */
-export default function DisplayLoadingSplash({ lang = 'ms', familyName, visible, onGone }) {
+export default function DisplayLoadingSplash({ lang = 'en', familyName, visible, onGone }) {
   // Pick a stable random quote for this splash instance
   const quote = useMemo(() => {
     const idx = Math.floor(Math.random() * FAMILY_QUOTES.length)

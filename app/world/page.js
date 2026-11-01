@@ -1352,7 +1352,7 @@ const BismillahOverlay = ({ templateId, isUpgrade, lang, onConfirm, onCancel }) 
   )
 }
 
-const BuildingProgressOverlay = ({ lang = 'ms' }) => (
+const BuildingProgressOverlay = ({ lang = 'en' }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
     className="absolute left-1/2 -translate-x-1/2 top-16 z-[85] pointer-events-none"
@@ -1523,7 +1523,7 @@ const LandmarkCelebrationOverlay = ({ landmark, lang, onClose }) => {
 //  anak masuk ke world sementara world tengah loading, ini untuk avoid
 //  kids berasa world tak function".)
 // ═══════════════════════════════════════════════════════════════════════════
-const WorldLoadingScreen = ({ lang = 'ms' }) => {
+const WorldLoadingScreen = ({ lang = 'en' }) => {
   // 6 kid-friendly Islamic motivational phrases per language, rotated every
   // ~2.4s so the screen feels alive during a slow fetch.
   const MSG_BANK = {

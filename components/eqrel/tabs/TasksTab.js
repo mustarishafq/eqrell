@@ -14,7 +14,7 @@ const statusOf = (h) => {
   return 'pending'
 }
 
-export default function TasksTab({ kids = [], lang = 'ms', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild }) {
+export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild }) {
   const L = pick(lang)
   const [habitsByChild, setHabitsByChild] = useState({})
   const [loading, setLoading] = useState(true)

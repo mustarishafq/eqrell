@@ -14,7 +14,7 @@ const Toggle = ({ on, onChange, testId }) => (
 )
 
 /** Parent chooses WHEN they hear from EQrel (morning intention, night report, Sunday weekly story). */
-export function NotifySettingsSheet({ open, onClose, lang = 'ms' }) {
+export function NotifySettingsSheet({ open, onClose, lang = 'en' }) {
   const L = pick(lang)
   const [prefs, setPrefs] = useState(null)
   const [subscribed, setSubscribed] = useState(false)

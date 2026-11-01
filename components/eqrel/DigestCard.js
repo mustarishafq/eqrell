@@ -9,7 +9,7 @@ import { pick } from '@/components/eqrel/tabs/tabUtils'
  *  03:00–11:59 → 🌅 Niat Pagi (intention + focus per child)
  *  otherwise   → 🌙 Laporan Malam / Hari ini (progress + one-tap Quick Verify)
  */
-export function DigestCard({ lang = 'ms', refreshKey = 0, onQuickVerify, onSettings }) {
+export function DigestCard({ lang = 'en', refreshKey = 0, onQuickVerify, onSettings }) {
   const L = pick(lang)
   const hour = new Date().getHours()
   const kind = hour >= 3 && hour < 12 ? 'morning' : 'night'
@@ -105,7 +105,7 @@ export function DigestCard({ lang = 'ms', refreshKey = 0, onQuickVerify, onSetti
 }
 
 /** Weekly "Laporan Perubahan" story card (Reports tab). */
-export function WeeklyStoryCard({ lang = 'ms', refreshKey = 0 }) {
+export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
   const L = pick(lang)
   const [d, setD] = useState(null)
   useEffect(() => {

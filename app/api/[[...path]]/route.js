@@ -249,7 +249,7 @@ async function handleRoute(request, { params }) {
       if (familyCode) {
         // Join existing family
         family = await families.findOne({ code: familyCode.trim().toUpperCase() })
-        if (!family) return err('Kod keluarga tidak dijumpai', 404)
+        if (!family) return err('Family code not found', 404)
 
         // Check role isn't taken
         const roleTaken = await users.findOne({ familyId: family.id, role, id: { $ne: session.userId } })
@@ -319,7 +319,7 @@ async function handleRoute(request, { params }) {
       const body = await request.json().catch(() => ({}))
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
-      if (!user?.familyId) return err('Setup keluarga dulu', 400)
+      if (!user?.familyId) return err('Please set up your family first', 400)
 
       const child = {
         id: body.id || crypto.randomUUID(),
@@ -330,7 +330,7 @@ async function handleRoute(request, { params }) {
         ageBand: body.ageBand || '5-6',
         avatarId: body.avatarId || 'B01',
         favColor: body.favColor || 'green',
-        preferredLang: body.preferredLang || 'ms',
+        preferredLang: body.preferredLang || 'en',
         todayCompleted: body.todayCompleted ?? 0,
         todayTotal: body.todayTotal ?? 0,
         lightLevel: body.lightLevel ?? 100,
@@ -343,7 +343,7 @@ async function handleRoute(request, { params }) {
         createdAt: new Date(),
         updatedAt: new Date(),
       }
-      if (!child.nickname) return err('Nama panggilan diperlukan', 400)
+      if (!child.nickname) return err('Nickname is required', 400)
       await db.collection('children').insertOne(child)
       const { _id, ...clean } = child
       return json({ child: clean })
@@ -369,7 +369,7 @@ async function handleRoute(request, { params }) {
         { id: childId, familyId: user.familyId },
         { $set }
       )
-      if (result.matchedCount === 0) return err('Anak tidak dijumpai', 404)
+      if (result.matchedCount === 0) return err('Child not found', 404)
       const updated = await db.collection('children').findOne({ id: childId }, { projection: { _id: 0 } })
       return json({ child: updated })
     }
@@ -383,7 +383,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
       const result = await db.collection('children').deleteOne({ id: childId, familyId: user.familyId })
-      if (result.deletedCount === 0) return err('Anak tidak dijumpai', 404)
+      if (result.deletedCount === 0) return err('Child not found', 404)
       // Cascade delete habits + claims for this child
       await db.collection('habits').deleteMany({ childId, familyId: user.familyId })
       await db.collection('habit_claims').deleteMany({ childId, familyId: user.familyId })
@@ -403,7 +403,7 @@ async function handleRoute(request, { params }) {
 
       // Verify child belongs to family
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
-      if (!child) return err('Anak tidak dijumpai', 404)
+      if (!child) return err('Child not found', 404)
 
       const habits = await db.collection('habits')
         .find({ childId, familyId: user.familyId, active: { $ne: false } })
@@ -473,9 +473,9 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
 
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
-      if (!child) return err('Anak tidak dijumpai', 404)
+      if (!child) return err('Child not found', 404)
 
-      if (!body.title?.trim()) return err('Tajuk habit diperlukan', 400)
+      if (!body.title?.trim()) return err('Habit title is required', 400)
 
       const habit = {
         id: crypto.randomUUID(),
@@ -522,7 +522,7 @@ async function handleRoute(request, { params }) {
         { id: habitId, familyId: user.familyId },
         { $set }
       )
-      if (result.matchedCount === 0) return err('Habit tidak dijumpai', 404)
+      if (result.matchedCount === 0) return err('Habit not found', 404)
       const updated = await db.collection('habits').findOne({ id: habitId }, { projection: { _id: 0 } })
       return json({ habit: updated })
     }
@@ -536,7 +536,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
       const result = await db.collection('habits').deleteOne({ id: habitId, familyId: user.familyId })
-      if (result.deletedCount === 0) return err('Habit tidak dijumpai', 404)
+      if (result.deletedCount === 0) return err('Habit not found', 404)
       // Cascade delete related claims
       await db.collection('habit_claims').deleteMany({ habitId })
       return json({ ok: true })
@@ -557,7 +557,7 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
 
       const habit = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId })
-      if (!habit) return err('Habit tidak dijumpai', 404)
+      if (!habit) return err('Habit not found', 404)
 
       const dateStr = body.dateStr || new Date().toISOString().slice(0, 10)
       const rubric = body.rubric
@@ -1265,7 +1265,7 @@ async function handleRoute(request, { params }) {
         // spoofing / stale clients.
         const tplToBuild = BUILDING_TEMPLATES[templateId]
         if (tplToBuild?.locked === true || tplToBuild?.hidden === true) {
-          return err('Landmark ini adalah anugerah Allah — tidak boleh dibina manusia', 400)
+          return err('This landmark is a gift from Allah — it cannot be built', 400)
         }
         await loadOrSeed()
         const world = await worldsCol.findOne({ childId })
@@ -1450,7 +1450,7 @@ async function handleRoute(request, { params }) {
         }
         // Any building flagged `locked: true` (currently: tasik) is immutable.
         if (target.locked === true) {
-          return err('Anugerah Allah tidak boleh dialihkan', 400)
+          return err('A gift from Allah cannot be moved', 400)
         }
 
         // Footprint lookup — musalla/surau/masjid_landmark use hardcoded
@@ -1764,7 +1764,7 @@ async function handleRoute(request, { params }) {
       const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`
       const existingToday = await db.collection('quiz_sessions').findOne({ childId, dateStr })
       if (existingToday && existingToday.status === 'completed') {
-        return err('Kuiz hari ini sudah selesai. Cuba lagi esok!', 429)
+        return err("Today's quiz is done. Try again tomorrow!", 429)
       }
       if (existingToday && existingToday.status === 'in_progress') {
         // Resume session
@@ -1903,7 +1903,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
       const kind = route.split('/')[2]
-      const lang = new URL(request.url).searchParams.get('lang') || user.notifyPrefs?.lang || 'ms'
+      const lang = new URL(request.url).searchParams.get('lang') || user.notifyPrefs?.lang || 'en'
       const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
       const local = localNow(user.notifyPrefs?.tz || DEFAULT_PREFS.tz)
       return json(await fn(db, user.familyId, { lang, dateStr: utcToday(), viewerId: session.userId, weekday: local.weekday }))
@@ -1972,7 +1972,7 @@ async function handleRoute(request, { params }) {
       const kind = ['morning', 'night', 'weekly'].includes(body.kind) ? body.kind : 'night'
       const fn = kind === 'morning' ? buildMorningDigest : kind === 'night' ? buildNightDigest : buildWeeklyDigest
       const local = localNow(user.notifyPrefs?.tz || DEFAULT_PREFS.tz)
-      const d = await fn(db, user.familyId, { lang: user.notifyPrefs?.lang || 'ms', dateStr: utcToday(), viewerId: session.userId, weekday: local.weekday })
+      const d = await fn(db, user.familyId, { lang: user.notifyPrefs?.lang || 'en', dateStr: utcToday(), viewerId: session.userId, weekday: local.weekday })
       const r = await pushToUser(db, session.userId, d.push)
       return json({ ok: true, ...r, push: d.push })
     }
@@ -2049,9 +2049,9 @@ async function handleRoute(request, { params }) {
       const events = await db.collection('family_events')
         .find({ familyId: user.familyId, childId, type: 'trust_on', kidSeenAt: { $exists: false } })
         .sort({ createdAt: 1 }).limit(5).project({ _id: 0 }).toArray()
-      const habits = events.length ? await db.collection('habits').find({ id: { $in: events.map(e => e.habitId) } }).project({ _id: 0, id: 1, title: 1, i18n: 1, icon: 1, category: 1 }).toArray() : []
+      const habits = events.length ? await db.collection('habits').find({ id: { $in: events.map(e => e.habitId) } }).project({ _id: 0, id: 1, title: 1, i18n: 1, icon: 1, category: 1, templateId: 1 }).toArray() : []
       const hMap = Object.fromEntries(habits.map(h => [h.id, h]))
-      return json({ celebrations: events.map(e => ({ id: e.id, habitId: e.habitId, title: hMap[e.habitId]?.title || e.title, i18n: hMap[e.habitId]?.i18n || e.i18n || null, icon: hMap[e.habitId]?.icon || null, category: hMap[e.habitId]?.category || null, createdAt: e.createdAt })) })
+      return json({ celebrations: events.map(e => ({ id: e.id, habitId: e.habitId, title: hMap[e.habitId]?.title || e.title, i18n: hMap[e.habitId]?.i18n || e.i18n || null, icon: hMap[e.habitId]?.icon || null, templateId: hMap[e.habitId]?.templateId || null, category: hMap[e.habitId]?.category || null, createdAt: e.createdAt })) })
     }
     // POST /children/:id/celebrations/seen { ids: [] }
     if (route.match(/^\/children\/[^/]+\/celebrations\/seen$/) && method === 'POST') {
@@ -2077,7 +2077,7 @@ async function handleRoute(request, { params }) {
       if (!session) return err('unauthorized', 401)
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
-      if (!user?.familyId) return err('Setup keluarga dulu', 400)
+      if (!user?.familyId) return err('Please set up your family first', 400)
       const body = await request.json().catch(() => ({}))
       const families = db.collection('families')
 
@@ -2118,14 +2118,14 @@ async function handleRoute(request, { params }) {
         let child
         if (body.childId) {
           child = await db.collection('children').findOne({ id: body.childId, familyId: user.familyId }, { projection: { _id: 0 } })
-          if (!child) return err('Anak tidak dijumpai', 404)
+          if (!child) return err('Child not found', 404)
           const upd = { $set: { diagnosis, age: child.dob ? child.age : age, ageBand: child.dob ? child.ageBand : ageBand, updatedAt: new Date() } }
           // Keep history so parents can compare month-to-month (last 12 kept)
           if (child.diagnosis) upd.$push = { diagnosisHistory: { $each: [child.diagnosis], $slice: -12 } }
           await db.collection('children').updateOne({ id: child.id }, upd)
         } else {
           const nickname = (p.nickname || '').trim().slice(0, 30)
-          if (!nickname) return err('Nama panggilan diperlukan', 400)
+          if (!nickname) return err('Nickname is required', 400)
           child = {
             id: crypto.randomUUID(),
             familyId: user.familyId,
@@ -2136,7 +2136,7 @@ async function handleRoute(request, { params }) {
             ageBand,
             avatarId: typeof p.avatarId === 'string' ? p.avatarId : (p.gender === 'female' ? 'G01' : 'B01'),
             favColor: typeof p.favColor === 'string' ? p.favColor : 'green',
-            preferredLang: ['ms', 'en', 'id', 'ar'].includes(body.lang) ? body.lang : 'ms',
+            preferredLang: ['ms', 'en', 'id', 'ar'].includes(body.lang) ? body.lang : 'en',
             todayCompleted: 0, todayTotal: 0, lightLevel: 100, blackClouds: 0, buildingCount: 0,
             claimMode: 'parent',
             mataBina: 0, mataReward: 0,
@@ -2198,7 +2198,7 @@ async function handleRoute(request, { params }) {
       const childIds = children.map(c => c.id)
       const habits = childIds.length ? await db.collection('habits')
         .find({ childId: { $in: childIds }, active: { $ne: false } })
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, i18n: 1 })
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, i18n: 1, templateId: 1 })
         .toArray() : []
       const claims = childIds.length ? await db.collection('habit_claims')
         .find({ childId: { $in: childIds }, dateStr: { $in: dates } })
@@ -2222,7 +2222,7 @@ async function handleRoute(request, { params }) {
           .forEach(cl => { habitTally[cl.habitId] = (habitTally[cl.habitId] || 0) + 1 })
         const topHabits = Object.entries(habitTally)
           .sort((a, b) => b[1] - a[1]).slice(0, 3)
-          .map(([hid, count]) => ({ id: hid, title: habitById[hid]?.title || '—', i18n: habitById[hid]?.i18n || null, icon: habitById[hid]?.icon || '⭐', count }))
+          .map(([hid, count]) => ({ id: hid, title: habitById[hid]?.title || '—', i18n: habitById[hid]?.i18n || null, templateId: habitById[hid]?.templateId || null, icon: habitById[hid]?.icon || '⭐', count }))
         const { diagnosisHistory, ...rest } = c
         return {
           ...rest,

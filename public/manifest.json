@@ -1,14 +1,14 @@
 {
   "name": "EQrel",
   "short_name": "EQrel",
-  "description": "Platform Islamic pembinaan kebiasaan untuk keluarga Muslim",
+  "description": "Islamic habit-building for Muslim families — kids grow good habits and their own Islamic world",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FFF8E7",
   "theme_color": "#00B894",
   "orientation": "portrait",
   "scope": "/",
-  "lang": "ms",
+  "lang": "en",
   "categories": ["education", "lifestyle", "family"],
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

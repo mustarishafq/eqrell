@@ -2,8 +2,8 @@ import './globals.css'
 import { Providers } from './providers'
 
 const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-const SHARE_TITLE = 'EQrel — Bina Habit Baik Anak, Suburkan Iman'
-const SHARE_DESC = 'Bina habit baik anak sambil membina dunia Islamik mereka. Untuk keluarga Muslim dengan anak 3–12 tahun.'
+const SHARE_TITLE = 'EQrel — Build Good Habits, Grow Iman'
+const SHARE_DESC = 'Kids build good habits while building their own Islamic world. For Muslim families with children aged 3–12.'
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -13,17 +13,17 @@ export const metadata = {
   openGraph: {
     type: 'website',
     siteName: 'EQrel',
-    locale: 'ms_MY',
+    locale: 'en_US',
     url: '/',
     title: SHARE_TITLE,
     description: SHARE_DESC,
-    images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: 'EQrel — kampung Islamik anak yang tumbuh bersama habit baik' }],
+    images: [{ url: '/og-image.jpg?v=2', width: 1200, height: 630, alt: "EQrel — a child's Islamic village that grows with every good habit" }],
   },
   twitter: {
     card: 'summary_large_image',
     title: SHARE_TITLE,
     description: SHARE_DESC,
-    images: ['/og-image.jpg'],
+    images: ['/og-image.jpg?v=2'],
   },
   appleWebApp: {
     capable: true,
@@ -67,21 +67,14 @@ try {
   var saved = null;
   try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
   if (saved && SUPPORTED[saved]) chosen = saved;
-  if (!chosen) {
-    var langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || 'ms'];
-    for (var i = 0; i < langs.length; i++) {
-      var base = String(langs[i] || '').toLowerCase().split('-')[0];
-      if (SUPPORTED[base]) { chosen = base; break; }
-    }
-  }
-  if (!chosen) chosen = 'ms';
+  if (!chosen) chosen = 'en';
   document.documentElement.lang = chosen;
   document.documentElement.dir = SUPPORTED[chosen] || 'ltr';
 } catch (e) {}
 `
 
   return (
-    <html lang="ms" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

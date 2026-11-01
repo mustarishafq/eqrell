@@ -1129,7 +1129,7 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
           {title}
           {habit.autoVerify && (
             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black align-middle no-underline" data-testid={`kid-trusted-${habit.id}`}
-              title={lang === 'en' ? 'Trusted' : 'Dipercayai'}>🛡️</span>
+              title={lang === 'ms' ? 'Dipercayai' : 'Trusted'}>🛡️</span>
           )}
         </div>
         <div className="text-[11px] mt-0.5 leading-snug font-semibold" style={{

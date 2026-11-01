@@ -10,7 +10,7 @@ import { pick, habitTitle } from '@/components/eqrel/tabs/tabUtils'
  * Sahkan Pantas — verify all of today's claims in one tap (or per child / per item).
  * Designed so a parent finishes in ~10 seconds.
  */
-export function QuickVerifySheet({ open, onClose, lang = 'ms', onDone, onOpenDetailed }) {
+export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDetailed }) {
   const L = pick(lang)
   const [items, setItems] = useState(null)
   const [busy, setBusy] = useState(null)

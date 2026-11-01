@@ -13,7 +13,7 @@ import { X, Crosshair } from 'lucide-react'
  */
 const DISPLAY_ASPECT = 16 / 9  // Family photo area is ~16:9 landscape
 
-export default function PhotoEditor({ open, photo, onClose, onSave, lang = 'ms' }) {
+export default function PhotoEditor({ open, photo, onClose, onSave, lang = 'en' }) {
   const [focalX, setFocalX] = useState(50)
   const [focalY, setFocalY] = useState(50)
   const [title, setTitle] = useState('')

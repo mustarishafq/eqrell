@@ -36,7 +36,7 @@ const reverseGeocode = async (lat, lng) => {
   }
 }
 
-export default function LocationPicker({ open, onClose, onSaved, currentLocation, lang = 'ms' }) {
+export default function LocationPicker({ open, onClose, onSaved, currentLocation, lang = 'en' }) {
   const [method, setMethod] = useState(11)
   const [detecting, setDetecting] = useState(false)
   const [saving, setSaving] = useState(false)

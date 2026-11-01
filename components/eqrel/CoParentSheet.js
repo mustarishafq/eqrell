@@ -15,7 +15,7 @@ const first = (n) => String(n || '').trim().split(/\s+/)[0] || '—'
 const COLORS = ['#00B894', '#2D9CDB', '#FF8A00', '#9C7BD9']
 
 /** Kongsi Pasangan — invite spouse + share verification duty by weekday. */
-export function CoParentSheet({ open, onClose, lang = 'ms' }) {
+export function CoParentSheet({ open, onClose, lang = 'en' }) {
   const L = pick(lang)
   const [data, setData] = useState(null)
   const [rota, setRota] = useState({ mode: 'both', days: {} })

@@ -21,7 +21,7 @@ export default function MascotSpeech({
   message,
   intro,
   variant = 'hadith',
-  lang = 'ms',
+  lang = 'en',
   keyId = 0,
   size = 'md',
   pose = 'default',

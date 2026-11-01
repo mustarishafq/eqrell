@@ -14,7 +14,7 @@ import { BRAND } from '@/lib/brand'
  *   lang?: 'ms'|'en'|'id'|'ar'
  *   size?: number  (mascot px, default 220)
  */
-export default memo(function BigMascot({ mood = 'idle', bubble = null, lang = 'ms', size = 220 }) {
+export default memo(function BigMascot({ mood = 'idle', bubble = null, lang = 'en', size = 220 }) {
   const isRTL = lang === 'ar'
   const mascotUrl = BRAND.mascot.default
 

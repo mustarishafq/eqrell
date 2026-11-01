@@ -497,3 +497,4 @@ Admin dashboard for Faizal to see cross-family stats (aggregated, no comparison 
 - Pending: Claude-written weekly story (user deferred key choice).
 - (Oct 2026) Lencana Mod Percaya: components/eqrel/TrustCelebration.js in Kid Mode (GET/POST /api/children/:id/celebrations[/seen], family_events.kidSeenAt); 🛡️ badge on trusted KidHabitCard.
 - (Oct 2026) Kongsi Pasangan: components/eqrel/CoParentSheet.js (Profile → Kongsi Pasangan). GET /api/family/parents, POST /api/family/rota {mode both|weekday, days}. Night digest/push is duty-aware (duty, team, autoCount, teamLine).
+- (Nov 2026) GLOBAL: English is the default language everywhere (LangProvider no browser auto-detect, html lang=en, server defaults/prefs/preferredLang 'en', API errors English, OG image + share metadata English og-image.jpg?v=2). BM/ID/AR remain opt-in via LangPicker; saved choices respected. Habit titles localised via templateId (getHabitTitle) in new components & digests.

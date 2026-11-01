@@ -211,7 +211,7 @@ function AutoFitMultiText({ text, maxPx = 24, minPx = 11, maxLines = 2, classNam
   )
 }
 
-export default memo(function HabitBoard({ kids, lang = 'ms', title }) {
+export default memo(function HabitBoard({ kids, lang = 'en', title }) {
   const safeKids = kids || []
   const count = safeKids.length
   const currentSession = currentSessionFromClock()

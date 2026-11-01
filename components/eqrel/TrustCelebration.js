@@ -10,7 +10,7 @@ const CONFETTI = ['🎉', '⭐', '✨', '🌟', '💚', '🎊', '🛡️']
  * Lencana Mod Percaya — full-screen celebration in Kid Mode when a habit becomes trusted
  * (verified 7 days in a row). Shown once per badge, then marked seen.
  */
-export function TrustCelebration({ childId, child, lang = 'ms', avatarSrc }) {
+export function TrustCelebration({ childId, child, lang = 'en', avatarSrc }) {
   const L = pick(lang)
   const [queue, setQueue] = useState([])
   const current = queue[0]

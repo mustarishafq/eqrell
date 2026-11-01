@@ -15,7 +15,7 @@ const weekdayShort = (dateStr, lang) => {
   return d.toLocaleDateString(lang === 'ar' ? 'ar-EG' : lang, { weekday: 'short', timeZone: 'UTC' })
 }
 
-export default function ReportsTab({ lang = 'ms', icon, avatarSrc, streak = {}, refreshKey = 0 }) {
+export default function ReportsTab({ lang = 'en', icon, avatarSrc, streak = {}, refreshKey = 0 }) {
   const L = pick(lang)
   const [data, setData] = useState(null)
   const [error, setError] = useState(false)

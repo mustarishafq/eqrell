@@ -49,7 +49,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete, onEnterKi
   const [gender, setGender] = useState('male')
   const [avatarId, setAvatarId] = useState(DEFAULT_BOY_ID)
   const [favColor, setFavColor] = useState('green')
-  const [preferredLang, setPreferredLang] = useState('ms')
+  const [preferredLang, setPreferredLang] = useState('en')
   const [claimMode, setClaimMode] = useState('parent')
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function ChildSheet({ open, onClose, initial, onSave, onDelete, onEnterKi
       // migrate legacy — if avatarId missing, fall back to default per gender
       setAvatarId(initial.avatarId || (g === 'female' ? DEFAULT_GIRL_ID : DEFAULT_BOY_ID))
       setFavColor(initial.favColor || 'green')
-      setPreferredLang(initial.preferredLang || 'ms')
+      setPreferredLang(initial.preferredLang || 'en')
       setClaimMode(initial.claimMode || 'parent')
     } else if (open && !initial) {
       setNickname('')

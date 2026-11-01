@@ -1,6 +1,8 @@
 // Shared helpers for Parent Dashboard tabs (Tasks / Reports / Profile)
+import { getHabitTitle } from '@/lib/habitTemplates'
+
 export const pick = (lang) => (ms, en, id, ar) =>
-  lang === 'ar' ? (ar ?? en) : lang === 'en' ? en : lang === 'id' ? (id ?? ms) : ms
+  lang === 'ar' ? (ar ?? en) : lang === 'ms' ? ms : lang === 'id' ? (id ?? ms) : en
 
 export const FAV_COLOR_MAP = {
   green: '#00B894', yellow: '#FFB703', orange: '#FF8A00', coral: '#FF5D6E',
@@ -8,7 +10,7 @@ export const FAV_COLOR_MAP = {
 }
 export const colorOf = (child) => FAV_COLOR_MAP[child?.favColor] || (typeof child?.favColor === 'string' && child.favColor.startsWith('#') ? child.favColor : '#00B894')
 
-export const habitTitle = (h, lang) => h?.i18n?.[lang]?.title || h?.title || '—'
+export const habitTitle = (h, lang) => h?.i18n?.[lang]?.title || getHabitTitle(h, lang) || h?.title || '—'
 
 export const TabHeader = ({ icon, title, sub, right }) => (
   <div className="bg-white rounded-3xl p-4 shadow-eq-card flex items-center gap-3 flex-shrink-0">

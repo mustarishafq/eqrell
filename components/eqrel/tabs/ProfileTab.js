@@ -17,7 +17,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 )
 
 export default function ProfileTab({
-  lang = 'ms', icon, me, family, kids = [], avatarSrc,
+  lang = 'en', icon, me, family, kids = [], avatarSrc,
   onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent,
 }) {
   const L = pick(lang)

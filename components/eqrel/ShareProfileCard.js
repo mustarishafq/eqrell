@@ -9,7 +9,7 @@ import { STAGES, tx } from '@/lib/diagnosis'
 const pick = (lang) => (ms, en, id, ar) => (lang === 'en' ? en : lang === 'id' ? id : lang === 'ar' ? ar : ms)
 
 /** Button that opens a preview of the shareable Profil Iman card. */
-export function ShareProfileButton({ child, diagnosis, previous, lang = 'ms', className = '', label, testId = 'share-profile-btn' }) {
+export function ShareProfileButton({ child, diagnosis, previous, lang = 'en', className = '', label, testId = 'share-profile-btn' }) {
   const [open, setOpen] = useState(false)
   const L = pick(lang)
   if (!diagnosis) return null
@@ -24,7 +24,7 @@ export function ShareProfileButton({ child, diagnosis, previous, lang = 'ms', cl
   )
 }
 
-export function ShareProfileModal({ open, onClose, child, diagnosis, previous, lang = 'ms' }) {
+export function ShareProfileModal({ open, onClose, child, diagnosis, previous, lang = 'en' }) {
   const L = pick(lang)
   const [blob, setBlob] = useState(null)
   const [url, setUrl] = useState(null)
