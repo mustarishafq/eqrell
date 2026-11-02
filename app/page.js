@@ -343,7 +343,8 @@ const ParentDashboard = () => {
 
   const childColors = ['#00B894', '#FF8A00', '#2D9CDB', '#FF5D6E', '#B39DDB', '#4CAF50']
 
-  const openAddSheet = () => { setEditingChild(null); setSheetOpen(true) }
+  // Add child → same Iman & Habit diagnosis flow as the first child (profile → questions → habit plan)
+  const openAddSheet = () => { window.location.href = '/diagnosis?new=1' }
   const openEditSheet = (child) => { setEditingChild(child); setSheetOpen(true) }
 
   const handleSaveChild = async (child) => {

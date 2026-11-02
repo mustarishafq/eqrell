@@ -62,6 +62,8 @@ function DiagnosisInner() {
   const L = (ms, en, id, ar) => (lang === 'en' ? en : lang === 'id' ? (id ?? ms) : lang === 'ar' ? (ar ?? en) : ms)
   const search = useSearchParams()
   const presetChildId = search.get('childId')
+  // "Add child" from the dashboard → skip the intro and go straight into the new child's diagnosis
+  const isNewChild = search.get('new') === '1' && !presetChildId
 
   const [ready, setReady] = useState(false)
   const [me, setMe] = useState(null)
@@ -105,10 +107,11 @@ function DiagnosisInner() {
           const c = kids.find(k => k.id === presetChildId)
           if (c) setChild({ id: c.id, nickname: c.nickname, gender: c.gender || 'male', age: ageOfChild(c), avatarId: c.avatarId || 'B01', favColor: c.favColor || 'green' })
         }
+        if (isNewChild) setStep(d.family?.onboarding?.goals?.length ? 'c_profile' : 'goals')
         setReady(true)
       } catch { window.location.href = '/login' }
     })()
-  }, [presetChildId])
+  }, [presetChildId, isNewChild])
 
   const hasFamilyAnswers = !!family?.onboarding?.goals?.length
   const n = child.nickname?.trim() || L('anak', 'your child', 'anak', 'طفلك')
@@ -189,6 +192,8 @@ function DiagnosisInner() {
   const onBack = () => {
     if (step === 'c_practice') { if (qIdx > 0) setQIdx(qIdx - 1); else setStep('c_school'); return }
     if (step === 'routine' && routineIdx > 0) { setRoutineIdx(routineIdx - 1); return }
+    // Came straight from "Add child" → back on the first screen returns to the dashboard
+    if (isNewChild && !doneKids.length && (step === 'c_profile' || (step === 'goals' && !hasFamilyAnswers))) { window.location.href = '/?parent=1'; return }
     if (back) setStep(back)
   }
 
