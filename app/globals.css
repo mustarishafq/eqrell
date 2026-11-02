@@ -44,8 +44,12 @@
     /* No top padding on body — let hero extend behind status bar */
   }
 
-  /* Prevent horizontal scroll on mobile */
-  html, body { max-width: 100vw; overflow-x: hidden; }
+  /* Prevent horizontal scroll on mobile.
+     NOTE: `overflow-x: hidden` on BOTH html+body turns <body> into its own scroll
+     container on iOS Safari → choppy, stuttering scroll and no URL-bar collapse.
+     `clip` hides overflow without creating a scroll container. */
+  body { overflow-x: clip; }
+  @supports not (overflow: clip) { body { overflow-x: hidden; } }
 
   /* Kid mode disable text selection */
   .kid-mode * {
@@ -105,3 +109,19 @@ html.eq-lite *, html.eq-lite *::before, html.eq-lite *::after {
   outline-offset: 3px;
   transform: scale(1.04);
 }
+
+
+/* ═══ Smooth scrolling on phones (2026-11) ═══
+   Live backdrop blur is re-rendered on every scroll frame on iOS/Android and was
+   the main cause of janky scrolling. On touch devices we drop it — every element
+   already has a solid/translucent background, so the look stays the same. */
+@media (hover: none) and (pointer: coarse) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+/* Big decorative blur blobs: rasterise once on their own layer instead of repainting while scrolling */
+[class*="blur-3xl"], [class*="blur-2xl"] { will-change: transform; }
+/* Momentum + no scroll chaining for in-app scroll areas */
+.overflow-y-auto, .overflow-auto { -webkit-overflow-scrolling: touch; }
