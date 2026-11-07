@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { solatCoreFor, childAgeYears, SOLAT_IDS, SOLAT_WAJIB_AGE, isSolatTpl, canCutiSolat, PAUSE_REASONS } from '@/lib/solatCore'
 import { getDb } from '@/lib/mongodb'
-import { createSession, getSession, destroySession, generateFamilyCode } from '@/lib/session'
+import { createSession, getSession, destroySession, generateFamilyCode, peekSessionRole } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
 import { TEMPLATE_DEFAULT_RECURRING, TEMPLATE_DEFAULT_SESSION } from '@/lib/prayerSession'
 import { TEMPLATE_BY_ID } from '@/lib/habitTemplates'
@@ -184,6 +184,97 @@ async function exchangeEmergentSession(sessionId) {
   return res.json() // { id, email, name, picture, session_token }
 }
 
+// ────────────── CHILD-DEVICE SESSIONS (role 'kid') ──────────────
+// A child's own phone/tablet gets a kid-only session: it can use Kid Mode + World for its
+// allowed child(ren) and nothing else (no parent dashboard, no verifying, no settings).
+// Returns a Response to short-circuit, or null to let the normal handler run.
+const KID_RULES = [
+  ['GET', /^\/auth\/me$/],
+  ['GET', /^\/children$/],
+  ['GET', /^\/children\/([^/]+)\/habits$/, 'path'],
+  ['GET', /^\/children\/([^/]+)\/celebrations$/, 'path'],
+  ['POST', /^\/children\/([^/]+)\/celebrations\/seen$/, 'path'],
+  ['GET', /^\/family\/prayer-times$/],
+  ['GET', /^\/family\/display-data$/],
+  ['POST', /^\/family\/zikir\/tap$/],
+  ['GET', /^\/family\/rest-mode$/],
+  ['POST', /^\/habits\/([^/]+)\/claim$/, 'habit'],
+  ['DELETE', /^\/habits\/([^/]+)\/claim$/, 'habit'],
+  ['GET', /^\/quiz\/status$/, 'query'],
+  ['POST', /^\/quiz\/start$/, 'body'],
+  ['POST', /^\/quiz\/(answer|finish)$/],
+  ['GET', /^\/rewards\/catalog$/],
+  ['GET', /^\/rewards\/(requests|proposals)$/, 'query'],
+  ['POST', /^\/rewards\/(request|proposals)$/, 'body'],
+  ['DELETE', /^\/rewards\/proposals\/([^/]+)$/, 'proposal'],
+  ['GET', /^\/world\/([^/]+)$/, 'path'],
+  ['POST', /^\/world\/([^/]+)\/(build|move|upgrade)$/, 'path'],
+  ['POST', /^\/world\/([^/]+)\/demerit$/, 'istighfar'],
+  ['POST', /^\/kid\/device\/(connect|start|redeem)$/],
+  ['POST', /^\/me\/app-installed$/],
+]
+async function kidGate(request, route, method) {
+  const session = await getSession()
+  // Revoked / expired kid session → treat as signed out (lets the device re-link itself)
+  if (!session) return null
+  const rule = KID_RULES.find(([m, re]) => m === method && re.test(route))
+  if (!rule) return err('This device is linked to a child — parent features are not available here', 403)
+  const [, re, check] = rule
+  if (!check) return null
+  const db = await getDb()
+  const allowed = session.kidChildId
+    ? [session.kidChildId]
+    : (await db.collection('children').find({ familyId: session.familyId }).project({ _id: 0, id: 1 }).toArray()).map(c => c.id)
+  let childId = null
+  if (check === 'path') childId = route.match(re)[1]
+  else if (check === 'istighfar') {
+    // Children may only CLEAR a cloud (istighfar), never add demerits
+    const b = await request.clone().json().catch(() => ({}))
+    if (!(Number(b?.delta) < 0)) return err('Only a parent can add a cloud', 403)
+    childId = route.match(re)[1]
+  }
+  else if (check === 'query') childId = new URL(request.url).searchParams.get('childId')
+  else if (check === 'body') childId = (await request.clone().json().catch(() => ({})))?.childId
+  else if (check === 'habit') {
+    const habit = await db.collection('habits').findOne({ id: route.match(re)[1], familyId: session.familyId }, { projection: { _id: 0, childId: 1 } })
+    childId = habit?.childId
+    if (method === 'POST') {
+      // A child may only CLAIM — never self-verify, rate, or mark skipped
+      const b = await request.clone().json().catch(() => ({}))
+      if (b?.rubric || (b?.status && b.status !== 'claimed')) return err('Only a parent can verify habits', 403)
+    }
+  } else if (check === 'proposal') {
+    const pr = await db.collection('reward_proposals').findOne({ id: route.match(re)[1] }, { projection: { _id: 0, childId: 1 } })
+    childId = pr?.childId
+  }
+  if (!childId || !allowed.includes(childId)) return err('This device cannot open that child', 403)
+  return null
+}
+
+/** Ping every parent in the family when a child ticks a habit on their own device. */
+async function notifyParentsOfClaim(db, habit, { autoVerified = false } = {}) {
+  try {
+    const [child, parents] = await Promise.all([
+      db.collection('children').findOne({ id: habit.childId }, { projection: { _id: 0, nickname: 1 } }),
+      db.collection('users').find({ familyId: habit.familyId }).project({ _id: 0, id: 1, notifyPrefs: 1 }).toArray(),
+    ])
+    const name = child?.nickname || 'Your child'
+    const title = habit.title || habit.name || 'a habit'
+    for (const p of parents) {
+      if (p.notifyPrefs?.claims?.enabled === false) continue
+      const lang = p.notifyPrefs?.lang || 'en'
+      const T = {
+        en: autoVerified ? [`✅ ${name} did "${title}"`, 'Auto-verified by Trust Mode. Tap to see today.'] : [`🙋 ${name} did "${title}"`, 'Tap to verify'],
+        ms: autoVerified ? [`✅ ${name} buat "${title}"`, 'Disahkan automatik oleh Mod Percaya.'] : [`🙋 ${name} buat "${title}"`, 'Tekan untuk sahkan'],
+        id: autoVerified ? [`✅ ${name} melakukan "${title}"`, 'Diverifikasi otomatis oleh Mode Percaya.'] : [`🙋 ${name} melakukan "${title}"`, 'Ketuk untuk verifikasi'],
+        ar: autoVerified ? [`✅ ${name} أنجز "${title}"`, 'تم التحقق تلقائيًا.'] : [`🙋 ${name} أنجز "${title}"`, 'اضغط للتحقق'],
+      }[lang] || null
+      const [t, b] = T || [`🙋 ${name} did "${title}"`, 'Tap to verify']
+      await pushToUser(db, p.id, { title: t, body: b, url: autoVerified ? '/?parent=1' : '/?parent=1&quick=1', tag: `claim-${habit.childId}` })
+    }
+  } catch (e) { console.error('notifyParentsOfClaim', e?.message) }
+}
+
 // ────────────────────── ROUTES ──────────────────────
 async function handleRoute(request, { params }) {
   const { path = [] } = await params
@@ -191,6 +282,11 @@ async function handleRoute(request, { params }) {
   const method = request.method
 
   try {
+    // Child-device sessions go through a strict allow-list first
+    if ((await peekSessionRole()) === 'kid') {
+      const blocked = await kidGate(request, route, method)
+      if (blocked) return blocked
+    }
     // Health
     if (route === '/' && method === 'GET') {
       return json({ app: 'EQrel', version: 'cohort-a-v0.2', status: 'ok' })
@@ -276,6 +372,7 @@ async function handleRoute(request, { params }) {
         family,
         parents,
         needsFamilySetup: !user.familyId || !user.role,
+        device: session.role === 'kid' ? { role: 'kid', childId: session.kidChildId || null } : session.role === 'tv' ? { role: 'tv' } : null,
       })
     }
 
@@ -373,7 +470,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return json({ children: [] })
       const children = await db.collection('children')
-        .find({ familyId: user.familyId })
+        .find({ familyId: user.familyId, ...(session.role === 'kid' && session.kidChildId ? { id: session.kidChildId } : {}) })
         .sort({ createdAt: 1 })
         .project({ _id: 0 })
         .toArray()
@@ -755,8 +852,10 @@ async function handleRoute(request, { params }) {
       if (habit.autoVerify && status === 'claimed') {
         const doc = await db.collection('habit_claims').findOne(upsertKey)
         const points = await verifyClaimDoc(db, { claim: doc, habit, rubric: 'sah', verifierId: 'trust', applyMataDelta, auto: true })
+        if (session.role === 'kid') await notifyParentsOfClaim(db, habit, { autoVerified: true })
         return json({ ok: true, claim: { ...claimData, status: 'verified', rubric: 'sah', pointsAwarded: points, autoVerified: true }, autoVerified: true })
       }
+      if (session.role === 'kid' && status === 'claimed') await notifyParentsOfClaim(db, habit)
       return json({ ok: true, claim: claimData })
     }
 
@@ -1775,6 +1874,181 @@ async function handleRoute(request, { params }) {
 
     // POST /family/zikir/tap  → increment family-shared zikir counter by 1 (auto-reset new day)
 
+    // ══════════ CHILD DEVICE LINK (no email/WhatsApp needed for the child) ══════════
+    // Way A — child's device shows QR + code, parent approves on their phone:
+    //   POST /kid/device/start                    (no auth) → { deviceId, secret, code, expiresAt }
+    //   POST /kid/device/connect {deviceId,secret} (no auth) → { status } (+ kid session cookie when approved)
+    //   GET  /kid/device/lookup?code=             (parent)  → { device }
+    //   POST /kid/device/approve {code, childId|null, name?} (parent; childId null = shared by all children)
+    // Way B — parent shows a code, child types it on their device:
+    //   POST /family/kid-codes {childId|null}     (parent)  → { code, expiresAt }   (15 min, single use)
+    //   POST /kid/device/redeem {code}            (no auth) → { status:'approved', deviceId, secret } + kid session
+    // Manage: GET /family/kid-devices · POST /family/kid-devices/:id/revoke
+    if (route.startsWith('/kid/device/') || route.startsWith('/family/kid-devices') || route === '/family/kid-codes') {
+      const db = await getDb()
+      const col = db.collection('kid_devices')
+      const sha = (v) => nodeCrypto.createHash('sha256').update(String(v)).digest('hex')
+      const devLabel = (ua = '') => {
+        const u = String(ua)
+        if (/iPad/i.test(u) || (/Macintosh/i.test(u) && /Mobile/i.test(u))) return 'iPad'
+        if (/iPhone|iPod/i.test(u)) return 'iPhone'
+        if (/CrOS/i.test(u)) return 'Chromebook'
+        if (/Android/i.test(u)) return /Mobile/i.test(u) ? 'Android phone' : 'Android tablet'
+        if (/Windows/i.test(u)) return 'Windows computer'
+        if (/Macintosh/i.test(u)) return 'Mac'
+        return 'Web browser'
+      }
+      const parentOnly = async () => {
+        const session = await getSession()
+        if (!session) return { error: err('unauthorized', 401) }
+        if (session.role === 'tv' || session.role === 'kid') return { error: err('forbidden', 403) }
+        const user = await db.collection('users').findOne({ id: session.userId })
+        if (!user?.familyId) return { error: err('No family', 400) }
+        return { session, user }
+      }
+      const freshCode = async () => {
+        let code = ''
+        for (let i = 0; i < 10; i++) {
+          code = String(nodeCrypto.randomInt(100000, 1000000))
+          const now = new Date()
+          const [a, b, c] = await Promise.all([
+            col.findOne({ code, status: 'pending', expiresAt: { $gt: now } }, { projection: { _id: 1 } }),
+            db.collection('tv_devices').findOne({ code, status: 'pending', expiresAt: { $gt: now } }, { projection: { _id: 1 } }),
+            db.collection('kid_link_codes').findOne({ code, usedAt: null, expiresAt: { $gt: now } }, { projection: { _id: 1 } }),
+          ])
+          if (!a && !b && !c) break
+        }
+        return code
+      }
+      const childScope = async (familyId, childId) => {
+        if (!childId) return { ok: true, child: null }
+        const child = await db.collection('children').findOne({ id: String(childId), familyId }, { projection: { _id: 0, id: 1, nickname: 1, avatarId: 1 } })
+        return child ? { ok: true, child } : { ok: false }
+      }
+      const issueKidSession = async (dev) => {
+        const owner = await db.collection('users').findOne({ id: dev.approvedBy })
+        if (!owner?.familyId || owner.familyId !== dev.familyId) return false
+        if (dev.childId && !(await db.collection('children').findOne({ id: dev.childId, familyId: dev.familyId }, { projection: { _id: 1 } }))) return false
+        await createSession({ userId: owner.id, email: owner.email, familyId: owner.familyId, role: 'kid', kidDeviceId: dev.id })
+        await col.updateOne({ id: dev.id }, { $set: { lastSeenAt: new Date() } })
+        return true
+      }
+      const approvedPayload = async (dev) => {
+        const [fam, child] = await Promise.all([
+          db.collection('families').findOne({ id: dev.familyId }, { projection: { _id: 0, familyName: 1 } }),
+          dev.childId ? db.collection('children').findOne({ id: dev.childId }, { projection: { _id: 0, nickname: 1, avatarId: 1 } }) : null,
+        ])
+        return { status: 'approved', familyName: fam?.familyName || '', childId: dev.childId || null, childName: child?.nickname || null, avatarId: child?.avatarId || null, name: dev.name }
+      }
+
+      if (route === '/kid/device/start' && method === 'POST') {
+        await col.deleteMany({ status: 'pending', expiresAt: { $lt: new Date(Date.now() - 86400000) } })
+        const code = await freshCode()
+        const deviceId = crypto.randomUUID()
+        const secret = nodeCrypto.randomBytes(24).toString('hex')
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+        const ua = request.headers.get('user-agent') || ''
+        await col.insertOne({ id: deviceId, secretHash: sha(secret), code, status: 'pending', label: devLabel(ua), userAgent: ua.slice(0, 300), createdAt: new Date(), expiresAt })
+        return json({ deviceId, secret, code, expiresAt })
+      }
+
+      if (route === '/kid/device/connect' && method === 'POST') {
+        const body = await request.json().catch(() => ({}))
+        const dev = body.deviceId ? await col.findOne({ id: String(body.deviceId) }) : null
+        if (!dev || !body.secret || dev.secretHash !== sha(body.secret)) return json({ status: 'unknown' }, 404)
+        if (dev.revokedAt) return json({ status: 'revoked' })
+        if (dev.status === 'pending') return json({ status: new Date(dev.expiresAt) < new Date() ? 'expired' : 'pending', expiresAt: dev.expiresAt })
+        if (!(await issueKidSession(dev))) return json({ status: 'revoked' })
+        return json(await approvedPayload(dev))
+      }
+
+      if (route === '/kid/device/lookup' && method === 'GET') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const code = String(new URL(request.url).searchParams.get('code') || '').replace(/\D/g, '')
+        const dev = /^\d{6}$/.test(code) ? await col.findOne({ code, status: 'pending', expiresAt: { $gt: new Date() } }) : null
+        if (!dev) return err('Code invalid or expired', 404)
+        return json({ device: { code: dev.code, label: dev.label, expiresAt: dev.expiresAt } })
+      }
+
+      if (route === '/kid/device/approve' && method === 'POST') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const body = await request.json().catch(() => ({}))
+        const code = String(body.code || '').replace(/\D/g, '')
+        if (!/^\d{6}$/.test(code)) return err('Invalid code format', 400)
+        const sc = await childScope(a.user.familyId, body.childId)
+        if (!sc.ok) return err('Child not found', 404)
+        const name = String(body.name || '').trim().slice(0, 40) || (sc.child ? `${sc.child.nickname}'s device` : 'Family tablet')
+        const r = await col.findOneAndUpdate(
+          { code, status: 'pending', expiresAt: { $gt: new Date() } },
+          { $set: { status: 'approved', familyId: a.user.familyId, approvedBy: a.user.id, approvedAt: new Date(), name, childId: sc.child?.id || null }, $unset: { code: 1 } },
+          { returnDocument: 'after' })
+        const dev = r?.value !== undefined ? r.value : r
+        if (!dev) return err('Code invalid or expired', 404)
+        await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId: a.user.familyId, type: 'kid_device_linked', deviceId: dev.id, childId: dev.childId, name, createdAt: new Date() })
+        return json({ ok: true, device: { id: dev.id, name, label: dev.label, childId: dev.childId } })
+      }
+
+      if (route === '/family/kid-codes' && method === 'POST') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const body = await request.json().catch(() => ({}))
+        const sc = await childScope(a.user.familyId, body.childId)
+        if (!sc.ok) return err('Child not found', 404)
+        const codes = db.collection('kid_link_codes')
+        await codes.deleteMany({ familyId: a.user.familyId, childId: sc.child?.id || null, usedAt: null })
+        const code = await freshCode()
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+        await codes.insertOne({ id: crypto.randomUUID(), code, familyId: a.user.familyId, childId: sc.child?.id || null, createdBy: a.user.id, createdAt: new Date(), expiresAt, usedAt: null })
+        return json({ code, expiresAt, child: sc.child })
+      }
+
+      if (route === '/kid/device/redeem' && method === 'POST') {
+        // Simple brute-force guard: max 12 wrong codes per IP per 10 min
+        const ip = (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'local'
+        const attempts = db.collection('kid_code_attempts')
+        const since = new Date(Date.now() - 10 * 60 * 1000)
+        if ((await attempts.countDocuments({ ip, at: { $gt: since } })) >= 12) return err('Too many tries — wait a few minutes', 429)
+        const body = await request.json().catch(() => ({}))
+        const code = String(body.code || '').replace(/\D/g, '')
+        const r = /^\d{6}$/.test(code)
+          ? await db.collection('kid_link_codes').findOneAndUpdate({ code, usedAt: null, expiresAt: { $gt: new Date() } }, { $set: { usedAt: new Date() } }, { returnDocument: 'after' })
+          : null
+        const lc = r?.value !== undefined ? r.value : r
+        if (!lc) {
+          await attempts.insertOne({ ip, at: new Date() })
+          await attempts.deleteMany({ at: { $lt: since } })
+          return err('Code invalid or expired', 404)
+        }
+        const deviceId = crypto.randomUUID()
+        const secret = nodeCrypto.randomBytes(24).toString('hex')
+        const ua = request.headers.get('user-agent') || ''
+        const child = lc.childId ? await db.collection('children').findOne({ id: lc.childId }, { projection: { _id: 0, nickname: 1 } }) : null
+        const dev = {
+          id: deviceId, secretHash: sha(secret), status: 'approved', label: devLabel(ua), userAgent: ua.slice(0, 300),
+          familyId: lc.familyId, approvedBy: lc.createdBy, approvedAt: new Date(), createdAt: new Date(), via: 'parent_code',
+          childId: lc.childId || null, name: child ? `${child.nickname}'s device` : 'Family tablet',
+        }
+        await col.insertOne(dev)
+        if (!(await issueKidSession(dev))) return err('Could not link this device', 400)
+        await db.collection('family_events').insertOne({ id: crypto.randomUUID(), familyId: dev.familyId, type: 'kid_device_linked', deviceId, childId: dev.childId, name: dev.name, createdAt: new Date() })
+        return json({ ...(await approvedPayload(dev)), deviceId, secret })
+      }
+
+      if (route === '/family/kid-devices' && method === 'GET') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const list = await col.find({ familyId: a.user.familyId, status: 'approved', revokedAt: { $exists: false } })
+          .sort({ approvedAt: -1 }).project({ _id: 0, id: 1, name: 1, label: 1, childId: 1, approvedAt: 1, lastSeenAt: 1 }).toArray()
+        return json({ devices: list })
+      }
+
+      const kv = route.match(/^\/family\/kid-devices\/([^/]+)\/revoke$/)
+      if (kv && method === 'POST') {
+        const a = await parentOnly(); if (a.error) return a.error
+        const r = await col.updateOne({ id: kv[1], familyId: a.user.familyId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokedBy: a.user.id } })
+        if (!r.matchedCount) return err('Device not found', 404)
+        return json({ ok: true })
+      }
+    }
+
     // ══════════ TV DEVICE LINK (TV-first: TV shows QR + code, parent approves on phone) ══════════
     // POST /tv/device/start                 (no auth)  → { deviceId, secret, code, expiresAt }
     // POST /tv/device/connect {deviceId,secret} (no auth) → { status: pending|expired|approved|revoked } (+ session cookie when approved)
@@ -1803,7 +2077,7 @@ async function handleRoute(request, { params }) {
       const parentOnly = async () => {
         const session = await getSession()
         if (!session) return { error: err('unauthorized', 401) }
-        if (session.role === 'tv') return { error: err('forbidden', 403) }
+        if (session.role === 'tv' || session.role === 'kid') return { error: err('forbidden', 403) }
         const user = await db.collection('users').findOne({ id: session.userId })
         if (!user?.familyId) return { error: err('No family', 400) }
         return { session, user }

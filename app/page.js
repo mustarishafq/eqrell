@@ -26,6 +26,7 @@ import { CoParentSheet } from '@/components/eqrel/CoParentSheet'
 import { HandoverGuide } from '@/components/eqrel/HandoverGuide'
 import { PushPrompt } from '@/components/eqrel/PushPrompt'
 import { RestModeSheet, RestModeBanner } from '@/components/eqrel/RestModeSheet'
+import KidDevicesSheet from '@/components/eqrel/KidDevicesSheet'
 import { CoParentInvite } from '@/components/eqrel/CoParentInvite'
 
 const ASSETS = {
@@ -155,6 +156,7 @@ const ParentDashboard = () => {
   const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [restOpen, setRestOpen] = useState(false)
+  const [kidDevicesOpen, setKidDevicesOpen] = useState(false)
   const [coParentOpen, setCoParentOpen] = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
   const [guideHasPin, setGuideHasPin] = useState(false)
@@ -238,10 +240,15 @@ const ParentDashboard = () => {
       try {
         const res = await fetch('/api/auth/me', { credentials: 'include' })
         if (!res.ok) {
-          window.location.href = '/login'
+          // A linked child device whose cookie was cleared → back to Kid Mode (it reconnects itself)
+          let kidDev = false
+          try { kidDev = !!localStorage.getItem('eqrel-kid-device') } catch { /* ignore */ }
+          window.location.href = kidDev ? '/kid' : '/login'
           return
         }
         const data = await res.json()
+        // Child's own device → never show the parent dashboard
+        if (data.device?.role === 'kid') { window.location.replace('/kid'); return }
         if (data.needsFamilySetup) {
           window.location.href = '/family/setup'
           return
@@ -522,6 +529,7 @@ const ParentDashboard = () => {
             onNotifications={() => setNotifyOpen(true)}
             onCoParent={() => setCoParentOpen(true)}
             onRestMode={() => setRestOpen(true)}
+            onKidDevices={() => setKidDevicesOpen(true)}
             onRewardShop={() => setRewardShopOpen(true)}
             onLogout={doLogout} />
         )}
@@ -835,6 +843,7 @@ const ParentDashboard = () => {
         onOpenDetailed={() => { setQuickVerifyOpen(false); setVerifySheetOpen(true) }}
       />
       <NotifySettingsSheet open={notifyOpen} onClose={() => setNotifyOpen(false)} lang={lang} />
+      <KidDevicesSheet open={kidDevicesOpen} onClose={() => setKidDevicesOpen(false)} lang={lang} kids={children} />
       <RestModeSheet open={restOpen} onClose={() => setRestOpen(false)} lang={lang} onChanged={() => setDataVersion(v => v + 1)} />
       <HandoverGuide open={handoverOpen} onClose={() => setHandoverOpen(false)} lang={lang} kids={children}
         hasPin={guideHasPin} onSetPin={() => setPinChangeMode('set')} />

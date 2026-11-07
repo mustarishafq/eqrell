@@ -69,7 +69,7 @@ export function NotifySettingsSheet({ open, onClose, lang = 'en' }) {
         </div>
         <Toggle on={!!prefs?.[k]?.enabled} testId={`notify-toggle-${k}`} onChange={(v) => save({ ...prefs, [k]: { ...prefs[k], enabled: v } })} />
       </div>
-      {k !== 'weekly' && prefs?.[k]?.enabled && (
+      {k !== 'weekly' && k !== 'claims' && prefs?.[k]?.enabled && (
         <div className="mt-2.5 flex items-center gap-2">
           <span className="text-[11px] font-bold text-eq-ink/60">{L('Masa', 'Time', 'Waktu', 'الوقت')}</span>
           <input type="time" value={prefs[k].time} data-testid={`notify-time-${k}`}
@@ -126,6 +126,8 @@ export function NotifySettingsSheet({ open, onClose, lang = 'en' }) {
                   sub={L('Prestasi anak hari ini + Sahkan Pantas dalam 10 saat.', "Today's progress + Quick Verify in 10 seconds.", 'Prestasi hari ini + Verifikasi Cepat.', 'إنجاز اليوم + تحقق سريع.')} />
                 <Slot k="weekly" emoji="📖" title={L('Laporan Perubahan Mingguan', 'Weekly Progress Story', 'Laporan Perubahan Mingguan', 'قصة التقدم الأسبوعية')}
                   sub={L('Setiap Ahad bersama Laporan Malam — perubahan anak minggu ini.', "Every Sunday with the Night Report — this week's change.", 'Setiap Minggu bersama Laporan Malam.', 'كل أحد مع تقرير الليل.')} />
+                <Slot k="claims" emoji="🙋" title={L('Bila anak tanda habit', 'When my child ticks a habit', 'Saat anak menandai kebiasaan', 'عندما يُنجز طفلي عادة')}
+                  sub={L('Hanya dari peranti anak sendiri — tekan untuk sahkan terus.', "Only from your child's own device — tap to verify right away.", 'Hanya dari perangkat anak sendiri — ketuk untuk verifikasi.', 'فقط من جهاز طفلك — اضغط للتحقق فورًا.')} />
                 <p className="text-[10px] text-eq-ink/45 text-center">{saving ? L('Menyimpan…', 'Saving…', 'Menyimpan…', 'جارِ الحفظ…') : `${L('Zon waktu', 'Time zone', 'Zona waktu', 'المنطقة الزمنية')}: ${prefs.tz}`}</p>
               </>
             )}

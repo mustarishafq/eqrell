@@ -19,6 +19,8 @@ import ZikirTasbih from '@/components/eqrel/ZikirTasbih'
 import { haptic, showBurst } from '@/lib/feedback'
 import { KidRestBanner } from '@/components/eqrel/RestModeSheet'
 import HabitFocusCard from '@/components/eqrel/HabitFocusCard'
+import KidLinkScreen from '@/components/eqrel/KidLinkScreen'
+import { useKidDeviceBoot } from '@/lib/kidDeviceClient'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
 
@@ -27,18 +29,34 @@ function KidHomeInner() {
   const params = useSearchParams()
   const childId = params.get('childId')
   const { t, lang } = useLang()
+  // Child's own device (kid-only session) vs Kid Mode on the parent's phone
+  const boot = useKidDeviceBoot()
+  const kidDevice = boot.status === 'kid' ? boot.device : null
+  const wrongChild = !!(kidDevice?.childId && childId !== kidDevice.childId)
+  useEffect(() => {
+    if (wrongChild) router.replace(`/kid?childId=${encodeURIComponent(kidDevice.childId)}`)
+  }, [wrongChild]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (boot.status === 'loading' || wrongChild) {
+    return (
+      <div className="h-[100dvh] w-full flex items-center justify-center" style={{ backgroundColor: '#FFF8E7' }} data-testid="kid-boot">
+        <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-500 animate-spin" />
+      </div>
+    )
+  }
+  if (boot.status === 'link') return <KidLinkScreen notice={boot.notice} />
 
   // If no childId → show Kid Chooser (list of children in family)
   if (!childId) {
-    return <KidChooser router={router} t={t} lang={lang} />
+    return <KidChooser router={router} t={t} lang={lang} kidDevice={kidDevice} />
   }
 
-  return <KidHomeActive router={router} childId={childId} t={t} lang={lang} />
+  return <KidHomeActive router={router} childId={childId} t={t} lang={lang} kidDevice={kidDevice} />
 }
 
 // ─────────────────────────────────────────────────────────────────
 // KidChooser — screen shown when no childId provided (shared kid device)
-const KidChooser = ({ router, t, lang }) => {
+const KidChooser = ({ router, t, lang, kidDevice }) => {
   const [children, setChildren] = useState([])
   const [loading, setLoading] = useState(true)
   const [exitPinOpen, setExitPinOpen] = useState(false)
@@ -104,8 +122,8 @@ const KidChooser = ({ router, t, lang }) => {
         )}
       </div>
 
-      {/* Exit button — bottom fixed */}
-      <div
+      {/* Exit button — bottom fixed (not on a child's own device: no parent access there) */}
+      {!kidDevice && <div
         className="fixed bottom-0 inset-x-0 z-20 border-t border-eq-cream/80 bg-white/85 backdrop-blur px-4 py-2"
         style={{ paddingBottom: 'calc(max(env(safe-area-inset-bottom), 8px))' }}
       >
@@ -115,7 +133,7 @@ const KidChooser = ({ router, t, lang }) => {
         >
           <LogOut className="w-4 h-4" /> {t.kid_exit}
         </button>
-      </div>
+      </div>}
 
       <PinModal
         open={exitPinOpen}
@@ -127,7 +145,7 @@ const KidChooser = ({ router, t, lang }) => {
   )
 }
 
-function KidHomeActive({ router, childId, t, lang }) {
+function KidHomeActive({ router, childId, t, lang, kidDevice }) {
   const [child, setChild] = useState(null)
   const [habits, setHabits] = useState([])
   const [solatPause, setSolatPause] = useState(null)
@@ -855,9 +873,15 @@ function KidHomeActive({ router, childId, t, lang }) {
         </div>
       </div>
 
-      {/* Sticky bottom exit */}
-      <div className="fixed bottom-0 inset-x-0 z-20 px-5 pb-3 pt-2 bg-gradient-to-t from-white/95 via-white/80 to-transparent backdrop-blur-sm max-w-md mx-auto"
+      {/* Sticky bottom exit — on a child's own device: no parent access (shared tablet → switch child) */}
+      {(!kidDevice || !kidDevice.childId) && <div className="fixed bottom-0 inset-x-0 z-20 px-5 pb-3 pt-2 bg-gradient-to-t from-white/95 via-white/80 to-transparent backdrop-blur-sm max-w-md mx-auto"
            style={{ paddingBottom: 'calc(max(env(safe-area-inset-bottom), 12px))' }}>
+        {kidDevice ? (
+        <button onClick={() => { window.location.href = '/kid' }} data-testid="kid-switch-child"
+          className="w-full bg-white/90 border-2 border-eq-cream rounded-2xl py-2.5 px-3 flex items-center justify-center gap-2 text-emerald-800 font-bold text-sm active:scale-[0.98] shadow-sm">
+          🔄 {lang === 'ms' ? 'Tukar anak' : lang === 'id' ? 'Ganti anak' : lang === 'ar' ? 'تبديل الطفل' : 'Switch child'}
+        </button>
+        ) : (
         <button
           onClick={() => setExitPinOpen(true)}
           className="w-full bg-white/90 border-2 border-eq-cream rounded-2xl py-2.5 px-3 flex items-center justify-center gap-2 text-emerald-800 font-bold text-sm active:scale-[0.98] shadow-sm"
@@ -865,7 +889,8 @@ function KidHomeActive({ router, childId, t, lang }) {
           <LogOut className="w-4 h-4" />
           {t.kid_exit}
         </button>
-      </div>
+        )}
+      </div>}
 
       {/* Toasts */}
       <AnimatePresence>

@@ -21,7 +21,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 
 export default function ProfileTab({
   lang = 'en', icon, me, family, kids = [], avatarSrc,
-  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent, onRestMode,
+  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent, onRestMode, onKidDevices,
 }) {
   const L = pick(lang)
   const copyCode = async () => {
@@ -99,6 +99,9 @@ export default function ProfileTab({
           title={L('Kongsi Pasangan', 'Co-Parenting', 'Berbagi Pasangan', 'التربية المشتركة')}
           sub={L('Jemput pasangan & bergilir sahkan tugasan', 'Invite spouse & take turns verifying', 'Undang pasangan & bergiliran', 'ادعُ شريكك وتناوبا')} />
         <InstallAppRow lang={lang} />
+        <Row emoji="🧒" testId="profile-kid-devices" onClick={onKidDevices}
+          title={L('Peranti Anak', "Child's Own Device", 'Perangkat Anak', 'جهاز الطفل')}
+          sub={L('Sambung telefon/tablet anak — tanpa email', "Link your child's phone or tablet — no email needed", 'Hubungkan HP/tablet anak — tanpa email', 'اربط هاتف أو جهاز طفلك — بدون بريد')} />
         <Row emoji="✈️" testId="profile-rest-mode" onClick={onRestMode}
           title={L('Mod Musafir & Hari Rehat', 'Travel & Rest Days', 'Mode Safar & Hari Istirahat', 'وضع السفر والراحة')}
           sub={L('Jeda habit & bekukan streak — Solat Teras kekal', 'Pause habits & freeze streaks — core prayers stay on', 'Jeda kebiasaan & bekukan streak', 'إيقاف العادات وتجميد السلسلة')} />

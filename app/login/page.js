@@ -44,6 +44,18 @@ export default function LoginPage() {
         </p>
       </div>
 
+      {/* Child's own device → no Google account needed */}
+      <a href="/kid" data-testid="login-kid-device"
+        className="mt-3 flex items-center gap-3 rounded-2xl p-3 border-2 active:scale-[0.99]"
+        style={{ backgroundColor: '#0F2E25', borderColor: '#00B894' }}>
+        <span className="text-2xl">🧒</span>
+        <span className="flex-1">
+          <span className="block text-sm font-extrabold" style={{ color: '#FFF8E7' }}>{t.login_kid_device_title || "This is my child's device"}</span>
+          <span className="block text-[11px]" style={{ color: '#FFF8E7B3' }}>{t.login_kid_device_body || 'Connect it with your phone — no email needed'}</span>
+        </span>
+        <span className="font-black" style={{ color: '#FFB703' }}>→</span>
+      </a>
+
       <div className="mt-3 bg-amber-50 border border-amber-200 rounded-2xl p-3">
         <p className="text-amber-900 text-xs font-bold mb-0.5 flex items-center gap-1">
           <span>👨‍👩‍👧</span> {t.login_family_tip_title}
