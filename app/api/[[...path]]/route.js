@@ -257,6 +257,8 @@ async function exchangeEmergentSession(sessionId) {
 // allowed child(ren) and nothing else (no parent dashboard, no verifying, no settings).
 // Returns a Response to short-circuit, or null to let the normal handler run.
 const KID_RULES = [
+  // A parent must always be able to sign in (or out) on a device that is linked as a child's device
+  ['POST', /^\/auth\/(callback|logout)$/],
   ['GET', /^\/auth\/me$/],
   ['GET', /^\/children$/],
   ['GET', /^\/children\/([^/]+)\/habits$/, 'path'],

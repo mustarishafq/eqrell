@@ -39,6 +39,9 @@ function CallbackInner() {
 
         // Clean hash from URL
         window.history.replaceState(null, '', window.location.pathname)
+        // A parent signed in on a device that was linked as a child's device →
+        // it becomes a parent device again (no auto re-link to Kid Mode).
+        try { localStorage.removeItem('eqrel-kid-device'); localStorage.removeItem('eqrel-kid-device-revoked') } catch { /* ignore */ }
 
         const next = searchParams.get('next') || '/'
         if (data.needsFamilySetup) {

@@ -894,6 +894,14 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
         </button>
         )}
       </div>}
+      {/* Child's own device: a parent can still sign in with Google here (e.g. it's actually the parent's phone) */}
+      {kidDevice && (
+        <a href="/login" data-testid="kid-device-parent-signin"
+          className={`fixed z-20 right-3 ${kidDevice.childId ? 'bottom-3' : 'bottom-[76px]'} rounded-full px-2.5 py-1 text-[10px] font-bold bg-white/80 text-emerald-900/60 border border-emerald-100 shadow-sm`}
+          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
+          🔑 {lang === 'ms' ? 'Ibu bapa? Log masuk' : lang === 'id' ? 'Orang tua? Masuk' : lang === 'ar' ? 'ولي أمر؟ دخول' : 'Parent? Sign in'}
+        </a>
+      )}
 
       {/* Toasts */}
       <AnimatePresence>
