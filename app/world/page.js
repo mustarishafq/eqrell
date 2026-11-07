@@ -64,6 +64,10 @@ const L = {
   reqAir:       { ms: '💧 Air', en: '💧 Water', id: '💧 Air', ar: '💧 ماء' },
   reqAwam:      { ms: '🏛️ Awam', en: '🏛️ Public', id: '🏛️ Umum', ar: '🏛️ عام' },
   free:         { ms: 'PERCUMA', en: 'FREE', id: 'GRATIS', ar: 'مجاناً' },
+  buildPoints:  { ms: 'Mata Bina', en: 'Build points', id: 'Poin Bangun', ar: 'نقاط البناء' },
+  needHabitsFirst: { ms: 'Buat habit dulu!', en: 'Do your habits first!', id: 'Kerjakan kebiasaan dulu!', ar: 'أنجز عاداتك أولاً!' },
+  needMorePoints:  { ms: 'Perlu {n} lagi Mata Bina untuk bina ini.', en: 'You need {n} more build points for this.', id: 'Perlu {n} poin bangun lagi.', ar: 'تحتاج {n} نقطة بناء إضافية.' },
+  goHabits:     { ms: 'Ke Habit', en: 'My habits', id: 'Kebiasaan', ar: 'عاداتي' },
   points:       { ms: 'mata', en: 'points', id: 'poin', ar: 'نقطة' },
   start:        { ms: 'MULA', en: 'START', id: 'MULAI', ar: 'ابدأ' },
   noSpace:      { ms: 'Tiada ruang lagi. Upgrade binaan sedia ada dulu!', en: 'No more space. Upgrade an existing building first!', id: 'Tidak ada ruang lagi. Naikkan level bangunan yang ada dulu!', ar: 'لا يوجد مساحة. طوّر مبنى موجود أولاً!' },
@@ -102,6 +106,7 @@ function WorldPageInner() {
   const childId = searchParams.get('childId')
   const { lang } = useLang()  // Follow user's global language toggle
   const [child, setChild] = useState(null)
+  const [pointsToast, setPointsToast] = useState(null)   // { need, key } — "Do your habits first!"
   const [restMode, setRestMode] = useState(null)   // Mod Musafir / Hari Rehat
   const [worldState, setWorldState] = useState(null)
   // Ref that mirrors worldState — used to detect "first load" inside load()
@@ -290,6 +295,9 @@ function WorldPageInner() {
 
   // ─── Build handler ────────────────────────────────────────
   const executeBuild = async (templateId, gridX, gridY) => {
+    // Build points: never start the ritual if the child can't afford it
+    const cost = Number(BUILDING_TEMPLATES[templateId]?.cost || 0)
+    if (cost > buildBalance) { setPointsToast({ need: cost - buildBalance, key: Date.now() }); haptic.locked(); return }
     // Ritual: bismillah → animation → alhamdulillah → save.
     // gridX/gridY optional — when provided (from drag-to-place), the build
     // happens at that specific cell instead of auto-placing.
@@ -435,6 +443,7 @@ function WorldPageInner() {
         } else {
           haptic.locked()
           setRitual(null)
+          if (r.status === 402) { const d = await r.json().catch(() => ({})); setPointsToast({ need: Math.max(1, (d.need || 0) - (d.balance || 0)), key: Date.now() }); load() }
         }
       }
     } catch { setRitual(null) }
@@ -657,6 +666,7 @@ function WorldPageInner() {
   }
 
   const buildings = worldState?.buildings || []
+  const buildBalance = Number(child?.buildBalance ?? 0)
   const hasMusalla = buildings.some(b => b.templateId === 'musalla')
   const musalla = buildings.find(b => b.templateId === 'musalla')
   const isRTL = lang === 'ar'
@@ -878,6 +888,27 @@ function WorldPageInner() {
         )}
       </AnimatePresence>
 
+      {/* Not enough build points → "Do your habits first!" */}
+      <AnimatePresence>
+        {pointsToast && (
+          <motion.div key={pointsToast.key} initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
+            className="fixed inset-x-0 mx-auto top-16 z-50 w-[min(92vw,380px)]" data-testid="world-points-toast"
+            onAnimationComplete={() => setTimeout(() => setPointsToast(p => (p?.key === pointsToast.key ? null : p)), 4200)}>
+            <div className="rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3" style={{ backgroundColor: '#0F2E25', border: '2px solid #FFB703' }}>
+              <span className="text-2xl">💪</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-black text-sm leading-tight" style={{ color: '#FFF8E7' }}>{l('needHabitsFirst', lang)}</div>
+                <div className="text-xs leading-tight mt-0.5" style={{ color: '#FFF8E7B3' }}>{l('needMorePoints', lang).replace('{n}', String(pointsToast.need))}</div>
+              </div>
+              <button onClick={() => router.push('/kid?childId=' + childId)} data-testid="world-points-toast-go"
+                className="shrink-0 rounded-xl px-3 py-2 text-xs font-black" style={{ backgroundColor: '#FFB703', color: '#0F2E25' }}>
+                {l('goHabits', lang)} →
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header — back button + title (mobile: minimal padding) */}
       <div className="absolute top-0 left-0 right-0 p-0.5 sm:p-3 flex items-center justify-between pointer-events-none">
         <button
@@ -897,7 +928,10 @@ function WorldPageInner() {
               : l('buildMusalla', lang)}
           </div>
         </div>
-        <div className="w-16" /> {/* balance for centering */}
+        <div className="pointer-events-none flex items-center gap-1 rounded-xl px-2.5 py-1.5 font-black text-sm shadow" data-testid="world-build-balance"
+          style={{ backgroundColor: '#0F2E25', color: '#FFB703', border: '2px solid #00B894' }} title={l('buildPoints', lang)}>
+          ⭐ {buildBalance}
+        </div>
       </div>
 
       {/* Sidebar — Build menu. Mobile: minimal side padding so panel spans
@@ -960,8 +994,10 @@ function WorldPageInner() {
                 (t.tier === 'premium'  && catCount < 5)
               )
               const finalLocked = isDisabled || tierLocked
+              const needMore = !finalLocked && Number(t.cost || 0) > buildBalance
               const startDrag = (e) => {
                 if (finalLocked) return
+                if (needMore) { e.preventDefault(); setPointsToast({ need: Number(t.cost) - buildBalance, key: Date.now() }); haptic.locked(); return }
                 e.preventDefault()
                 const p = e.touches?.[0] || e
                 setBuildDrag({ templateId: t.id, pointerX: p.clientX, pointerY: p.clientY })
@@ -975,8 +1011,10 @@ function WorldPageInner() {
                   onTouchStart={startDrag}
                   disabled={finalLocked}
                   style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+                  data-testid={`build-item-${t.id}`} data-need-more={needMore ? '1' : '0'}
                   className={`relative rounded-xl border-2 p-2 text-left transition-all active:scale-95
                     ${finalLocked ? 'opacity-40 border-gray-200 bg-gray-50' :
+                      needMore ? 'opacity-60 border-gray-200 bg-gray-50 grayscale' :
                       isMusallaFirst ? 'border-amber-400 bg-amber-50 animate-pulse' :
                       buildDrag?.templateId === t.id ? 'border-emerald-500 bg-emerald-100 scale-105' :
                       'border-emerald-300 bg-white hover:bg-emerald-50/60'}`}
@@ -999,8 +1037,13 @@ function WorldPageInner() {
                     {t.name[lang] || t.name.ms}
                   </div>
                   <div className="text-[9px] text-emerald-700/70">
-                    {t.cost === 0 ? l('free', lang) : `${t.cost} ${l('points', lang)}`}
+                    {t.cost === 0 ? l('free', lang) : `⭐ ${t.cost}`}
                   </div>
+                  {needMore && (
+                    <div className="absolute -top-1.5 -right-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-full shadow" style={{ backgroundColor: '#FF5D6E', color: '#fff' }}>
+                      🔒 {Number(t.cost) - buildBalance}
+                    </div>
+                  )}
                   {isMusallaFirst && (
                     <div className="absolute -top-1.5 -right-1.5 bg-amber-400 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
                       {l('start', lang)}

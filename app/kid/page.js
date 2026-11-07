@@ -552,7 +552,10 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
                 <span className="text-lg flex-shrink-0">🌍</span>
                 <span className="truncate">{t.world_tile_title || 'Dunia Saya'}</span>
               </span>
-              <span className="text-[11px] opacity-80 flex-shrink-0">→</span>
+              <span className="text-[11px] font-black flex-shrink-0 rounded-full px-1.5 py-0.5" data-testid="kid-build-balance"
+                style={{ backgroundColor: '#0F2E25', color: '#FFB703' }}>
+                ⭐ {Number(child?.mataBina || 0) - Number(child?.mataBinaSpent || 0)}
+              </span>
             </button>
           </div>
         )}

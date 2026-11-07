@@ -146,15 +146,21 @@ const err = (msg, status = 400) => json({ error: msg }, status)
 
 /**
  * Compute the delta between two claim states and apply it to child.mataBina/mataReward.
- * Mata Bina = habit points × (1.5 if ihsan, else 1) awarded on 'verified'.
- * Mata Reward = +5 flat on 'ihsan' verification only.
+ * Mata Bina   = habit points × (1.5 if ihsan, else 1) awarded on 'verified'.
+ * Mata Reward = 20% of those points (min 1) on EVERY verified habit, +5 extra for 'ihsan'.
+ *               (Points economy v1 — before this only Ihsan gave +5.)
  * prevClaim/nextClaim shape: { status, rubric, pointsAwarded }
  */
+const rewardForClaim = (c) => {
+  if (c?.status !== 'verified') return 0
+  const pts = Number(c.pointsAwarded || 0)
+  return (pts > 0 ? Math.max(1, Math.round(pts * 0.2)) : 0) + (c.rubric === 'ihsan' ? 5 : 0)
+}
 async function applyMataDelta(db, childId, prevClaim, nextClaim) {
   const prevPts = (prevClaim?.status === 'verified') ? Number(prevClaim.pointsAwarded || 0) : 0
   const nextPts = (nextClaim?.status === 'verified') ? Number(nextClaim.pointsAwarded || 0) : 0
-  const prevRw  = (prevClaim?.status === 'verified' && prevClaim?.rubric === 'ihsan') ? 5 : 0
-  const nextRw  = (nextClaim?.status === 'verified' && nextClaim?.rubric === 'ihsan') ? 5 : 0
+  const prevRw  = rewardForClaim(prevClaim)
+  const nextRw  = rewardForClaim(nextClaim)
   const dBina = nextPts - prevPts
   const dRw   = nextRw - prevRw
   if (dBina === 0 && dRw === 0) return
@@ -163,6 +169,68 @@ async function applyMataDelta(db, childId, prevClaim, nextClaim) {
   if (dRw   !== 0) inc.mataReward = dRw
   await db.collection('children').updateOne({ id: childId }, { $inc: inc })
 }
+
+// ═══ POINTS ECONOMY v1 — one-time migration (runs once per database, on first API call) ═══
+// Requested by the owner when the first cohort started (points were "on hold" while the
+// World was being tested):
+//   1. Back up, then RESET every child's World to the starting state (Tasik only).
+//   2. Build points: balance = mataBina (lifetime earned) − mataBinaSpent → spent reset to 0.
+//   3. Reward points: recompute from history with the new rule (every verified habit earns),
+//      minus rewards already redeemed/approved.
+const POINTS_MIGRATION_ID = 'points-economy-v1'
+let pointsMigrationPromise = null
+async function runPointsMigrationOnce(db) {
+  const mig = db.collection('migrations')
+  const existing = await mig.findOne({ id: POINTS_MIGRATION_ID })
+  if (existing && existing.status !== 'failed') return
+  // Claim the migration atomically so only one server instance runs it
+  try {
+    await mig.createIndex({ id: 1 }, { unique: true })
+    if (existing) {
+      const r = await mig.updateOne({ id: POINTS_MIGRATION_ID, status: 'failed' }, { $set: { status: 'running', startedAt: new Date() } })
+      if (!r.modifiedCount) return
+    } else {
+      await mig.insertOne({ id: POINTS_MIGRATION_ID, status: 'running', startedAt: new Date() })
+    }
+  } catch { return }
+  try {
+    const children = await db.collection('children').find({}).project({ _id: 0, id: 1, familyId: 1, mataReward: 1, mataBina: 1 }).toArray()
+    let worldsReset = 0
+    for (const c of children) {
+      // 1) World reset (backup first)
+      const w = await db.collection('family_worlds').findOne({ childId: c.id }, { projection: { _id: 0 } })
+      if (w) {
+        await db.collection('world_backups').insertOne({ ...w, backupReason: POINTS_MIGRATION_ID, backedUpAt: new Date() })
+        await db.collection('family_worlds').updateOne({ childId: c.id }, { $set: {
+          buildings: [{ id: `bld-tasik-${c.id}`, templateId: 'tasik', x: 13, y: 13, level: 1, locked: true, placedAt: new Date() }],
+          version: 3, updatedAt: new Date(), resetAt: new Date(), resetReason: POINTS_MIGRATION_ID,
+        } })
+        worldsReset++
+      }
+      // 3) Reward points from history
+      const claims = await db.collection('habit_claims').find({ childId: c.id, status: 'verified' }).project({ _id: 0, status: 1, rubric: 1, pointsAwarded: 1 }).toArray()
+      const earned = claims.reduce((sum, cl) => sum + rewardForClaim(cl), 0)
+      const redeemed = await db.collection('reward_requests').find({ childId: c.id, status: { $in: ['approved', 'fulfilled', 'delivered', 'redeemed'] } }).project({ _id: 0, snapshot: 1 }).toArray()
+      const spent = redeemed.reduce((sum, r) => sum + (Number(r.snapshot?.cost) || 0), 0)
+      await db.collection('children').updateOne({ id: c.id }, { $set: {
+        mataReward: Math.max(0, earned - spent), mataBinaSpent: 0, pointsEconomy: 1,
+        preMigration: { mataReward: c.mataReward || 0, mataBina: c.mataBina || 0 },
+      } })
+    }
+    await mig.updateOne({ id: POINTS_MIGRATION_ID }, { $set: { status: 'done', doneAt: new Date(), children: children.length, worldsReset } })
+    console.log(`[migration] ${POINTS_MIGRATION_ID}: ${children.length} children, ${worldsReset} worlds reset`)
+  } catch (e) {
+    console.error('[migration] failed', e)
+    await mig.updateOne({ id: POINTS_MIGRATION_ID }, { $set: { status: 'failed', error: String(e?.message || e) } })   // retried on next server start
+  }
+}
+const ensurePointsMigration = async () => {
+  if (!pointsMigrationPromise) pointsMigrationPromise = getDb().then(runPointsMigrationOnce).catch((e) => console.error('[migration]', e?.message))
+  return pointsMigrationPromise
+}
+
+/** Build-point balance = lifetime earned − spent on buildings */
+const buildBalanceOf = (c) => Number(c?.mataBina || 0) - Number(c?.mataBinaSpent || 0)
 
 export async function OPTIONS() {
   return CORS(new NextResponse(null, { status: 200 }))
@@ -282,6 +350,7 @@ async function handleRoute(request, { params }) {
   const method = request.method
 
   try {
+    await ensurePointsMigration()
     // Child-device sessions go through a strict allow-list first
     if ((await peekSessionRole()) === 'kid') {
       const blocked = await kidGate(request, route, method)
@@ -1253,9 +1322,10 @@ async function handleRoute(request, { params }) {
       // Verify the child belongs to this family
       const child = await db.collection('children').findOne(
         { id: childId, familyId: user.familyId },
-        { projection: { _id: 0, id: 1, nickname: 1, ageBand: 1, favColor: 1 } }
+        { projection: { _id: 0, id: 1, nickname: 1, ageBand: 1, favColor: 1, mataBina: 1, mataBinaSpent: 1, mataReward: 1 } }
       )
       if (!child) return err('child not found', 404)
+      child.buildBalance = buildBalanceOf(child)
 
       const worldsCol = db.collection('family_worlds')
 
@@ -1335,7 +1405,8 @@ async function handleRoute(request, { params }) {
       if (!action && method === 'POST') {
         const body = await request.json().catch(() => ({}))
         const update = { updatedAt: new Date() }
-        if (Array.isArray(body.buildings)) update.buildings = body.buildings
+        // NOTE: buildings can no longer be replaced wholesale (would bypass build costs) —
+        // use /build, /move, /upgrade instead.
         if (typeof body.demeritCount === 'number') update.demeritCount = Math.max(0, body.demeritCount)
         await loadOrSeed() // ensure exists
         await worldsCol.updateOne({ childId }, { $set: update })
@@ -1522,9 +1593,19 @@ async function handleRoute(request, { params }) {
             return err('cell reserved (sacred zone or building)', 409)
           }
         }
+        // ── Build points: charge the template cost (atomic — never below cost) ──
+        const buildCost = Math.max(0, Number(tplToBuild?.cost ?? 0))
+        if (buildCost > 0) {
+          const charged = await db.collection('children').updateOne(
+            { id: childId, $expr: { $gte: [{ $subtract: [{ $ifNull: ['$mataBina', 0] }, { $ifNull: ['$mataBinaSpent', 0] }] }, buildCost] } },
+            { $inc: { mataBinaSpent: buildCost } })
+          if (!charged.modifiedCount) {
+            return json({ error: 'not_enough_points', need: buildCost, balance: child.buildBalance }, 402)
+          }
+        }
         const newBuilding = {
           id: `bld-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`,
-          templateId, x, y, level: 1, placedAt: new Date(),
+          templateId, x, y, level: 1, placedAt: new Date(), cost: buildCost,
         }
         // Optimistically compute buildings AFTER the new insert, then decide
         // whether any milestone landmarks should also be auto-placed. This
@@ -1581,7 +1662,7 @@ async function handleRoute(request, { params }) {
             { $push: { buildings: newBuilding }, $set: { updatedAt: new Date() } }
           )
         }
-        return json({ ok: true, building: newBuilding, newLandmarks, autoUpgrade })
+        return json({ ok: true, building: newBuilding, newLandmarks, autoUpgrade, buildBalance: child.buildBalance - buildCost })
       }
 
       // POST /world/:childId/upgrade → level up by building id
