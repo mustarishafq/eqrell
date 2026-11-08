@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { createPortal } from 'react-dom'
 import { X, Download, Share2 } from 'lucide-react'
 import { drawWeeklyCard } from '@/lib/shareWeeklyCard'
 
@@ -77,36 +78,40 @@ function ShareWeeklyModal({ open, onClose, ai, digest, lang }) {
   }
 
   return (
+    typeof document === 'undefined' ? null : createPortal(
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center"
+        <motion.div className="fixed inset-0 z-[300] bg-black/60 flex items-end sm:items-center justify-center"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} data-testid="weekly-share-modal">
           <motion.div onClick={e => e.stopPropagation()} initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
-            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-4 max-h-[94dvh] overflow-y-auto"
-            style={{ backgroundColor: '#FFF8E7', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
-            <div className="flex items-center justify-between mb-3">
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl flex flex-col max-h-[92dvh]"
+            style={{ backgroundColor: '#FFF8E7' }}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
               <h3 className="font-extrabold" style={{ color: '#0F2E25' }}>{L('Kongsi Nota Mingguan', 'Share Weekly Note', 'Bagikan Catatan Mingguan', 'مشاركة الملاحظة الأسبوعية')}</h3>
               <button onClick={onClose} aria-label="close" data-testid="weekly-share-close" className="w-8 h-8 rounded-full bg-white flex items-center justify-center"><X className="w-4 h-4" /></button>
             </div>
-            <div className="rounded-2xl overflow-hidden bg-white aspect-[4/5] flex items-center justify-center">
-              {url ? <img src={url} alt="weekly note card" className="w-full h-full object-contain" data-testid="weekly-share-preview" />
-                : <div className="w-9 h-9 rounded-full border-4 border-emerald-200 border-t-emerald-500 animate-spin" />}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 flex flex-col items-center">
+              <div className="rounded-2xl overflow-hidden bg-white aspect-[4/5] w-full max-w-[calc((92dvh-200px)*0.8)] flex items-center justify-center flex-shrink-0">
+                {url ? <img src={url} alt="weekly note card" className="w-full h-full object-contain" data-testid="weekly-share-preview" />
+                  : <div className="w-9 h-9 rounded-full border-4 border-emerald-200 border-t-emerald-500 animate-spin" />}
+              </div>
+              {note && <p className="text-[11px] text-center mt-2 font-semibold" style={{ color: '#0F2E25' }} data-testid="weekly-share-note">{note}</p>}
+              {!note && url && <p className="text-[11px] text-center mt-2 font-semibold opacity-60" style={{ color: '#0F2E25' }}>{L('Nota penuh dihantar sebagai teks mesej.', 'The full note is sent as the message text.', 'Catatan lengkap dikirim sebagai teks pesan.', 'تُرسل الملاحظة كاملة كنص الرسالة.')}</p>}
             </div>
-            {note && <p className="text-[11px] text-center mt-2 font-semibold" style={{ color: '#0F2E25' }} data-testid="weekly-share-note">{note}</p>}
-            {!note && url && <p className="text-[11px] text-center mt-2 font-semibold opacity-60" style={{ color: '#0F2E25' }}>{L('Nota penuh dihantar sebagai teks mesej.', 'The full note is sent as the message text.', 'Catatan lengkap dikirim sebagai teks pesan.', 'تُرسل الملاحظة كاملة كنص الرسالة.')}</p>}
-            <div className="grid grid-cols-[1fr_auto] gap-2 mt-3">
+            <div className="grid grid-cols-[1fr_auto] gap-2 px-4 pt-3 flex-shrink-0 border-t border-emerald-100"
+              style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
               <button onClick={share} disabled={!blob} data-testid="weekly-share-whatsapp"
-                className="flex items-center justify-center gap-2 rounded-2xl py-3 font-extrabold text-sm bg-[#25D366] text-white disabled:opacity-40 active:scale-[0.99]">
-                <Share2 className="w-4 h-4" /> {L('Kongsi ke WhatsApp', 'Share to WhatsApp', 'Bagikan ke WhatsApp', 'شارك عبر واتساب')}
+                className="flex items-center justify-center gap-2 rounded-2xl py-3.5 font-extrabold text-[15px] bg-[#25D366] text-white disabled:opacity-40 active:scale-[0.99] shadow">
+                <Share2 className="w-5 h-5" /> {L('Kongsi ke WhatsApp', 'Share to WhatsApp', 'Bagikan ke WhatsApp', 'شارك عبر واتساب')}
               </button>
               <button onClick={download} disabled={!url} aria-label="download" data-testid="weekly-share-download"
                 className="px-4 rounded-2xl bg-white border-2 border-emerald-200 text-emerald-800 disabled:opacity-40 active:scale-95">
-                <Download className="w-4 h-4" />
+                <Download className="w-5 h-5" />
               </button>
             </div>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>, document.body)
   )
 }
