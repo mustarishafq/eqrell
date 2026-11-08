@@ -1957,6 +1957,64 @@ async function handleRoute(request, { params }) {
 
     // POST /family/zikir/tap  → increment family-shared zikir counter by 1 (auto-reset new day)
 
+    // ══════════ POINTS HISTORY (parent) ══════════
+    // GET /children/:id/points-history?days=30 → balances + timeline of points earned & spent
+    const ph = route.match(/^\/children\/([^/]+)\/points-history$/)
+    if (ph && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      const child = await db.collection('children').findOne({ id: ph[1], familyId: user?.familyId || '__none__' }, { projection: { _id: 0 } })
+      if (!child) return err('child not found', 404)
+      const days = Math.min(90, Math.max(1, Number(new URL(request.url).searchParams.get('days')) || 30))
+      const since = new Date(Date.now() - days * 86400000)
+      const at = (...ds) => { for (const d of ds) { if (d) { const t = new Date(d); if (!isNaN(t)) return t } } return null }
+
+      const [claims, quizzes, world, rewards] = await Promise.all([
+        db.collection('habit_claims').find({ childId: child.id, status: 'verified' }).project({ _id: 0 }).sort({ dateStr: -1 }).limit(1500).toArray(),
+        db.collection('quiz_sessions').find({ childId: child.id, status: 'completed', pointsAwarded: { $gt: 0 }, completedAt: { $gte: since } }).project({ _id: 0, pointsAwarded: 1, completedAt: 1, correctCount: 1, questionIds: 1 }).toArray(),
+        db.collection('family_worlds').findOne({ childId: child.id }, { projection: { _id: 0, buildings: 1 } }),
+        db.collection('reward_requests').find({ childId: child.id, status: { $in: ['approved', 'fulfilled'] } }).project({ _id: 0 }).toArray(),
+      ])
+      const habitIds = [...new Set(claims.map(c => c.habitId))]
+      const habits = habitIds.length ? await db.collection('habits').find({ id: { $in: habitIds } }).project({ _id: 0, id: 1, title: 1, icon: 1 }).toArray() : []
+      const hMap = Object.fromEntries(habits.map(h => [h.id, h]))
+      const items = []
+      for (const c of claims) {
+        const t = at(c.verifiedAt, c.updatedAt, c.createdAt, c.dateStr ? `${c.dateStr}T12:00:00` : null)
+        if (!t || t < since) continue
+        const build = Number(c.pointsAwarded || 0)
+        const reward = rewardForClaim(c)
+        if (!build && !reward) continue
+        items.push({ type: 'habit', at: t, title: hMap[c.habitId]?.title || 'Habit', icon: hMap[c.habitId]?.icon || '✅', build, reward, rubric: c.rubric || null, auto: !!c.autoVerified || c.verifiedBy === 'trust' })
+      }
+      for (const q of quizzes) items.push({ type: 'quiz', at: at(q.completedAt), title: `Quiz ${q.correctCount}/${q.questionIds?.length || 0}`, icon: '🧠', build: Number(q.pointsAwarded || 0), reward: 0 })
+      for (const b of (world?.buildings || [])) {
+        const cost = Number(b.cost || 0)
+        const t = at(b.placedAt)
+        if (!cost || !t || t < since) continue
+        const tpl = BUILDING_TEMPLATES[b.templateId]
+        items.push({ type: 'build', at: t, title: tpl?.name || b.templateId, icon: '🏗️', build: -cost, reward: 0 })
+      }
+      for (const r of rewards) {
+        const t = at(r.decidedAt, r.fulfilledAt, r.createdAt)
+        if (!t || t < since) continue
+        items.push({ type: 'reward', at: t, title: r.snapshot?.title || 'Reward', icon: r.snapshot?.icon || '🎁', build: 0, reward: -Number(r.snapshot?.cost || 0), status: r.status })
+      }
+      items.sort((a, b) => b.at - a.at)
+      const sum = (k, sign) => items.reduce((acc, i) => acc + (sign > 0 ? Math.max(0, i[k]) : Math.min(0, i[k])), 0)
+      return json({
+        child: { id: child.id, nickname: child.nickname },
+        days,
+        balances: { build: buildBalanceOf(child), reward: Number(child.mataReward || 0), lifetimeBuild: Number(child.mataBina || 0) },
+        summary: { buildEarned: sum('build', 1), buildSpent: -sum('build', -1), rewardEarned: sum('reward', 1), rewardSpent: -sum('reward', -1) },
+        items: items.slice(0, 300),
+        resetAt: child.pointsEconomy ? (await db.collection('migrations').findOne({ id: POINTS_MIGRATION_ID }, { projection: { _id: 0, doneAt: 1 } }))?.doneAt || null : null,
+      })
+    }
+
     // ══════════ CHILD DEVICE LINK (no email/WhatsApp needed for the child) ══════════
     // Way A — child's device shows QR + code, parent approves on their phone:
     //   POST /kid/device/start                    (no auth) → { deviceId, secret, code, expiresAt }

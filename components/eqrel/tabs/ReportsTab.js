@@ -8,6 +8,7 @@ import { ShareProfileButton } from '@/components/eqrel/ShareProfileCard'
 import { WeeklyStoryCard } from '@/components/eqrel/DigestCard'
 import { STAGES, tx } from '@/lib/diagnosis'
 import { SolatWeekCard } from '@/components/eqrel/SolatWeekCard'
+import PointsHistorySheet from '@/components/eqrel/PointsHistorySheet'
 
 const DAY = 86400000
 
@@ -21,6 +22,7 @@ export default function ReportsTab({ lang = 'en', icon, avatarSrc, streak = {}, 
   const [data, setData] = useState(null)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  const [historyChild, setHistoryChild] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -144,6 +146,14 @@ export default function ReportsTab({ lang = 'en', icon, avatarSrc, streak = {}, 
                   <Stat value={c.totals.claimedPending} label={L('Tunggu sah', 'To verify', 'Tunggu', 'بانتظار')} tone="bg-sky-50" />
                 </div>
 
+                <button onClick={() => setHistoryChild(c)} data-testid={`reports-points-history-${c.id}`}
+                  className="mt-2 w-full rounded-2xl px-3 py-2.5 flex items-center gap-2.5 active:scale-[0.99]" style={{ backgroundColor: '#0F2E25' }}>
+                  <span className="text-lg">⭐</span>
+                  <span className="flex-1 text-start text-[13px] font-extrabold" style={{ color: '#FFF8E7' }}>{L('Sejarah Mata', 'Points History', 'Riwayat Poin', 'سجل النقاط')}</span>
+                  <span className="text-[11px] font-bold" style={{ color: '#FFF8E7B3' }}>{L('diperoleh & digunakan', 'earned & spent', 'didapat & dipakai', 'مكتسبة ومستخدمة')}</span>
+                  <span className="font-black" style={{ color: '#FFB703' }}>→</span>
+                </button>
+
                 {c.topHabits?.length > 0 && (
                   <div className="mt-3">
                     <div className="text-[11px] font-black uppercase tracking-wider text-eq-ink/50 mb-1.5">
@@ -228,6 +238,7 @@ export default function ReportsTab({ lang = 'en', icon, avatarSrc, streak = {}, 
           })}
         </>
       )}
+      <PointsHistorySheet open={!!historyChild} onClose={() => setHistoryChild(null)} lang={lang} child={historyChild} />
     </div>
   )
 }
