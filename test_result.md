@@ -12,6 +12,17 @@
         comment: "applyMataDelta: mataBina += pointsAwarded (unchanged); mataReward now = rewardForClaim = (pts>0 ? max(1, round(pts*0.2)) : 0) + 5 if rubric ihsan, applied on verify/unverify/rubric change (deltas). Build: POST /world/:childId/build charges BUILDING_TEMPLATES[templateId].cost atomically via children.mataBinaSpent (balance = mataBina - mataBinaSpent); insufficient → 402 {error:'not_enough_points', need, balance}; success returns buildBalance. Musalla cost 0 (free). GET /world/:childId → child.buildBalance, mataBina, mataBinaSpent, mataReward. POST /world/:childId (full replace) no longer accepts buildings. One-time migration 'points-economy-v1' (collection migrations) ran at first API call: backed up worlds to world_backups, reset worlds to Tasik only, mataBinaSpent=0, mataReward recomputed from verified claims minus approved/fulfilled reward_requests. Already ran in preview (status done) — do not re-run."
 
 backend:
+  - task: "Weekly digest visual extras (days, bestHabit, village) for share card"
+    implemented: true
+    working: "NA"
+    file: "/app/lib/engagement.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "buildWeeklyDigest now adds per kid: days[7] (0..1, oldest→newest), habitsCount, bestHabit {title, icon, category, days}|null, village {total, newThisWeek, musallaLevel, recent[]} from family_worlds (excludes tasik/musalla in total/recent). Endpoints: GET /api/digest/weekly and GET /api/digest/weekly/ai must keep working."
   - task: "Points Economy v1 - Reward points, build system, migration"
     implemented: true
     working: true
@@ -220,6 +231,58 @@ backend:
         agent: "testing"
         comment: "✅ Kid device management working correctly. GET /family/kid-devices (parent) returns list of approved devices with id, name, label, childId, approvedAt, lastSeenAt. POST /family/kid-devices/:id/revoke (parent) revokes device. After revocation: kid session gets 401 on endpoints, POST /kid/device/connect returns 'revoked' status. Parent session continues working throughout. TV link endpoints still work (regression verified)."
 
+  - task: "Weekly Digest Endpoint - Updated fields (days, habitsCount, bestHabit, village)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/engagement.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Weekly Digest Updated Fields (5/5)
+          
+          **TEST 1: Basic Structure and New Fields**
+          ✅ GET /api/digest/weekly returns 200
+          ✅ Each kid includes 'days' array (length 7, values in [0,1], oldest→newest)
+          ✅ Each kid includes 'habitsCount' (number)
+          ✅ Each kid includes 'bestHabit' (null or {title, icon, category, days})
+          ✅ Each kid includes 'village' object with:
+             - total: number (excluding musalla/tasik)
+             - newThisWeek: number
+             - musallaLevel: number
+             - recent: array of templateId strings (no 'musalla'/'tasik')
+          
+          **TEST 2: Language Parameter**
+          ✅ GET /api/digest/weekly?lang=ms returns 200
+          ✅ All new fields present with lang parameter
+          
+          **TEST 3: Verified Claims Update Days/BestHabit**
+          ✅ Created verified habit claim for today
+          ✅ days[-1] > 0 after today's claim (0.1 for 1 habit out of 7)
+          ✅ bestHabit non-null after claim with correct title and days count
+          
+          **TEST 4: Village Fields with Buildings**
+          ✅ Inserted test buildings (musalla level 2, banglo)
+          ✅ village.total = 1 (banglo only, excluding musalla/tasik)
+          ✅ village.newThisWeek = 1 (banglo placed this week)
+          ✅ village.musallaLevel = 2 (correct level)
+          ✅ village.recent = ['banglo'] (contains banglo, excludes musalla/tasik)
+          
+          **TEST 5: AI Endpoint Regression**
+          ✅ GET /api/digest/weekly/ai returns 200
+          ✅ AI response can be null, pending, or text (all valid)
+          
+          **SUMMARY:**
+          - All new fields (days, habitsCount, bestHabit, village) correctly implemented
+          - Days array accurately reflects 7-day completion (oldest→newest)
+          - bestHabit correctly identifies most consistent habit
+          - Village fields correctly count buildings and exclude musalla/tasik from totals
+          - AI endpoint continues working correctly
+          - Test data cleaned up successfully
+
 frontend:
   - task: "Co-parent invite card + Kad Solat Mingguan (Reports)"
     implemented: true
@@ -368,6 +431,7 @@ metadata:
 
 test_plan:
   current_focus:
+    - "Weekly digest visual extras (days, bestHabit, village) for share card"
     - "Kid Device Link Backend - TESTED ✅ (42/42 tests passed)"
     - "Kid Device Link UI - TESTED ✅ (All UI elements verified)"
     - "REST MODE (Travel & Rest Days) - TESTED ✅"
@@ -615,3 +679,29 @@ frontend:
           - test4a-kid-devices-sheet.png: Kid devices management sheet
           - test4b-kid-devices-code-generated.png: Generated code display
           - test5-parent-kid-mode.png: Parent's Kid Mode with exit button
+  - agent: "testing"
+    message: |
+      ✅ WEEKLY DIGEST ENDPOINT TESTS COMPLETED - ALL TESTS PASSED (5/5)
+      
+      **TESTED SUCCESSFULLY:**
+      1. Basic structure and new fields: GET /api/digest/weekly returns 200 with all new fields ✅
+      2. Language parameter: ?lang=ms works correctly ✅
+      3. Verified claims update days/bestHabit: Claims correctly update days[-1] > 0 and bestHabit non-null ✅
+      4. Village fields with buildings: Correctly counts buildings, excludes musalla/tasik, tracks musallaLevel ✅
+      5. AI endpoint regression: GET /api/digest/weekly/ai still returns 200 ✅
+      
+      **NEW FIELDS VERIFIED:**
+      - days: array[7] of numbers in [0,1] (oldest→newest) ✅
+      - habitsCount: number of habits ✅
+      - bestHabit: null or {title, icon, category, days} ✅
+      - village: {total, newThisWeek, musallaLevel, recent[]} ✅
+      
+      **KEY FINDINGS:**
+      - All new fields correctly implemented in buildWeeklyDigest function
+      - Days array accurately reflects 7-day completion ratio (0.1 = 1/7 habits done)
+      - bestHabit correctly identifies most consistent habit with days count
+      - Village fields correctly exclude musalla/tasik from total and recent array
+      - musallaLevel correctly reports highest musalla level
+      - newThisWeek correctly counts buildings placed within the week
+      
+      **TEST DATA:** All test data cleaned up successfully (1 claim, 2 buildings removed).

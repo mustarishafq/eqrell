@@ -1,4 +1,5 @@
 'use client'
+import { ShareWeeklyButton } from '@/components/eqrel/ShareWeeklyCard'
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
@@ -155,6 +156,7 @@ export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
             ))}
           </div>
           <div className="mt-2 text-[9.5px]" style={{ color: '#FFF8E777' }}>{L('Ditulis oleh AI berdasarkan habit minggu ini', "Written by AI from this week's habits", 'Ditulis oleh AI dari kebiasaan minggu ini', 'كتبها الذكاء الاصطناعي من عادات هذا الأسبوع')}</div>
+          <ShareWeeklyButton ai={ai} digest={d} lang={lang} />
         </div>
       )}
       <div className="mt-2.5 space-y-3">
