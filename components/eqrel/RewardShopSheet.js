@@ -27,6 +27,7 @@ export function RewardShopSheet({ open, onClose, kids }) {
   const [requests, setRequests] = useState([])
   const [proposals, setProposals] = useState([])
   const [custom, setCustom] = useState([])
+  const [hiddenTpl, setHiddenTpl] = useState([])
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -57,6 +58,7 @@ export function RewardShopSheet({ open, onClose, kids }) {
       setRequests(dReq.requests || [])
       setProposals(dProp.proposals || [])
       setCustom(dCat.custom || [])
+      setHiddenTpl(dCat.hiddenTemplates || [])
     } finally { setLoading(false) }
   }, [])
 
@@ -113,6 +115,20 @@ export function RewardShopSheet({ open, onClose, kids }) {
       })
       if (r.ok) await fetchAll()
     } finally { setBusyId(null) }
+  }
+
+  // Built-in templates: soft-hide per family (restorable). Optimistic update, rolled back on failure.
+  const toggleTemplate = async (templateId, hide) => {
+    const prev = hiddenTpl
+    setHiddenTpl(hide ? [...new Set([...prev, templateId])] : templateId ? prev.filter(x => x !== templateId) : [])
+    try {
+      const r = await fetch(`/api/rewards/templates/${hide ? 'hide' : 'restore'}`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateId ? { templateId } : {}),
+      })
+      if (!r.ok) throw new Error('failed')
+      const d = await r.json(); setHiddenTpl(d.hiddenTemplates || [])
+    } catch { setHiddenTpl(prev) }
   }
 
   return (
@@ -219,6 +235,8 @@ export function RewardShopSheet({ open, onClose, kids }) {
                 <CatalogList
                   lang={lang} t={t}
                   custom={custom}
+                  hidden={hiddenTpl}
+                  onToggleTemplate={toggleTemplate}
                   onAdd={() => setAddOpen(true)}
                   onDelete={deleteCustom}
                   busyId={busyId}
@@ -262,7 +280,20 @@ export function RewardShopSheet({ open, onClose, kids }) {
 // ─────────────────────────────────────────────────────────────────
 // CATALOG (templates + custom)
 
-const CatalogList = ({ lang, t, custom, onAdd, onDelete, busyId }) => {
+const TPL_COPY = {
+  title: { ms: 'Template', en: 'Templates', id: 'Template', ar: 'القوالب' },
+  hint: { ms: 'Tekan 🗑 untuk buang ganjaran yang tak sesuai. Anak tak akan nampak lagi.', en: "Tap 🗑 to remove rewards that don't suit your family. Your kids won't see them.", id: 'Ketuk 🗑 untuk menghapus hadiah yang tidak cocok. Anak tidak akan melihatnya.', ar: 'اضغط 🗑 لإزالة المكافآت غير المناسبة. لن يراها أطفالك.' },
+  hidden: { ms: 'Template dibuang', en: 'Removed templates', id: 'Template dihapus', ar: 'قوالب محذوفة' },
+  restore: { ms: 'Pulihkan', en: 'Restore', id: 'Pulihkan', ar: 'استعادة' },
+  restoreAll: { ms: 'Pulihkan semua', en: 'Restore all', id: 'Pulihkan semua', ar: 'استعادة الكل' },
+  allHidden: { ms: 'Semua template telah dibuang. Tambah ganjaran sendiri di atas.', en: 'All templates removed. Add your own rewards above.', id: 'Semua template dihapus. Tambahkan hadiah sendiri di atas.', ar: 'تمت إزالة كل القوالب. أضف مكافآتك أعلاه.' },
+}
+const tc = (k, lang) => TPL_COPY[k]?.[lang] || TPL_COPY[k].en
+
+const CatalogList = ({ lang, t, custom, hidden = [], onToggleTemplate, onAdd, onDelete, busyId }) => {
+  const [showHidden, setShowHidden] = useState(false)
+  const visibleTpl = REWARD_TEMPLATES.filter(r => !hidden.includes(r.id))
+  const hiddenTpl = REWARD_TEMPLATES.filter(r => hidden.includes(r.id))
   return (
     <div>
       <button
@@ -314,17 +345,28 @@ const CatalogList = ({ lang, t, custom, onAdd, onDelete, busyId }) => {
         </>
       )}
 
-      {/* Templates */}
-      <div className="text-[10px] font-bold uppercase tracking-wider text-eq-ink/50 mb-1.5">
-        Template
+      {/* Templates — parents can remove ones that don't fit (soft-hide, restorable) */}
+      <div className="text-[10px] font-bold uppercase tracking-wider text-eq-ink/50 mb-0.5">
+        {tc('title', lang)}
       </div>
+      <p className="text-[11px] text-eq-ink/55 mb-1.5 leading-snug">{tc('hint', lang)}</p>
+      {visibleTpl.length === 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-eq-cream bg-white p-4 text-center text-xs font-bold text-eq-ink/60 mb-2">{tc('allHidden', lang)}</div>
+      )}
       <div className="grid grid-cols-2 gap-2">
-        {REWARD_TEMPLATES.map(r => {
+        {visibleTpl.map(r => {
           const cat = REWARD_CATEGORIES[r.category] || REWARD_CATEGORIES.activity
           const catLabel = getRewardCategoryLabel(r.category, t)
           return (
-            <div key={r.id} className="rounded-2xl border-2 border-eq-cream bg-white p-3">
-              <div className="flex items-start justify-between">
+            <div key={r.id} className="rounded-2xl border-2 border-eq-cream bg-white p-3 relative" data-testid={`reward-tpl-${r.id}`}>
+              <button
+                onClick={() => onToggleTemplate?.(r.id, true)}
+                className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center active:scale-90"
+                aria-label="remove template" data-testid={`reward-tpl-hide-${r.id}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <div className="flex items-start justify-between pr-7">
                 <div className="text-3xl">{r.icon}</div>
                 <div className="text-[10px] font-extrabold text-amber-700 flex items-center gap-0.5">
                   {r.cost}<Sparkles className="w-3 h-3" fill="#FFB703" />
@@ -343,6 +385,33 @@ const CatalogList = ({ lang, t, custom, onAdd, onDelete, busyId }) => {
           )
         })}
       </div>
+
+      {hiddenTpl.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-eq-cream/50 border border-eq-cream p-3" data-testid="reward-tpl-hidden-section">
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => setShowHidden(v => !v)} className="text-xs font-extrabold text-eq-ink/70" data-testid="reward-tpl-hidden-toggle">
+              {showHidden ? '▾' : '▸'} {tc('hidden', lang)} ({hiddenTpl.length})
+            </button>
+            <button onClick={() => onToggleTemplate?.(null, false)} className="text-[11px] font-extrabold text-emerald-700 underline" data-testid="reward-tpl-restore-all">
+              {tc('restoreAll', lang)}
+            </button>
+          </div>
+          {showHidden && (
+            <div className="mt-2 space-y-1.5">
+              {hiddenTpl.map(r => (
+                <div key={r.id} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+                  <span className="text-xl opacity-60">{r.icon}</span>
+                  <span className="flex-1 min-w-0 text-xs font-bold text-eq-ink/60 line-through truncate">{getRewardTitle(r, lang)}</span>
+                  <button onClick={() => onToggleTemplate?.(r.id, false)} data-testid={`reward-tpl-restore-${r.id}`}
+                    className="text-[11px] font-extrabold rounded-full px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 active:scale-95">
+                    {tc('restore', lang)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

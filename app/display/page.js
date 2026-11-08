@@ -14,6 +14,9 @@ import BigMascot from '@/components/eqrel/BigMascot'
 import YouTubeBgPlayer from '@/components/eqrel/YouTubeBgPlayer'
 import { useWakeLock } from '@/lib/useWakeLock'
 import TVPreview from '@/components/eqrel/TVPreview'
+import TvSaveSheet from '@/components/eqrel/TvSaveSheet'
+import { isStandalone } from '@/lib/pwaInstall'
+import { tvSaveSeen } from '@/lib/tvPlatform'
 import HabitBoard from '@/components/eqrel/HabitBoard'
 import LocationPicker from '@/components/eqrel/LocationPicker'
 import DisplayLoadingSplash from '@/components/eqrel/DisplayLoadingSplash'
@@ -111,6 +114,16 @@ function DisplayPageInner() {
   const loadRef = useRef(null)
   const [isLinkedTv, setIsLinkedTv] = useState(false)
   useEffect(() => { setIsLinkedTv(forceTv || !!getTvCreds()) }, [forceTv])
+  // "Save EQrel on this TV" — button in header + one-time auto prompt on a freshly linked TV
+  const [tvSaveOpen, setTvSaveOpen] = useState(false)
+  const [canSaveTv, setCanSaveTv] = useState(false)
+  useEffect(() => { setCanSaveTv(isLinkedTv && !isPreview && !isStandalone()) }, [isLinkedTv, isPreview])
+  useEffect(() => {
+    if (!canSaveTv || !getTvCreds() || tvSaveSeen()) return
+    try { if (sessionStorage.getItem('eqrel-tv-save-auto')) return; sessionStorage.setItem('eqrel-tv-save-auto', '1') } catch { /* ignore */ }
+    const tt = setTimeout(() => setTvSaveOpen(true), 12_000)
+    return () => clearTimeout(tt)
+  }, [canSaveTv])
   const load = useCallback(async () => {
     const ctrl = new AbortController()
     const abortT = setTimeout(() => ctrl.abort(), 15_000)
@@ -699,6 +712,13 @@ function DisplayPageInner() {
 
         {/* Nav buttons */}
         <div className="flex items-center gap-1.5">
+          {canSaveTv && (
+            <button onClick={() => setTvSaveOpen(true)} data-testid="tv-save-btn"
+              className="tv-focus h-11 rounded-2xl px-3 flex items-center gap-1.5 font-extrabold text-xs text-slate-900 shadow-lg active:scale-95"
+              style={{ backgroundColor: '#FFB703' }}>
+              📌 {lang === 'ar' ? 'احفظ على التلفاز' : (lang === 'ms' || lang === 'id') ? 'Simpan di TV' : 'Save to TV'}
+            </button>
+          )}
           <button onClick={() => router.push('/?parent=1')} className="w-11 h-11 rounded-2xl bg-emerald-900/50 backdrop-blur border border-emerald-400/25 hover:bg-emerald-800/60 flex items-center justify-center shadow-lg">
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -734,6 +754,8 @@ function DisplayPageInner() {
           </button>
         </div>
       )}
+
+      <TvSaveSheet open={tvSaveOpen} onClose={() => setTvSaveOpen(false)} lang={lang} />
 
       {/* ═══ AZAN PLAYING BANNER (overlay) ═══ */}
       {azanPlaying && (

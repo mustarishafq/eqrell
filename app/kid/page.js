@@ -162,6 +162,7 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
   }
   const [rewardRequests, setRewardRequests] = useState([])
   const [customRewards, setCustomRewards] = useState([])
+  const [hiddenTemplates, setHiddenTemplates] = useState([])
   const [myProposals, setMyProposals] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyHabit, setBusyHabit] = useState(null)
@@ -227,6 +228,7 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
       setRestMode(hData.restMode || null)
       setRewardRequests(rData.requests || [])
       setCustomRewards(catData.custom || [])
+      setHiddenTemplates(catData.hiddenTemplates || [])
       setMyProposals(pData.proposals || [])
       setQuizStatus(qData || { doneToday: false, correctCount: 0, total: 0 })
     } finally {
@@ -674,7 +676,7 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
                 )
               })}
               {/* Templates */}
-              {REWARD_TEMPLATES.map(r => {
+              {REWARD_TEMPLATES.filter(r => !hiddenTemplates.includes(r.id)).map(r => {
                 const balance = Number(child?.mataReward || 0)
                 const affordable = balance >= r.cost
                 const pending = rewardRequests.find(rr => rr.rewardId === r.id && rr.status === 'pending')

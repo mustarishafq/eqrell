@@ -133,6 +133,61 @@ backend:
           - POST /world protection prevents bypassing build costs
           - All 11 tests passed successfully
 
+
+  - task: "Reward Template Hide/Restore - POST /api/rewards/templates/hide, POST /api/rewards/templates/restore"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Reward Template Hide/Restore Feature (6/6)
+          
+          **TEST 1: GET /api/rewards/catalog**
+          ✅ Returns 200 with 'custom' array and 'hiddenTemplates' array
+          ✅ hiddenTemplates initially empty []
+          
+          **TEST 2: POST /api/rewards/templates/hide with valid templateId**
+          ✅ Successfully hides template (rw-01) - added to hiddenTemplates array
+          ✅ Hidden template appears in catalog hiddenTemplates
+          ✅ Hiding same template twice does NOT create duplicates ($addToSet working)
+          ✅ Multiple templates can be hidden (rw-01, rw-02)
+          
+          **TEST 3: POST /api/rewards/templates/hide - Error cases**
+          ✅ Unknown templateId (rw-99) → 404 'Unknown template'
+          ✅ Missing templateId → 400 'templateId required'
+          ✅ No authentication cookie → 401 'unauthorized'
+          
+          **TEST 4: POST /api/rewards/request with hidden template**
+          ✅ Requesting hidden template (isTemplate:true) → 410 'This reward was removed by your parents'
+          ✅ Requesting non-hidden template → 200 (request created successfully)
+          ✅ Child mataReward balance check working correctly
+          
+          **TEST 5: POST /api/rewards/templates/restore**
+          ✅ Restore specific template {templateId:'rw-01'} → removed from hiddenTemplates
+          ✅ Other hidden templates remain hidden (rw-02 still in list)
+          ✅ Restore all {} → hiddenTemplates becomes empty []
+          
+          **TEST 6: Kid-role session permissions**
+          ✅ Kid device link flow working (start → approve → connect)
+          ✅ Kid session attempting to hide template → 403 'forbidden'
+          ✅ Parent-only endpoint protection working correctly
+          
+          **KEY FINDINGS:**
+          - Hide/restore functionality working perfectly
+          - hiddenRewardTemplates stored on families collection
+          - $addToSet prevents duplicates when hiding same template multiple times
+          - $pull removes specific template, $set:{hiddenRewardTemplates:[]} clears all
+          - POST /rewards/request correctly checks hiddenTemplates and returns 410
+          - Kid/TV sessions blocked from hide/restore endpoints (403)
+          - All error cases (404, 400, 401, 403, 410) working correctly
+          
+          **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
   - task: "Child Device Link (kid-only session) - /api/kid/device/*, /api/family/kid-codes, /api/family/kid-devices, kid allow-list gate, claim push"
     implemented: true
     working: "NA"
@@ -495,6 +550,7 @@ test_plan:
     - "Kid Device Link UI - TESTED ✅ (All UI elements verified)"
     - "REST MODE (Travel & Rest Days) - TESTED ✅"
     - "TV LINK UI Flow - TESTED ✅ (single context tests)"
+    - "Reward Template Hide/Restore - TESTED ✅ (6/6 tests passed)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -784,4 +840,26 @@ frontend:
       - MongoDB verification confirmed all habits created correctly with no duplicates
       
       **TEST DATA:** All test children and habits cleaned up successfully.
+  - agent: "testing"
+    message: |
+      ✅ REWARD TEMPLATE HIDE/RESTORE FEATURE TESTS COMPLETED - ALL TESTS PASSED (6/6)
+      
+      **TESTED SUCCESSFULLY:**
+      1. GET /api/rewards/catalog → Returns custom and hiddenTemplates arrays ✅
+      2. POST /api/rewards/templates/hide → Hides templates, no duplicates, multiple templates ✅
+      3. Error cases → 404 (unknown template), 400 (missing templateId), 401 (no auth) ✅
+      4. POST /api/rewards/request → 410 for hidden templates, 200 for non-hidden ✅
+      5. POST /api/rewards/templates/restore → Restores specific or all templates ✅
+      6. Kid session permissions → 403 on hide/restore endpoints ✅
+      
+      **KEY FINDINGS:**
+      - Hide/restore functionality working perfectly
+      - hiddenRewardTemplates stored on families collection
+      - $addToSet prevents duplicates, $pull removes specific, $set clears all
+      - POST /rewards/request correctly checks hiddenTemplates and returns 410
+      - Kid/TV sessions properly blocked from hide/restore (403)
+      - All error responses (404, 400, 401, 403, 410) working correctly
+      
+      **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
 

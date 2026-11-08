@@ -83,6 +83,7 @@ async function runDigestCron(db) {
 import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import { getWeeklyAISummary } from '@/lib/aiWeekly'
+import { REWARD_TEMPLATES } from '@/lib/rewardTemplates'
 import crypto from 'node:crypto'
 
 /**
@@ -3176,13 +3177,35 @@ async function handleRoute(request, { params }) {
       if (!session) return err('unauthorized', 401)
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
-      if (!user?.familyId) return json({ custom: [] })
+      if (!user?.familyId) return json({ custom: [], hiddenTemplates: [] })
       const custom = await db.collection('rewards_custom')
         .find({ familyId: user.familyId })
         .sort({ createdAt: -1 })
         .project({ _id: 0 })
         .toArray()
-      return json({ custom })
+      const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, hiddenRewardTemplates: 1 } })
+      return json({ custom, hiddenTemplates: fam?.hiddenRewardTemplates || [] })
+    }
+
+    // POST /rewards/templates/hide { templateId }  → parent removes a built-in template from this family's shop (soft, restorable)
+    // POST /rewards/templates/restore { templateId? } → bring one back (or all when templateId omitted)
+    if ((route === '/rewards/templates/hide' || route === '/rewards/templates/restore') && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+      const body = await request.json().catch(() => ({}))
+      const templateId = String(body.templateId || '')
+      const hide = route.endsWith('/hide')
+      if (templateId && !REWARD_TEMPLATES.some(r => r.id === templateId)) return err('Unknown template', 404)
+      if (hide && !templateId) return err('templateId required', 400)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const upd = hide ? { $addToSet: { hiddenRewardTemplates: templateId } }
+        : templateId ? { $pull: { hiddenRewardTemplates: templateId } } : { $set: { hiddenRewardTemplates: [] } }
+      await db.collection('families').updateOne({ id: user.familyId }, upd)
+      const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, hiddenRewardTemplates: 1 } })
+      return json({ ok: true, hiddenTemplates: fam?.hiddenRewardTemplates || [] })
     }
 
     // ═══ Reward Proposals (kid → parent) ═══
@@ -3358,6 +3381,10 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
       if (!child) return err('Child not found', 404)
+      if (isTemplate) {
+        const famH = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, hiddenRewardTemplates: 1 } })
+        if ((famH?.hiddenRewardTemplates || []).includes(rewardId)) return err('This reward was removed by your parents', 410)
+      }
       const balance = Number(child.mataReward || 0)
       if (balance < snapshot.cost) return err('Not enough Mata Reward', 402)
       // Prevent duplicate pending request for same reward

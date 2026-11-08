@@ -1,0 +1,21 @@
+{
+  "name": "EQrel Family Display",
+  "short_name": "EQrel TV",
+  "description": "EQrel Family Display — prayer times, habits and your family village on the big screen",
+  "id": "/tv",
+  "start_url": "/tv?source=tv-app",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0a1f1c",
+  "theme_color": "#00B894",
+  "lang": "en",
+  "categories": ["education", "lifestyle", "family"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
