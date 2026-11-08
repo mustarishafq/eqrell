@@ -69,7 +69,11 @@ async function runDigestCron(db) {
       const weeklyDue = journeyDay === 7 || (local.weekday === 0 && journeyDay >= 10)
       if (prefs.weekly?.enabled && weeklyDue && last.weekly !== local.date) {
         const w = await buildWeeklyDigest(db, user.familyId, opts)
-        await pushToUser(db, uid, w.push); sets['notifyLast.weekly'] = local.date; out.weekly++
+        // Pre-generate the AI-written note so it's ready when the parent opens Reports;
+        // use its first sentence as the notification text.
+        const ai = await getWeeklyAISummary(db, user.familyId, w, opts.lang || 'en').catch(() => null)
+        const first = ai?.text ? (ai.text.split(/(?<=[.!?؟])\s+/).slice(0, 2).join(' ').slice(0, 170)) : ''
+        await pushToUser(db, uid, first ? { ...w.push, body: first } : w.push); sets['notifyLast.weekly'] = local.date; out.weekly++
       }
     }
     if (Object.keys(sets).length) await db.collection('users').updateOne({ id: uid }, { $set: sets })
@@ -78,6 +82,7 @@ async function runDigestCron(db) {
 }
 import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/diagnosis'
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
+import { getWeeklyAISummary } from '@/lib/aiWeekly'
 import crypto from 'node:crypto'
 
 /**
@@ -2522,6 +2527,20 @@ async function handleRoute(request, { params }) {
     // at least ONE family child having a verified 'sah'|'ihsan' claim.
     // ══════════ ENGAGEMENT: digests, notification prefs, web push, cron ══════════
     // GET /digest/morning|night|weekly?lang=  → in-app cards (same content as push)
+    // GET /digest/weekly/ai?lang= → { ai: { text, generatedAt } | { pending } | null }  (Claude, cached per family/week/lang)
+    if (route === '/digest/weekly/ai' && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid') return err('forbidden', 403)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const lang = ['en', 'ms', 'id', 'ar'].includes(new URL(request.url).searchParams.get('lang')) ? new URL(request.url).searchParams.get('lang') : (user.notifyPrefs?.lang || 'en')
+      const digest = await buildWeeklyDigest(db, user.familyId, { lang, dateStr: utcToday() })
+      const ai = await getWeeklyAISummary(db, user.familyId, digest, lang)
+      return json({ ai, weekKey: digest.to })
+    }
+
     if (route.match(/^\/digest\/(morning|night|weekly)$/) && method === 'GET') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)

@@ -113,6 +113,21 @@ export function DigestCard({ lang = 'en', refreshKey = 0, onQuickVerify, onSetti
 export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
   const L = pick(lang)
   const [d, setD] = useState(null)
+  const [ai, setAi] = useState(undefined)   // undefined = loading, null = none, { text }
+  useEffect(() => {
+    let alive = true, timer
+    setAi(undefined)
+    const load = (tries = 0) => fetch(`/api/digest/weekly/ai?lang=${lang}`, { credentials: 'include', cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : { ai: null }))
+      .then(x => {
+        if (!alive) return
+        if (x?.ai?.pending && tries < 8) { timer = setTimeout(() => load(tries + 1), 4000); return }
+        setAi(x?.ai?.text ? x.ai : null)
+      })
+      .catch(() => { if (alive) setAi(null) })
+    load()
+    return () => { alive = false; clearTimeout(timer) }
+  }, [lang, refreshKey])
   useEffect(() => {
     let alive = true
     fetch(`/api/digest/weekly?lang=${lang}`, { credentials: 'include' })
@@ -124,6 +139,24 @@ export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
     <div className="bg-white rounded-3xl p-4 shadow-eq-card flex-shrink-0 border border-emerald-100" data-testid="weekly-story">
       <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700">📖 {L('Laporan Perubahan Minggu Ini', "This Week's Progress Story", 'Laporan Perubahan Minggu Ini', 'قصة تقدّم هذا الأسبوع')}</div>
       <div className="text-[10px] text-eq-ink/45 font-bold">{d.from} → {d.to}</div>
+      {ai === undefined && (
+        <div className="mt-2.5 rounded-2xl p-3 animate-pulse" style={{ backgroundColor: '#0F2E25' }} data-testid="weekly-ai-loading">
+          <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#FFB703' }}>✨ {L('EQrel sedang menulis nota minggu ini…', 'EQrel is writing this week\'s note…', 'EQrel sedang menulis catatan minggu ini…', 'EQrel يكتب ملاحظة هذا الأسبوع…')}</div>
+          <div className="mt-2 h-2.5 rounded-full w-11/12" style={{ backgroundColor: '#FFF8E722' }} />
+          <div className="mt-1.5 h-2.5 rounded-full w-9/12" style={{ backgroundColor: '#FFF8E722' }} />
+        </div>
+      )}
+      {ai?.text && (
+        <div className="mt-2.5 rounded-2xl p-3.5" style={{ backgroundColor: '#0F2E25', border: '2px solid #00B894' }} data-testid="weekly-ai-summary" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+          <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#FFB703' }}>✨ {L('Nota mingguan dari EQrel', 'Your weekly note from EQrel', 'Catatan mingguan dari EQrel', 'ملاحظتك الأسبوعية من EQrel')}</div>
+          <div className="mt-1.5 space-y-2">
+            {ai.text.split(/\n\s*\n|\n/).filter(Boolean).map((para, i) => (
+              <p key={i} className="text-[13px] leading-relaxed" style={{ color: '#FFF8E7' }}>{para}</p>
+            ))}
+          </div>
+          <div className="mt-2 text-[9.5px]" style={{ color: '#FFF8E777' }}>{L('Ditulis oleh AI berdasarkan habit minggu ini', "Written by AI from this week's habits", 'Ditulis oleh AI dari kebiasaan minggu ini', 'كتبها الذكاء الاصطناعي من عادات هذا الأسبوع')}</div>
+        </div>
+      )}
       <div className="mt-2.5 space-y-3">
         {(d.kids || []).map(k => (
           <div key={k.id} data-testid={`weekly-kid-${k.id}`}>
