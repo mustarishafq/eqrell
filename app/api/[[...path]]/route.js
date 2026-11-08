@@ -2905,7 +2905,7 @@ async function handleRoute(request, { params }) {
         // Auto-assign the habit plan (validated against templates, no duplicates)
         const existing = await db.collection('habits').find({ childId: child.id, $or: [{ active: { $ne: false } }, { locked: true }] }).project({ templateId: 1 }).toArray()
         const have = new Set(existing.map(h => h.templateId).filter(Boolean))
-        const ids = [...new Set((Array.isArray(body.templateIds) ? body.templateIds : []).filter(id => TEMPLATE_BY_ID[id] && !have.has(id)))].slice(0, 12)
+        const ids = [...new Set((Array.isArray(body.templateIds) ? body.templateIds : []).filter(id => TEMPLATE_BY_ID[id] && !have.has(id)))].slice(0, 40)
         // pace 'staged' → lockedTemplateIds start next week (active:false + locked:true, unlockAt +7d)
         const pace = body.pace === 'staged' ? 'staged' : 'all'
         const lockedSet = new Set((pace === 'staged' && Array.isArray(body.lockedTemplateIds) ? body.lockedTemplateIds : []).filter(id => !isSolatTpl(id)))

@@ -138,8 +138,13 @@ export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
   if (!d) return <div className="h-32 rounded-3xl bg-white/70 animate-pulse flex-shrink-0" />
   return (
     <div className="bg-white rounded-3xl p-4 shadow-eq-card flex-shrink-0 border border-emerald-100" data-testid="weekly-story">
-      <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700">📖 {L('Laporan Perubahan Minggu Ini', "This Week's Progress Story", 'Laporan Perubahan Minggu Ini', 'قصة تقدّم هذا الأسبوع')}</div>
-      <div className="text-[10px] text-eq-ink/45 font-bold">{d.from} → {d.to}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700">📖 {L('Laporan Perubahan Minggu Ini', "This Week's Progress Story", 'Laporan Perubahan Minggu Ini', 'قصة تقدّم هذا الأسبوع')}</div>
+          <div className="text-[10px] text-eq-ink/45 font-bold">{d.from} → {d.to}</div>
+        </div>
+        <ShareWeeklyButton ai={ai} digest={d} lang={lang} variant="pill" />
+      </div>
       {ai === undefined && (
         <div className="mt-2.5 rounded-2xl p-3 animate-pulse" style={{ backgroundColor: '#0F2E25' }} data-testid="weekly-ai-loading">
           <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#FFB703' }}>✨ {L('EQrel sedang menulis nota minggu ini…', 'EQrel is writing this week\'s note…', 'EQrel sedang menulis catatan minggu ini…', 'EQrel يكتب ملاحظة هذا الأسبوع…')}</div>
@@ -156,7 +161,6 @@ export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
             ))}
           </div>
           <div className="mt-2 text-[9.5px]" style={{ color: '#FFF8E777' }}>{L('Ditulis oleh AI berdasarkan habit minggu ini', "Written by AI from this week's habits", 'Ditulis oleh AI dari kebiasaan minggu ini', 'كتبها الذكاء الاصطناعي من عادات هذا الأسبوع')}</div>
-          <ShareWeeklyButton ai={ai} digest={d} lang={lang} />
         </div>
       )}
       <div className="mt-2.5 space-y-3">
@@ -175,6 +179,7 @@ export function WeeklyStoryCard({ lang = 'en', refreshKey = 0 }) {
         ))}
       </div>
       <p className="mt-3 text-[11px] text-emerald-900/60 italic leading-snug">“{d.quote?.text}” — {d.quote?.source}</p>
+      <ShareWeeklyButton ai={ai} digest={d} lang={lang} />
     </div>
   )
 }

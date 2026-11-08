@@ -11,6 +11,64 @@
         agent: "main"
         comment: "applyMataDelta: mataBina += pointsAwarded (unchanged); mataReward now = rewardForClaim = (pts>0 ? max(1, round(pts*0.2)) : 0) + 5 if rubric ihsan, applied on verify/unverify/rubric change (deltas). Build: POST /world/:childId/build charges BUILDING_TEMPLATES[templateId].cost atomically via children.mataBinaSpent (balance = mataBina - mataBinaSpent); insufficient → 402 {error:'not_enough_points', need, balance}; success returns buildBalance. Musalla cost 0 (free). GET /world/:childId → child.buildBalance, mataBina, mataBinaSpent, mataReward. POST /world/:childId (full replace) no longer accepts buildings. One-time migration 'points-economy-v1' (collection migrations) ran at first API call: backed up worlds to world_backups, reset worlds to Tasik only, mataBinaSpent=0, mataReward recomputed from verified claims minus approved/fulfilled reward_requests. Already ran in preview (status done) — do not re-run."
 
+
+backend:
+  - task: "Diagnosis assigns ALL age-appropriate templates (cap raised 12→40)"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/diagnosis.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/onboarding/child now accepts up to 40 templateIds (was 12). buildPlan() appends every remaining template eligible for the age band (kind 'extra') after the personalised items. Frontend default pace is now 'all'."
+  - task: "POST /api/onboarding/child - 12-habit cap removal, all age-appropriate templates"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - POST /api/onboarding/child (5/5)
+          
+          **TEST 1: Age 8 child with ALL '7-9' templates (25 expected)**
+          ✅ Created child with 25 diagnosis habits (previously capped at 12)
+          ✅ All 25 habits active (no locked)
+          ✅ MongoDB verification: 25 diagnosis habits + 5 solat core habits
+          ✅ No duplicate templateIds
+          
+          **TEST 2: Re-post same child with same templateIds**
+          ✅ habitsCreated = 0 (no duplicates created)
+          
+          **TEST 3: Age 4 child with ALL '3-4' templates (14 expected)**
+          ✅ Created child with 14 diagnosis habits
+          ✅ Correct age band filtering
+          
+          **TEST 4: pace='staged' with lockedTemplateIds**
+          ✅ 15 habits created: 10 active, 5 locked
+          ✅ Locked habits have locked:true, active:false
+          ✅ MongoDB verification confirmed correct state
+          
+          **TEST 5: Invalid template IDs filtered out**
+          ✅ Sent 8 templates (5 valid, 3 invalid)
+          ✅ Only 5 valid habits created
+          
+          **KEY FINDINGS:**
+          - 12-habit cap successfully removed
+          - All age-appropriate templates now created (up to 40 max)
+          - Solat core habits (ib-01..ib-05) added separately by ensureSolatCore
+          - Duplicate prevention working correctly
+          - pace='staged' with lockedTemplateIds working as expected
+          - Invalid template IDs properly filtered
+          
+          **TEST DATA:** All test children and habits cleaned up successfully.
+
 backend:
   - task: "Weekly digest visual extras (days, bestHabit, village) for share card"
     implemented: true
@@ -431,6 +489,7 @@ metadata:
 
 test_plan:
   current_focus:
+    - "Diagnosis assigns ALL age-appropriate templates (cap raised 12→40)"
     - "Weekly digest visual extras (days, bestHabit, village) for share card"
     - "Kid Device Link Backend - TESTED ✅ (42/42 tests passed)"
     - "Kid Device Link UI - TESTED ✅ (All UI elements verified)"
@@ -705,3 +764,24 @@ frontend:
       - newThisWeek correctly counts buildings placed within the week
       
       **TEST DATA:** All test data cleaned up successfully (1 claim, 2 buildings removed).
+  - agent: "testing"
+    message: |
+      ✅ POST /api/onboarding/child TESTS COMPLETED - ALL TESTS PASSED (5/5)
+      
+      **TESTED SUCCESSFULLY:**
+      1. Age 8 child with ALL '7-9' templates (25 expected) → habitsCreated = 25 ✅
+      2. Re-post same child with same templateIds → habitsCreated = 0 (no duplicates) ✅
+      3. Age 4 child with ALL '3-4' templates (14 expected) → habitsCreated = 14 ✅
+      4. pace='staged' with lockedTemplateIds → 10 active, 5 locked (locked:true, active:false) ✅
+      5. Invalid template IDs filtered out → only valid templates created ✅
+      
+      **KEY FINDINGS:**
+      - 12-habit cap successfully removed - now creates all age-appropriate habits (up to 40 max)
+      - Solat core habits (ib-01..ib-05) added separately by ensureSolatCore
+      - Duplicate prevention working correctly (re-posting same templates creates 0 new habits)
+      - pace='staged' with lockedTemplateIds working as expected
+      - Invalid template IDs properly filtered out
+      - MongoDB verification confirmed all habits created correctly with no duplicates
+      
+      **TEST DATA:** All test children and habits cleaned up successfully.
+

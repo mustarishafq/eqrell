@@ -7,19 +7,32 @@ import { drawWeeklyCard } from '@/lib/shareWeeklyCard'
 
 const pick = (lang) => (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'ms' ? ms : lang === 'id' ? id : en)
 
-/** "Share to WhatsApp" for the weekly AI note → pretty image card + short message. */
-export function ShareWeeklyButton({ ai, digest, lang = 'en' }) {
+/** Plain-text fallback when the AI note isn't ready — built from the rule-based weekly lines. */
+export const fallbackWeeklyText = (digest) => (digest?.kids || [])
+  .map(k => (k.lines || []).slice(0, 2).join(' ')).filter(Boolean).join('\n\n')
+
+/** "Share to WhatsApp" for the weekly report → pretty image card + message. Always available once the report loads. */
+export function ShareWeeklyButton({ ai, digest, lang = 'en', variant = 'full' }) {
   const [open, setOpen] = useState(false)
   const L = pick(lang)
-  if (!ai?.text || !digest) return null
+  if (!digest || !(digest.kids || []).length) return null
+  const note = { text: ai?.text || fallbackWeeklyText(digest) }
   return (
     <>
-      <button onClick={() => setOpen(true)} data-testid="weekly-ai-share"
-        className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl py-2.5 font-extrabold text-sm active:scale-[0.99]"
-        style={{ backgroundColor: '#FFB703', color: '#0F2E25' }}>
-        <Share2 className="w-4 h-4" /> {L('Kongsi ke pasangan / grup keluarga', 'Share with spouse / family group', 'Bagikan ke pasangan / grup keluarga', 'شارك مع الزوج / مجموعة العائلة')}
-      </button>
-      <ShareWeeklyModal open={open} onClose={() => setOpen(false)} ai={ai} digest={digest} lang={lang} />
+      {variant === 'pill' ? (
+        <button onClick={() => setOpen(true)} data-testid="weekly-share-pill" aria-label="share"
+          className="flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 font-extrabold text-[11px] active:scale-95 shadow-sm"
+          style={{ backgroundColor: '#25D366', color: '#FFFFFF' }}>
+          <Share2 className="w-3.5 h-3.5" /> {L('Kongsi', 'Share', 'Bagikan', 'شارك')}
+        </button>
+      ) : (
+        <button onClick={() => setOpen(true)} data-testid="weekly-ai-share"
+          className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl py-3 font-extrabold text-sm active:scale-[0.99] shadow-sm"
+          style={{ backgroundColor: '#25D366', color: '#FFFFFF' }}>
+          <Share2 className="w-4 h-4" /> {L('Kongsi laporan ke WhatsApp', 'Share report to WhatsApp', 'Bagikan laporan ke WhatsApp', 'شارك التقرير عبر واتساب')}
+        </button>
+      )}
+      <ShareWeeklyModal open={open} onClose={() => setOpen(false)} ai={note} digest={digest} lang={lang} />
     </>
   )
 }

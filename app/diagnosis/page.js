@@ -87,7 +87,7 @@ function DiagnosisInner() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [lastResult, setLastResult] = useState(null)
-  const [pace, setPace] = useState('staged')   // 'staged' (3 now, rest in week 2) | 'all'
+  const [pace, setPace] = useState('all')   // 'all' (default: full age-appropriate set) | 'staged' (3 now, rest in week 2)
   const [assigned, setAssigned] = useState([])   // templateIds already active for an existing child
 
   useEffect(() => {
@@ -596,11 +596,20 @@ function DiagnosisInner() {
                     <span className="text-[11px] font-bold text-emerald-700">{plan.filter(x => picked[x.templateId]).length}/{plan.length}</span>
                   </div>
                   <div className="mt-2 space-y-2" data-testid="diag-plan">
-                    {plan.map(item => {
+                    {plan.map((item, idx) => {
                       const tpl = TEMPLATE_BY_ID[item.templateId]
                       const on = !!picked[item.templateId]
+                      const firstExtra = item.kind === 'extra' && plan[idx - 1]?.kind !== 'extra'
                       return (
-                        <button key={item.templateId} data-testid={`diag-plan-${item.templateId}`}
+                        <div key={item.templateId}>
+                        {firstExtra && (
+                          <div className="pt-2 pb-1 flex items-center gap-2" data-testid="diag-extra-header">
+                            <div className="h-px flex-1 bg-emerald-200" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">{L(`Juga sesuai untuk umur ${n}`, `Also suitable for ${n}'s age`, `Juga sesuai untuk usia ${n}`, `مناسبة أيضاً لعمر ${n}`)}</span>
+                            <div className="h-px flex-1 bg-emerald-200" />
+                          </div>
+                        )}
+                        <button data-testid={`diag-plan-${item.templateId}`}
                           onClick={() => setPicked(p => ({ ...p, [item.templateId]: !on }))}
                           className={`w-full text-left rounded-2xl border-2 p-3 flex gap-3 items-start transition ${on ? 'border-emerald-400 bg-white' : 'border-gray-200 bg-white/60 opacity-60'}`}>
                           <span className="text-2xl leading-none mt-0.5">{HABIT_CATEGORIES[tpl.category]?.icon}</span>
@@ -620,6 +629,7 @@ function DiagnosisInner() {
                             {on && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3.5} />}
                           </span>
                         </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -638,8 +648,8 @@ function DiagnosisInner() {
                     <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700 mb-2">{L('Pilih rentak pelan', 'Choose your pace', 'Pilih ritme rencana', 'اختر وتيرة الخطة')}</div>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        ['staged', '🌱', L('Berperingkat', 'Step by step', 'Bertahap', 'تدريجياً'), L(`3 habit minggu ini, ${pickedIds.length - 3} lagi dibuka automatik minggu depan`, `3 habits this week, ${pickedIds.length - 3} more unlock next week`, `3 kebiasaan minggu ini, ${pickedIds.length - 3} lagi minggu depan`, `٣ عادات هذا الأسبوع و${pickedIds.length - 3} الأسبوع القادم`), L('Disyorkan', 'Recommended', 'Disarankan', 'موصى به')],
-                        ['all', '🚀', L('Terus Semua', 'All at once', 'Langsung Semua', 'الكل الآن'), L(`Semua ${pickedIds.length} habit bermula hari ini`, `All ${pickedIds.length} habits start today`, `Semua ${pickedIds.length} kebiasaan mulai hari ini`, `كل العادات الـ${pickedIds.length} تبدأ اليوم`), null],
+                        ['staged', '🌱', L('Berperingkat', 'Step by step', 'Bertahap', 'تدريجياً'), L(`3 habit minggu ini, ${pickedIds.length - 3} lagi dibuka automatik minggu depan`, `3 habits this week, ${pickedIds.length - 3} more unlock next week`, `3 kebiasaan minggu ini, ${pickedIds.length - 3} lagi minggu depan`, `٣ عادات هذا الأسبوع و${pickedIds.length - 3} الأسبوع القادم`), null],
+                        ['all', '🚀', L('Terus Semua', 'All at once', 'Langsung Semua', 'الكل الآن'), L(`Semua ${pickedIds.length} habit bermula hari ini`, `All ${pickedIds.length} habits start today`, `Semua ${pickedIds.length} kebiasaan mulai hari ini`, `كل العادات الـ${pickedIds.length} تبدأ اليوم`), L('Disyorkan', 'Recommended', 'Disarankan', 'موصى به')],
                       ].map(([k, e, t, sub, tag]) => (
                         <button key={k} onClick={() => setPace(k)} data-testid={`diag-pace-${k}`}
                           className={`relative text-left rounded-2xl border-2 p-3 transition ${pace === k ? 'border-emerald-500 bg-white shadow' : 'border-gray-200 bg-white/60'}`}>
