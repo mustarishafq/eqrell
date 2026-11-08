@@ -21,7 +21,7 @@ const Row = ({ emoji, title, sub, onClick, testId, danger }) => (
 
 export default function ProfileTab({
   lang = 'en', icon, me, family, kids = [], avatarSrc,
-  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent, onRestMode, onKidDevices,
+  onEditChild, onAddChild, onChangePin, onDeviceSettings, onRewardShop, onLogout, onDiagnosis, onNotifications, onCoParent, onRestMode, onKidDevices, onDeviceGuide,
 }) {
   const L = pick(lang)
   const copyCode = async () => {
@@ -102,6 +102,9 @@ export default function ProfileTab({
         <Row emoji="🧒" testId="profile-kid-devices" onClick={onKidDevices}
           title={L('Peranti Anak', "Child's Own Device", 'Perangkat Anak', 'جهاز الطفل')}
           sub={L('Sambung telefon/tablet anak — tanpa email', "Link your child's phone or tablet — no email needed", 'Hubungkan HP/tablet anak — tanpa email', 'اربط هاتف أو جهاز طفلك — بدون بريد')} />
+        <Row emoji="📖" testId="profile-device-guide" onClick={onDeviceGuide}
+          title={L('Panduan Peranti Anak', 'Child Device Guide', 'Panduan Perangkat Anak', 'دليل جهاز الطفل')}
+          sub={L('Cara sediakan, kunci & selesaikan masalah peranti anak', "How to set up, lock & fix your child's device", 'Cara menyiapkan, mengunci & atasi masalah', 'الإعداد والقفل وحل المشكلات')} />
         <Row emoji="✈️" testId="profile-rest-mode" onClick={onRestMode}
           title={L('Mod Musafir & Hari Rehat', 'Travel & Rest Days', 'Mode Safar & Hari Istirahat', 'وضع السفر والراحة')}
           sub={L('Jeda habit & bekukan streak — Solat Teras kekal', 'Pause habits & freeze streaks — core prayers stay on', 'Jeda kebiasaan & bekukan streak', 'إيقاف العادات وتجميد السلسلة')} />

@@ -11,7 +11,7 @@ const pick = (lang) => (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'ms' ?
 const fmt = (c) => (c ? `${c.slice(0, 3)} ${c.slice(3)}` : '')
 const ago = (d) => { if (!d) return '—'; const m = Math.round((Date.now() - new Date(d)) / 60000); return m < 2 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d` }
 
-export default function KidDevicesSheet({ open, onClose, lang = 'en', kids = [] }) {
+export default function KidDevicesSheet({ open, onClose, lang = 'en', kids = [], onOpenGuide }) {
   const L = pick(lang)
   const [host, setHost] = useState('')
   const [copied, setCopied] = useState(false)
@@ -68,6 +68,15 @@ export default function KidDevicesSheet({ open, onClose, lang = 'en', kids = [] 
               </div>
               <button onClick={onClose} aria-label="close" data-testid="kid-devices-close" className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center"><X className="w-4 h-4" /></button>
             </div>
+
+            {onOpenGuide && (
+              <button onClick={onOpenGuide} data-testid="kid-devices-open-guide"
+                className="w-full rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 text-start" style={{ backgroundColor: CI.ink }}>
+                <span className="text-xl">📖</span>
+                <span className="flex-1 text-[12.5px] font-extrabold" style={{ color: CI.cream }}>{L('Panduan: sediakan, kunci & selesaikan masalah', 'Guide: set up, lock the device & fix problems', 'Panduan: siapkan, kunci & atasi masalah', 'الدليل: الإعداد والقفل وحل المشكلات')}</span>
+                <span className="font-black" style={{ color: CI.yellow }}>→</span>
+              </button>
+            )}
 
             {/* Step 1 */}
             <div className="bg-white rounded-2xl p-3.5 shadow-eq-card">

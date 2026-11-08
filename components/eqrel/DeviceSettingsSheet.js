@@ -12,14 +12,15 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, Info } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import { AVATAR_BY_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 
 const STORAGE_KEY = 'eqrel-device-role'
 
-export function DeviceSettingsSheet({ open, onClose, kids = [] }) {
-  const { t } = useLang()
+export function DeviceSettingsSheet({ open, onClose, kids = [], onOpenKidDevices, onOpenGuide }) {
+  const { t, lang } = useLang()
+  const L = (ms, en, id, ar) => (lang === 'ar' ? ar : lang === 'ms' ? ms : lang === 'id' ? id : en)
   const [role, setRole] = useState('parent')
   const [saved, setSaved] = useState(false)
 
@@ -123,25 +124,26 @@ export function DeviceSettingsSheet({ open, onClose, kids = [] }) {
                 </motion.div>
               )}
 
-              {/* PWA Homescreen tip */}
-              <div className="mt-3 rounded-2xl bg-sky-50 border border-sky-200 p-3">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-sky-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-[11px] text-sky-900 leading-snug">
-                    <div className="font-extrabold mb-1">{t.device_pwa_tip_title}</div>
-                    <p>{t.device_pwa_tip_body}</p>
-                    {kids.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {kids.map(c => (
-                          <div key={c.id} className="font-mono text-[10px] bg-white/60 rounded px-2 py-1 break-all">
-                            /kid?childId={c.id}
-                          </div>
-                        ))}
-                        <div className="font-mono text-[10px] bg-white/60 rounded px-2 py-1">
-                          /kid  <span className="text-sky-700">→ {t.device_role_any}</span>
-                        </div>
-                      </div>
-                    )}
+              {/* This sheet = THIS device (signed in with the parent's account, Kid Mode exit needs PIN).
+                  A child with their own phone/tablet should use Child's Own Device instead. */}
+              <div className="mt-3 rounded-2xl p-3" style={{ backgroundColor: '#0F2E25' }} data-testid="device-settings-kid-banner">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-2xl leading-none">🧒</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-extrabold" style={{ color: '#FFF8E7' }}>{L('Anak ada telefon/tablet sendiri?', 'Does your child have their own phone or tablet?', 'Anak punya HP/tablet sendiri?', 'هل لطفلك جهاز خاص؟')}</div>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: '#FFF8E7B3' }}>{L('Tetapan di atas hanya untuk peranti INI yang log masuk dengan akaun anda. Untuk peranti anak, guna Peranti Anak — tanpa email, dan bahagian ibu bapa dikunci.', 'The options above are only for THIS device, signed in with your account. For your child\'s own device, use Child\'s Own Device — no email needed and parent features stay locked.', 'Pilihan di atas hanya untuk perangkat INI. Untuk perangkat anak, gunakan Perangkat Anak — tanpa email.', 'الخيارات أعلاه لهذا الجهاز فقط. لجهاز طفلك استخدم «جهاز الطفل».')}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {onOpenKidDevices && (
+                        <button onClick={onOpenKidDevices} data-testid="device-settings-open-kid-devices" className="rounded-full px-3 py-1.5 text-[11px] font-black" style={{ backgroundColor: '#FFB703', color: '#0F2E25' }}>
+                          {L('Buka Peranti Anak', "Open Child's Own Device", 'Buka Perangkat Anak', 'فتح جهاز الطفل')} →
+                        </button>
+                      )}
+                      {onOpenGuide && (
+                        <button onClick={onOpenGuide} data-testid="device-settings-open-guide" className="rounded-full px-3 py-1.5 text-[11px] font-black" style={{ backgroundColor: '#FFF8E71F', color: '#FFF8E7' }}>
+                          📖 {L('Panduan', 'Guide', 'Panduan', 'الدليل')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
