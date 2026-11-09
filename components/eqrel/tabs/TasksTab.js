@@ -8,7 +8,7 @@ import { pick, colorOf, habitTitle, TabHeader } from './tabUtils'
 const FILTERS = ['all', 'pending', 'waiting', 'done']
 
 const statusOf = (h) => {
-  if (h.recurring === 'perPrayer') return (h.sessionsClaimed?.length || 0) > 0 ? 'waiting' : 'pending'
+  if (h.recurring === 'perPrayer' || h.recurring === 'multi') return (h.sessionsClaimed?.length || 0) > 0 ? 'waiting' : 'pending'
   if (h.todayStatus === 'verified') return h.rubric === 'ihsan' ? 'ihsan' : 'done'
   if (h.todayStatus === 'claimed') return 'waiting'
   return 'pending'
@@ -199,8 +199,8 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                     <span className="text-lg leading-none">{h.icon || '⭐'}</span>
                     <div className="flex-1 min-w-0">
                       <div className={`text-[13px] font-bold truncate ${h._s === 'done' || h._s === 'ihsan' ? 'text-eq-ink/50 line-through' : 'text-eq-ink'}`}>{habitTitle(h, lang)}</div>
-                      {h.recurring === 'perPrayer' && (
-                        <div className="text-[10px] text-eq-ink/45">{(h.sessionsClaimed?.length || 0)}/5 {L('waktu solat', 'prayers', 'waktu sholat', 'صلوات')}</div>
+                      {(h.recurring === 'perPrayer' || h.recurring === 'multi') && (
+                        <div className="text-[10px] text-eq-ink/45">{(h.sessionsClaimed?.length || 0)}/{h.recurring === 'multi' ? (h.sessions?.length || 0) : 5} {h.recurring === 'multi' ? L('kali', 'times', 'kali', 'مرات') : L('waktu solat', 'prayers', 'waktu sholat', 'صلوات')}</div>
                       )}
                     </div>
                     {Number(h.points) > 0 && <span className="text-[10px] font-black text-amber-600">+{h.points}</span>}

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Trash2, Check, Sparkles, ChevronRight, Info, Pencil, HelpCircle, Edit3 } from 'lucide-react'
 import { HABIT_CATEGORIES, TEMPLATES_BY_CATEGORY, templatesForAgeBand, getCategoryLabel, getTemplateTitle, getTemplateDesc, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
-import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel, currentSessionFromClock } from '@/lib/prayerSession'
+import { TEMPLATE_DEFAULT_SESSION, TEMPLATE_DEFAULT_RECURRING, SESSIONS, getSessionLabel, currentSessionFromClock, claimSessionFor, sessionsOfHabit, fmtClock, SLOT_ORDER, PRAYER_SESSIONS } from '@/lib/prayerSession'
 import { AVATAR_BY_ID, DEFAULT_BOY_ID, DEFAULT_GIRL_ID } from '@/lib/avatars'
 import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -52,6 +52,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [customSession, setCustomSession] = useState('anytime')
   const [customRecurring, setCustomRecurring] = useState('daily')  // 'daily' | 'perPrayer'
   const [editingHabit, setEditingHabit] = useState(null)           // null = create mode, else habit being edited
+  const [customTiming, setCustomTiming] = useState({ slots: [], clock: {} })   // times in the day (+ optional exact clock)
   const [customSchedule, setCustomSchedule] = useState('daily')    // 'daily' | 'school' | 'weekend' | 'custom'
   const [customDays, setCustomDays] = useState([])
   const [schoolDays, setSchoolDays] = useState(DEFAULT_SCHOOL_DAYS)
@@ -159,7 +160,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     if (!r?.ok) setSchoolDays(prev)
   }
 
-  const assignFromTemplate = useCallback(async (tpl) => {
+  const assignFromTemplate = useCallback(async (tpl, extra = {}) => {
     if (!childId || busyTemplateId) return
     setBusyTemplateId(tpl.id)
     try {
@@ -176,12 +177,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           desc: tpl.desc,
           points: tpl.points,
           frequency: tpl.frequency,
+          ...extra,
         }),
       })
       if (res.ok) {
         const data = await res.json()
+        if (data.duplicate) return
         setHabits(prev => {
-          const next = [...prev, { ...data.habit, todayStatus: 'pending' }]
+          const next = [...prev.filter(h => h.id !== data.habit.id), { ...data.habit, todayStatus: 'pending' }]
           onCountChange?.(next.length)
           return next
         })
@@ -209,13 +212,25 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     finally { setBusyTemplateId(null) }
   }, [busyTemplateId, onCountChange])
 
+  // Quick "when & which days?" step before a template is added
+  const [pendingTpl, setPendingTpl] = useState(null)
+  const [pTiming, setPTiming] = useState({ slots: [], clock: {} })
+  const [pSched, setPSched] = useState({ schedule: 'daily', days: [] })
   const toggleTemplate = (tpl) => {
     const existing = templateIdToHabit[tpl.id]
     if (existing) {
       unassignHabit(existing.id)
     } else {
-      assignFromTemplate(tpl)
+      setPTiming(timingFromHabit({ templateId: tpl.id, session: TEMPLATE_DEFAULT_SESSION[tpl.id] || 'anytime', recurring: TEMPLATE_DEFAULT_RECURRING[tpl.id] || 'daily' }))
+      setPSched({ schedule: 'daily', days: [] })
+      setPendingTpl(tpl)
     }
+  }
+  const confirmPendingTpl = async () => {
+    const tpl = pendingTpl
+    if (!tpl) return
+    setPendingTpl(null)
+    await assignFromTemplate(tpl, { ...timingToBody(pTiming), schedule: pSched.schedule, days: pSched.days })
   }
 
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)  // habitId pending delete confirmation
@@ -250,9 +265,9 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const toggleClaim = async (habit) => {
     // Per-prayer habits (e.g. Wudhu) require a session — derive from current clock
     // if the caller didn't provide one (aggregate row in the Parent list view).
-    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer' || habit.recurring === 'multi'
     const sessionForClaim = isPerPrayer
-      ? (habit._sessionInstance || currentSessionFromClock())
+      ? (habit._sessionInstance || claimSessionFor(habit, currentSessionFromClock()))
       : null
 
     // For per-prayer, "done" is per-session (based on sessionsClaimed[])
@@ -364,9 +379,9 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     haptic.tap()
 
     // Per-prayer session derivation
-    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer' || habit.recurring === 'multi'
     const sessionForClaim = isPerPrayer
-      ? (habit._sessionInstance || currentSessionFromClock())
+      ? (habit._sessionInstance || claimSessionFor(habit, currentSessionFromClock()))
       : null
     const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
 
@@ -430,6 +445,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     setCustomCategory(habit.category || 'ibadah')
     setCustomPoints(habit.points ?? 10)
     setCustomSession(habit.session || 'anytime')
+    setCustomTiming(timingFromHabit(habit))
     setCustomRecurring(habit.recurring === 'perPrayer' ? 'perPrayer' : 'daily')
     setCustomSchedule(habit.schedule || 'daily')
     setCustomDays(Array.isArray(habit.days) ? habit.days : [])
@@ -445,6 +461,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     setEditingHabit(null)
     setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
     setCustomSession('anytime'); setCustomRecurring('daily')
+    setCustomTiming({ slots: [], clock: {} })
     setCustomSchedule('daily'); setCustomDays([])
   }
 
@@ -459,8 +476,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           credentials: 'include',
           body: JSON.stringify({
             category: customCategory,
-            session: customSession,
-            recurring: customRecurring,
+            ...timingToBody(customTiming),
             title: customTitle.trim(),
             desc: customDesc.trim(),
             points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
@@ -472,8 +488,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           const data = await res.json().catch(() => ({}))
           setHabits(prev => prev.map(h => h.id === editingHabit.id
             ? { ...h, ...(data.habit || {}),
-                category: customCategory, session: customSession,
-                recurring: customRecurring, title: customTitle.trim(),
+                category: customCategory, ...timingToBody(customTiming),
+                schedule: customSchedule, days: customDays, title: customTitle.trim(),
                 desc: customDesc.trim(),
                 points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)) }
             : h))
@@ -491,8 +507,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         credentials: 'include',
         body: JSON.stringify({
           category: customCategory,
-          session: customSession,
-          recurring: customRecurring,
+          ...timingToBody(customTiming),
           title: customTitle.trim(),
           desc: customDesc.trim(),
           points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
@@ -706,6 +721,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     const shownPts = habit.pointsAwarded ?? habit.points
                     const isOff = !!habit.offToday
                     const schedTxt = scheduleLabel(habit, lang, schoolDays)
+                    const timeTxt = timingLabel(habit, lang)
 
                     let pressTimer = null
                     const startPress = () => {
@@ -743,6 +759,9 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                               <span className={`text-[10px] font-bold ${isIhsan ? 'text-amber-700' : 'text-amber-600'}`}>+{shownPts} {t.habits_points_word}{isIhsan ? ' 🌟' : ''}</span>
                               {!habit.templateId && (
                                 <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
+                              )}
+                              {timeTxt && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-800" data-testid={`habit-times-${habit.id}`}>🕒 {timeTxt}</span>
                               )}
                               {schedTxt && (
                                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isOff ? 'bg-slate-200 text-slate-600' : 'bg-indigo-50 text-indigo-700'}`} data-testid={`habit-schedule-${habit.id}`}>
@@ -956,6 +975,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                               <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                                 <span className="text-[10px] text-amber-600 font-bold">+{tpl.points} {t.habits_points_word}</span>
                                 {sched && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700">📅 {sched}</span>}
+                                {timingLabel(tpl, lang) && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-800">🕒 {timingLabel(tpl, lang)}</span>}
                               </div>
                               <div className="font-bold text-sm text-eq-ink leading-tight">{tpl.title}</div>
                               {others.length > 0 && <div className="text-[10px] text-eq-ink/50 mt-0.5">{lang === 'ms' ? 'Juga untuk' : lang === 'id' ? 'Juga untuk' : lang === 'ar' ? 'أيضاً لـ' : 'Also for'}: {others.join(', ')}</div>}
@@ -1022,6 +1042,29 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     })}
                   <div className="h-4" />
                 </div>
+
+                {pendingTpl && (
+                  <div className="fixed inset-0 z-[90] flex items-end justify-center" data-testid="tpl-when-modal">
+                    <div className="absolute inset-0 bg-black/50" onClick={() => setPendingTpl(null)} />
+                    <div className="relative w-full max-w-md bg-white rounded-t-3xl p-4 max-h-[85vh] overflow-y-auto space-y-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-700">{lang === 'ms' ? 'Bila & hari apa?' : lang === 'id' ? 'Kapan & hari apa?' : lang === 'ar' ? 'متى وأي أيام؟' : 'When & which days?'}</div>
+                          <div className="font-extrabold text-eq-ink leading-tight truncate">{getTemplateTitle(pendingTpl, lang)}</div>
+                        </div>
+                        <button onClick={() => setPendingTpl(null)} aria-label="close" className="w-8 h-8 rounded-full hover:bg-eq-cream flex items-center justify-center flex-shrink-0"><X className="w-4 h-4" /></button>
+                      </div>
+                      <TimeOfDayPicker lang={lang} value={pTiming} onChange={setPTiming} />
+                      <SchedulePicker lang={lang} schedule={pSched.schedule} days={pSched.days} schoolDays={schoolDays}
+                        onChange={(sc, d) => setPSched({ schedule: sc, days: d })} onSchoolDays={saveSchoolDays} />
+                      <button onClick={confirmPendingTpl} data-testid="tpl-when-add"
+                        disabled={pSched.schedule === 'custom' && pSched.days.length === 0}
+                        className="w-full bg-emerald-600 disabled:opacity-40 text-white font-extrabold py-3 rounded-2xl active:scale-[0.99]">
+                        <Plus className="w-4 h-4 inline -mt-0.5" strokeWidth={3} /> {lang === 'ms' ? `Tambah untuk ${child.nickname}` : lang === 'id' ? `Tambahkan untuk ${child.nickname}` : lang === 'ar' ? `أضف لـ ${child.nickname}` : `Add for ${child.nickname}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Sticky bottom done button */}
                 <div className="sticky bottom-0 bg-white border-t border-eq-cream/50 px-5 py-3">
@@ -1126,65 +1169,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   </div>
                 </div>
 
-                {/* Session (waktu) picker */}
-                <div>
-                  <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
-                    {lang === 'ar' ? 'الوقت' : lang === 'en' ? 'Time' : lang === 'id' ? 'Waktu' : 'Waktu'}
-                  </label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {['anytime','subuh','zohor','asar','maghrib','isyak','sebelumTidur'].map(sid => {
-                      const meta = SESSIONS.find(s => s.id === sid)
-                      const active = customSession === sid
-                      return (
-                        <button
-                          key={sid}
-                          type="button"
-                          onClick={() => setCustomSession(sid)}
-                          disabled={customRecurring === 'perPrayer' && sid !== 'anytime'}
-                          className={`rounded-xl border-2 py-1.5 px-1 text-center transition-all ${active ? 'scale-[1.02]' : 'opacity-60'} disabled:opacity-30 disabled:cursor-not-allowed`}
-                          style={active
-                            ? { borderColor: meta?.color, background: `${meta?.color}18` }
-                            : { borderColor: 'transparent', background: 'rgba(0,0,0,0.03)' }}
-                        >
-                          <div className="text-base leading-none">{meta?.icon}</div>
-                          <div className="text-[9px] font-black mt-0.5 leading-tight truncate" style={{ color: active ? meta?.color : undefined }}>
-                            {getSessionLabel(sid, lang).replace('Selepas ', '').replace('After ', '').replace('Setelah ', '').replace('بعد ', '')}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Recurring toggle */}
-                <div>
-                  <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
-                    {lang === 'ar' ? 'التكرار' : lang === 'en' ? 'Repetition' : lang === 'id' ? 'Pengulangan' : 'Pengulangan'}
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCustomRecurring('daily')}
-                      className={`rounded-xl border-2 py-2 px-2 text-left transition-all ${customRecurring === 'daily' ? 'border-emerald-500 bg-emerald-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}
-                    >
-                      <div className="text-xs font-black text-eq-ink">📅 {lang === 'ar' ? 'مرة يومياً' : lang === 'en' ? 'Once daily' : lang === 'id' ? 'Sekali sehari' : 'Sekali sehari'}</div>
-                      <div className="text-[9px] text-eq-ink/60 mt-0.5">{lang === 'ar' ? 'مرة واحدة في اليوم' : lang === 'en' ? '1× per day' : lang === 'id' ? '1× per hari' : '1× sehari'}</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setCustomRecurring('perPrayer'); setCustomSession('anytime') }}
-                      className={`rounded-xl border-2 py-2 px-2 text-left transition-all ${customRecurring === 'perPrayer' ? 'border-indigo-500 bg-indigo-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}
-                    >
-                      <div className="text-xs font-black text-eq-ink">🔁 {lang === 'ar' ? 'كل صلاة' : lang === 'en' ? 'Each prayer' : lang === 'id' ? 'Tiap salat' : 'Tiap solat'}</div>
-                      <div className="text-[9px] text-eq-ink/60 mt-0.5">{lang === 'ar' ? '٥× في اليوم' : lang === 'en' ? '5× per day' : lang === 'id' ? '5× per hari' : '5× sehari'}</div>
-                    </button>
-                  </div>
-                  {customRecurring === 'perPrayer' && (
-                    <div className="mt-1.5 text-[10px] text-indigo-700 bg-indigo-50 rounded-lg px-2 py-1 leading-relaxed">
-                      💡 {lang === 'ar' ? 'ستظهر هذه العادة في كل صلوات اليوم الخمس، ويمكن تحديدها بشكل منفصل' : lang === 'en' ? 'This habit will appear in all 5 daily prayers and can be checked independently' : lang === 'id' ? 'Kebiasaan ini akan muncul di 5 salat & bisa dicentang terpisah' : 'Habit ini akan muncul di 5 solat harian & boleh ditick berasingan'}
-                    </div>
-                  )}
-                </div>
+                <TimeOfDayPicker lang={lang} value={customTiming} onChange={setCustomTiming} />
 
                 <SchedulePicker lang={lang} schedule={customSchedule} days={customDays} schoolDays={schoolDays}
                   onChange={(sc, d) => { setCustomSchedule(sc); setCustomDays(d) }} onSchoolDays={saveSchoolDays} />
@@ -1472,6 +1457,103 @@ const SchedulePicker = ({ lang, schedule, days, schoolDays, onChange, onSchoolDa
               <p className="mt-1 text-[9px] text-indigo-700/70">{SP_L(lang, 'Berlaku untuk semua habit "Hari sekolah" & "Hujung minggu" dalam keluarga.', 'Applies to every "School days" and "Weekends" habit in your family.', 'Berlaku untuk semua kebiasaan "Hari sekolah" & "Akhir pekan".', 'ينطبق على كل عادات «أيام المدرسة» و«نهاية الأسبوع».')}</p>
             </>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Time of day — one or more slots (anchored to prayer times) + optional exact clock per slot
+const TP_L = (lang, ms, en, id, ar) => (lang === 'ms' ? ms : lang === 'id' ? id : lang === 'ar' ? ar : en)
+const SLOT_SIMPLE = {
+  subuh: { ms: 'Pagi', en: 'Morning', id: 'Pagi', ar: 'الصباح' },
+  zohor: { ms: 'Tengahari', en: 'Midday', id: 'Siang', ar: 'الظهيرة' },
+  asar: { ms: 'Petang', en: 'Afternoon', id: 'Sore', ar: 'العصر' },
+  maghrib: { ms: 'Senja', en: 'Evening', id: 'Senja', ar: 'المغرب' },
+  isyak: { ms: 'Malam', en: 'Night', id: 'Malam', ar: 'الليل' },
+  sebelumTidur: { ms: 'Sebelum tidur', en: 'Before bed', id: 'Sebelum tidur', ar: 'قبل النوم' },
+}
+const slotName = (sid, lang) => SLOT_SIMPLE[sid]?.[lang] || SLOT_SIMPLE[sid]?.en || sid
+
+/** habit → { slots:[...], clock:{slot:'HH:MM'} } */
+function timingFromHabit(h = {}) {
+  const clock = { ...(h.clockTimes || {}) }
+  if (h.recurring === 'perPrayer' || (!h.recurring && TEMPLATE_DEFAULT_RECURRING[h.templateId] === 'perPrayer')) return { slots: [...PRAYER_SESSIONS], clock }
+  if (h.recurring === 'multi' && Array.isArray(h.sessions) && h.sessions.length) return { slots: SLOT_ORDER.filter(x => h.sessions.includes(x)), clock }
+  const sid = h.session || 'anytime'
+  return { slots: sid === 'anytime' ? [] : [sid], clock }
+}
+/** { slots, clock } → API body fields */
+function timingToBody({ slots = [], clock = {} }) {
+  const ordered = SLOT_ORDER.filter(x => slots.includes(x))
+  const clockTimes = Object.fromEntries(ordered.filter(x => clock[x]).map(x => [x, clock[x]]))
+  if (ordered.length === 0) return { session: 'anytime', recurring: 'daily', sessions: [], clockTimes: {} }
+  if (ordered.length === 1) return { session: ordered[0], recurring: 'daily', sessions: [], clockTimes }
+  const isFivePrayers = ordered.length === 5 && PRAYER_SESSIONS.every(x => ordered.includes(x))
+  if (isFivePrayers && Object.keys(clockTimes).length === 0) return { session: 'anytime', recurring: 'perPrayer', sessions: [], clockTimes: {} }
+  return { session: 'anytime', recurring: 'multi', sessions: ordered, clockTimes }
+}
+/** Chip text for a habit row, e.g. "Morning 7:30 · Midday · Night" (null for anytime). */
+function timingLabel(h, lang) {
+  const { slots, clock } = timingFromHabit(h)
+  if (!slots.length) return null
+  if (h.recurring === 'perPrayer') return TP_L(lang, 'Setiap solat (5×)', 'Every prayer (5×)', 'Setiap salat (5×)', 'كل صلاة (٥×)')
+  return slots.map(x => `${slotName(x, lang)}${clock[x] ? ' ' + fmtClock(clock[x], lang) : ''}`).join(' · ')
+}
+
+const TimeOfDayPicker = ({ lang, value, onChange }) => {
+  const slots = value?.slots || []
+  const clock = value?.clock || {}
+  const toggle = (sid) => onChange({ slots: slots.includes(sid) ? slots.filter(x => x !== sid) : [...slots, sid], clock })
+  const setClock = (sid, v) => onChange({ slots, clock: { ...clock, [sid]: v } })
+  const fivePrayers = slots.length === 5 && PRAYER_SESSIONS.every(x => slots.includes(x))
+  return (
+    <div data-testid="habit-time-picker">
+      <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1 uppercase tracking-wider">
+        {TP_L(lang, 'Waktu dalam sehari', 'Time of day', 'Waktu dalam sehari', 'وقت اليوم')}
+      </label>
+      <p className="text-[10px] text-eq-ink/50 mb-1.5 leading-snug">
+        {TP_L(lang, 'Pilih satu atau lebih. Contoh "Makan": Pagi + Tengahari + Malam → anak tanda setiap waktu.', 'Pick one or more. E.g. "Eat": Morning + Midday + Night → the child ticks each time.', 'Pilih satu atau lebih. Contoh "Makan": Pagi + Siang + Malam → anak centang setiap waktu.', 'اختر وقتاً أو أكثر. مثال «الأكل»: صباح + ظهيرة + ليل.')}
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        <button type="button" onClick={() => onChange({ slots: [], clock })} data-testid="habit-time-anytime"
+          className={`rounded-xl border-2 py-1.5 px-1 text-center transition-all ${slots.length === 0 ? 'border-emerald-500 bg-emerald-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}>
+          <div className="text-base leading-none">🕰️</div>
+          <div className="text-[9px] font-black mt-0.5 leading-tight">{TP_L(lang, 'Bila-bila', 'Anytime', 'Kapan saja', 'أي وقت')}</div>
+        </button>
+        {SLOT_ORDER.map(sid => {
+          const meta = SESSIONS.find(x => x.id === sid)
+          const on = slots.includes(sid)
+          return (
+            <button key={sid} type="button" onClick={() => toggle(sid)} data-testid={`habit-time-${sid}`}
+              className={`relative rounded-xl border-2 py-1.5 px-1 text-center transition-all ${on ? 'scale-[1.02]' : 'opacity-60'}`}
+              style={on ? { borderColor: meta?.color, background: `${meta?.color}18` } : { borderColor: 'transparent', background: 'rgba(0,0,0,0.03)' }}>
+              {on && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">✓</span>}
+              <div className="text-base leading-none">{meta?.icon}</div>
+              <div className="text-[9px] font-black mt-0.5 leading-tight truncate" style={{ color: on ? meta?.color : undefined }}>{slotName(sid, lang)}</div>
+              <div className="text-[8px] text-eq-ink/40 leading-tight truncate">{getSessionLabel(sid, lang)}</div>
+            </button>
+          )
+        })}
+      </div>
+      <button type="button" onClick={() => onChange({ slots: fivePrayers ? [] : [...PRAYER_SESSIONS], clock })} data-testid="habit-time-5prayers"
+        className={`mt-1.5 w-full rounded-xl border-2 py-1.5 text-[11px] font-black ${fivePrayers ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-dashed border-indigo-200 text-indigo-600'}`}>
+        🔁 {TP_L(lang, 'Setiap solat (5× sehari)', 'Every prayer (5× a day)', 'Setiap salat (5× sehari)', 'كل صلاة (٥× يومياً)')}
+      </button>
+      {slots.length > 0 && (
+        <div className="mt-2 rounded-xl bg-amber-50/70 px-2.5 py-2 space-y-1.5" data-testid="habit-time-clocks">
+          <div className="text-[10px] font-bold text-amber-900">
+            ⏰ {TP_L(lang, 'Jam tepat (pilihan) — kosongkan untuk ikut waktu solat', 'Exact time (optional) — leave empty to follow prayer times', 'Jam tepat (opsional) — kosongkan untuk ikut waktu salat', 'الوقت الدقيق (اختياري)')}
+          </div>
+          {SLOT_ORDER.filter(x => slots.includes(x)).map(sid => (
+            <div key={sid} className="flex items-center gap-2">
+              <span className="flex-1 text-[11px] font-bold text-eq-ink">{SESSIONS.find(x => x.id === sid)?.icon} {slotName(sid, lang)}</span>
+              <input type="time" value={clock[sid] || ''} onChange={e => setClock(sid, e.target.value)} data-testid={`habit-clock-${sid}`}
+                className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-[12px] font-bold text-eq-ink" />
+              {clock[sid] && <button type="button" onClick={() => setClock(sid, '')} className="text-[10px] text-eq-ink/40 font-bold">✕</button>}
+            </div>
+          ))}
         </div>
       )}
     </div>

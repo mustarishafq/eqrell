@@ -13,6 +13,81 @@
 
 
 backend:
+  - task: "Multi-Time Habits - recurring:'multi' with sessions array, clockTimes validation, session claims"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Multi-Time Habits (6/6)
+          
+          **TEST 1: Multi-Time Habit Creation with Validation**
+          ✅ POST /api/children/:id/habits with recurring:'multi', sessions:['isyak','subuh','zohor','bogus']
+          ✅ Bogus session 'bogus' correctly dropped (not in SLOT_IDS)
+          ✅ Sessions ordered by SLOT_IDS: ['subuh','zohor','isyak']
+          ✅ session field set to 'anytime' for multi-time habits
+          ✅ clockTimes validation: '25:00' (invalid hour) dropped
+          ✅ clockTimes for non-chosen sessions dropped (asar not in sessions)
+          ✅ Valid clockTimes kept: {subuh:'07:30', isyak:'20:00'}
+          
+          **TEST 2: Single Session Fallback**
+          ✅ recurring:'multi' with only 1 session ['asar'] falls back to recurring:'daily'
+          ✅ sessions array becomes empty [] after fallback
+          ✅ Single-slot daily habit with session:'maghrib' + clockTimes:{maghrib:'19:45'} kept correctly
+          
+          **TEST 3: Multi-Time Claims with Session Parameter**
+          ✅ POST /api/habits/:id/claim without session → 400 (session required for multi-time)
+          ✅ POST /api/habits/:id/claim with session:'subuh' + rubric:'sah' → 200, points awarded
+          ✅ POST /api/habits/:id/claim with session:'zohor' + rubric:'sah' → 200, points awarded
+          ✅ Multiple sessions can be claimed independently (subuh + zohor both claimed)
+          ✅ GET /api/children/:id/habits returns sessionsClaimed:['subuh','zohor'] for multi-time habit
+          
+          **TEST 4: PATCH Multi-Time Habit**
+          ✅ PATCH /api/habits/:id {sessions:['subuh','maghrib'], recurring:'multi'} → sessions updated
+          ✅ PATCH /api/habits/:id {recurring:'daily', session:'asar'} → changed from multi to daily
+          ✅ sessions array becomes [] when changed to daily
+          ✅ session field set to 'asar' correctly
+          
+          **TEST 5: Family Template with Multi-Time**
+          ✅ POST /api/habit-templates with recurring:'multi', sessions, clockTimes, childIds → template created
+          ✅ Template has recurring:'multi', sessions:['subuh','zohor','maghrib'], clockTimes
+          ✅ 2 habits created for 2 children, both with same multi-time timing
+          ✅ POST /api/children/:id/habits {familyTemplateId} → duplicate detection working
+          
+          **TEST 6: Regression - perPrayer and Daily Habits**
+          ✅ perPrayer habit creation and claim with session still works
+          ✅ Daily habit creation and claim without session still works
+          
+          **KEY FINDINGS:**
+          - sanitizeTiming function correctly validates sessions (SLOT_IDS only), orders them, and validates clockTimes (HH:MM format)
+          - Multi-time habits require 2+ sessions, otherwise fall back to daily
+          - isPerPrayerHabit returns true for recurring:'multi' with sessions (line 136)
+          - Claims for multi-time habits require session parameter (400 if missing)
+          - Each session can be claimed independently (separate claim documents)
+          - sessionsClaimed array populated in GET /children/:id/habits response
+  - task: "Multi-time habits (recurring multi + sessions + clockTimes)"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/prayerSession.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Habit timing via sanitizeTiming: recurring daily|perPrayer|multi, sessions[] (subset of subuh,zohor,asar,maghrib,isyak,sebelumTidur; multi needs >=2 else falls back to daily), session for single slot, clockTimes{slot:'HH:MM'} only for chosen slots. Applies to POST /children/:id/habits, POST/PATCH /habit-templates, PATCH /habits/:id. Multi habits require session on claim (like perPrayer) and give points per session; GET habits returns recurring 'multi', sessionsClaimed, perPrayerClaims."
+
+          - PATCH endpoint correctly updates sessions and handles multi↔daily conversion
+          - Family templates preserve multi-time timing when assigned to children
+          - No regression: perPrayer and daily habits continue working correctly
+          
+          **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
   - task: "Habit Scheduling - School days, custom/daily/school/weekend schedules"
     implemented: true
     working: true
@@ -626,6 +701,7 @@ metadata:
 
 test_plan:
   current_focus:
+    - "Multi-Time Habits - TESTED ✅ (6/6 tests passed)"
     - "Diagnosis assigns ALL age-appropriate templates (cap raised 12→40)"
     - "Weekly digest visual extras (days, bestHabit, village) for share card"
     - "Kid Device Link Backend - TESTED ✅ (42/42 tests passed)"
@@ -638,6 +714,33 @@ test_plan:
   test_priority: "high_first"
 
 agent_communication:
+  - agent: "testing"
+    message: |
+      ✅ MULTI-TIME HABITS BACKEND TESTS COMPLETED - ALL TESTS PASSED (6/6)
+      
+      **TESTED SUCCESSFULLY:**
+      1. Multi-time habit creation with validation (sessions ordering, bogus filtering, clockTimes validation) ✅
+      2. Single session fallback to daily (recurring:'multi' with 1 session → 'daily') ✅
+      3. Multi-time claims with session parameter (session required, independent claims per session) ✅
+      4. PATCH multi-time habit (update sessions, convert multi↔daily) ✅
+      5. Family template with multi-time habits (template + assign to children) ✅
+      6. Regression: perPrayer and daily habits still work ✅
+      
+      **KEY FINDINGS:**
+      - sanitizeTiming function correctly validates sessions (SLOT_IDS only: subuh, zohor, asar, maghrib, isyak, sebelumTidur)
+      - Sessions ordered by SLOT_IDS, bogus sessions dropped
+      - clockTimes validated with regex /^([01]\d|2[0-3]):[0-5]\d$/, invalid times dropped
+      - Only clockTimes for chosen sessions kept (non-chosen sessions' times dropped)
+      - Multi-time habits require 2+ sessions, otherwise fall back to daily
+      - isPerPrayerHabit returns true for recurring:'multi' (line 136 in route.js)
+      - Claims require session parameter (400 if missing)
+      - Each session can be claimed independently (separate claim documents)
+      - sessionsClaimed array populated in GET /children/:id/habits
+      - PATCH correctly updates sessions and handles multi↔daily conversion
+      - Family templates preserve multi-time timing
+      - No regression: perPrayer and daily habits work correctly
+      
+      **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
   - agent: "testing"
     message: |
       ✅ POINTS ECONOMY V1 BACKEND TESTS COMPLETED - ALL TESTS PASSED (11/11)

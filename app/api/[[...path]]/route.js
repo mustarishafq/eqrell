@@ -133,6 +133,7 @@ async function unlockDueHabits(db, filter) {
 // Helper: determine if a habit is per-prayer recurring, using explicit field or template default
 const isPerPrayerHabit = (habit) => {
   if (habit?.recurring === 'perPrayer') return true
+  if (habit?.recurring === 'multi' && Array.isArray(habit.sessions) && habit.sessions.length) return true   // parent-chosen times (claims scoped by session)
   if (habit?.templateId && TEMPLATE_DEFAULT_RECURRING[habit.templateId] === 'perPrayer') return true
   return false
 }
@@ -278,10 +279,21 @@ async function assignHabitToChild(db, { user, child, session, templateId = null,
   delete habit._id
   return { habit }
 }
+const SLOT_IDS = ['subuh', 'zohor', 'asar', 'maghrib', 'isyak', 'sebelumTidur']
+/** Time-of-day fields: session (single), recurring daily|perPrayer|multi, sessions[] (multi), clockTimes{slot:'HH:MM'} */
+function sanitizeTiming(body = {}) {
+  const sessions = [...new Set((Array.isArray(body.sessions) ? body.sessions : []).filter(x => SLOT_IDS.includes(x)))]
+  let recurring = ['perPrayer', 'multi'].includes(body.recurring) ? body.recurring : 'daily'
+  if (recurring === 'multi' && sessions.length < 2) recurring = 'daily'
+  const session = recurring === 'multi' ? 'anytime' : ([...SLOT_IDS, 'anytime'].includes(body.session) ? body.session : 'anytime')
+  const allowed = recurring === 'multi' ? sessions : recurring === 'daily' && session !== 'anytime' ? [session] : []
+  const clockTimes = {}
+  for (const k of allowed) { const v = body.clockTimes?.[k]; if (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)) clockTimes[k] = v }
+  return { session, recurring, sessions: recurring === 'multi' ? SLOT_IDS.filter(x => sessions.includes(x)) : [], clockTimes }
+}
 const HABIT_FIELDS_FROM_BODY = (body) => ({
   category: body.category || 'ibadah',
-  session: body.session || 'anytime',
-  recurring: body.recurring === 'perPrayer' ? 'perPrayer' : 'daily',
+  ...sanitizeTiming(body),
   title: String(body.title || '').trim().slice(0, 80),
   desc: String(body.desc || '').slice(0, 200),
   points: Math.max(1, Math.min(50, Number(body.points) || 10)),
@@ -743,7 +755,7 @@ async function handleRoute(request, { params }) {
             .reduce((sum, c) => sum + c.pointsAwarded, 0)
           return {
             ...h,
-            recurring: 'perPrayer',        // Force expose to frontend even if DB missing field
+            recurring: h.recurring === 'multi' ? 'multi' : 'perPrayer',        // Force expose to frontend even if DB missing field
             sessionsClaimed,               // ['subuh', 'zohor'] etc.
             perPrayerClaims,               // full per-session detail
             todayStatus: sessionsClaimed.length > 0 ? 'claimed' : 'pending',
@@ -914,6 +926,10 @@ async function handleRoute(request, { params }) {
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
       if ('schedule' in body) Object.assign($set, sanitizeSchedule(body))
+      if ('recurring' in body || 'sessions' in body || 'session' in body || 'clockTimes' in body) {
+        const cur = await db.collection('habits').findOne({ id: habitId, familyId: user.familyId }, { projection: { _id: 0, session: 1, recurring: 1, sessions: 1, clockTimes: 1 } })
+        Object.assign($set, sanitizeTiming({ ...(cur || {}), ...body }))
+      }
       if ('autoVerify' in body) {
         $set.autoVerify = !!body.autoVerify
         $set.trustOptOut = !body.autoVerify        // parent turned it off → don't auto re-enable
@@ -2023,7 +2039,7 @@ async function handleRoute(request, { params }) {
       const doneSet = new Set(undoneClaims.map(c => `${c.childId}:${c.habitId}`))
       const ihsanHabitSet = new Set(undoneClaims.filter(c => c.rubric === 'ihsan').map(c => `${c.childId}:${c.habitId}`))
       const allHabits = (await db.collection('habits').find(liveQ)
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1, schedule: 1, days: 1, core: 1 }).toArray())
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1, schedule: 1, days: 1, core: 1, sessions: 1, clockTimes: 1 }).toArray())
         .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays))
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
 
@@ -2055,6 +2071,7 @@ async function handleRoute(request, { params }) {
           points: Number(h.points) || 0,
           session: h.session || null,
           recurring: h.recurring || (h.templateId === 'ib-10' ? 'perPrayer' : 'daily'),
+          sessions: h.sessions || [], clockTimes: h.clockTimes || {},
           templateId: h.templateId || null,
           sessionsClaimed: sessionsClaimedByHabit[h.id] || [],
         })

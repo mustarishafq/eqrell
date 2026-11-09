@@ -66,9 +66,11 @@ const pickSuggestion = (habits, currentSession) => {
   const scored = []
   for (const h of habits) {
     const recurring = inferRecurring(h)
-    const isPerPrayer = recurring === 'perPrayer'
+    const isPerPrayer = recurring === 'perPrayer' || recurring === 'multi'
     const habitSession = inferSession(h)
     const sessionsClaimed = Array.isArray(h.sessionsClaimed) ? h.sessionsClaimed : []
+    // Parent-chosen times: only suggest during one of its slots
+    if (recurring === 'multi' && !(h.sessions || []).includes(currentSession)) continue
 
     // Skip if fully done (daily habit already done, or perPrayer current session claimed)
     if (isPerPrayer) {
@@ -298,6 +300,15 @@ const KidSoloView = ({ kid, lang, currentSession }) => {
   habits.forEach(h => {
     const isPerPrayer = inferRecurring(h) === 'perPrayer'
     if (isPerPrayer) { anytime.push({ ...h, _perPrayer: true }); return }
+    if (inferRecurring(h) === 'multi') {
+      // One row per chosen time (e.g. Makan → Subuh, Zohor, Maghrib) with that slot's own status
+      const claimed = Array.isArray(h.sessionsClaimed) ? h.sessionsClaimed : []
+      ;(h.sessions || []).forEach(sid => {
+        if (!bySession[sid]) bySession[sid] = []
+        bySession[sid].push({ ...h, _sessionInstance: sid, status: claimed.includes(sid) ? 'done' : 'pending' })
+      })
+      return
+    }
     const sid = inferSession(h)
     if (sid === 'anytime') { anytime.push(h); return }
     if (!bySession[sid]) bySession[sid] = []
@@ -527,8 +538,8 @@ const SuggestionCard = ({ suggestion, allDone, habitCount, currentSession, kidCo
   // Active suggestion card
   const categoryColor = CATEGORY_DOTS[suggestion.category] || CATEGORY_DOTS.default
   const title = suggestion.i18n?.[lang]?.title || suggestion.title
-  const isPerPrayer = inferRecurring(suggestion) === 'perPrayer'
-  const habitSession = inferSession(suggestion)
+  const isPerPrayer = inferRecurring(suggestion) === 'perPrayer' || inferRecurring(suggestion) === 'multi'
+  const habitSession = inferRecurring(suggestion) === 'multi' ? currentSession : inferSession(suggestion)
   const sessMeta = habitSession && habitSession !== 'anytime' ? SESSION_BY_ID[habitSession] : null
   const sessionLabel = sessMeta ? getSessionLabel(habitSession, lang) : null
 

@@ -9,7 +9,7 @@ import { AVATAR_BY_ID } from '@/lib/avatars'
 import { TrustCelebration } from '@/components/eqrel/TrustCelebration'
 import { KidWelcome } from '@/components/eqrel/HandoverGuide'
 import { HABIT_CATEGORIES, getCategoryLabel, getHabitTitle, getHabitDesc } from '@/lib/habitTemplates'
-import { SESSIONS, SESSION_BY_ID, getSessionLabel, groupHabitsBySession, currentSessionFromClock } from '@/lib/prayerSession'
+import { SESSIONS, SESSION_BY_ID, getSessionLabel, groupHabitsBySession, currentSessionFromClock, sessionsOfHabit, claimSessionFor, clockTimeOf, fmtClock } from '@/lib/prayerSession'
 import { REWARD_TEMPLATES, REWARD_CATEGORIES, getRewardTitle, getRewardDesc, getRewardCategoryLabel } from '@/lib/rewardTemplates'
 import { PinModal } from '@/components/eqrel/PinModal'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
@@ -267,9 +267,9 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
     // Determine session for per-prayer habits (e.g. Wudhu 5×/day).
     // - Session view provides `_sessionInstance` per rendered row.
     // - Category view / aggregated views fall back to the current clock session.
-    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer'
+    const isPerPrayer = habit._isPerPrayer || habit.recurring === 'perPrayer' || habit.recurring === 'multi'
     const sessionForClaim = isPerPrayer
-      ? (habit._sessionInstance || currentSessionFromClock())
+      ? (habit._sessionInstance || claimSessionFor(habit, currentSessionFromClock()))
       : null
 
     // For per-prayer, determine "done" from THIS session (not aggregate)
@@ -1133,9 +1133,10 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
   const rubric = habit.rubric
 
   // Per-prayer aggregate rendering (Category view): compute per-session status
-  const isPerPrayerAggregate = !habit._isPerPrayer && habit.recurring === 'perPrayer'
+  const isPerPrayerAggregate = !habit._isPerPrayer && (habit.recurring === 'perPrayer' || habit.recurring === 'multi')
   const sessionsClaimed = Array.isArray(habit.sessionsClaimed) ? habit.sessionsClaimed : []
-  const currentSession = isPerPrayerAggregate ? currentSessionFromClock() : null
+  const slotCount = sessionsOfHabit(habit).length || 5
+  const currentSession = isPerPrayerAggregate ? claimSessionFor(habit, currentSessionFromClock()) : null
   const currentSessionClaimed = isPerPrayerAggregate ? sessionsClaimed.includes(currentSession) : false
 
   const isVerified = status === 'verified'
@@ -1152,15 +1153,15 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
     const doneCount = sessionsClaimed.length
     const sessionLabel = getSessionLabel(currentSession, lang)
     if (currentSessionClaimed) {
-      statusLabel = lang === 'ar' ? `تم ✓ (${doneCount}/5)`
-                  : lang === 'en' ? `Done for ${sessionLabel} ✓  ·  ${doneCount}/5 today`
-                  : lang === 'id' ? `Selesai untuk ${sessionLabel} ✓  ·  ${doneCount}/5 hari ini`
-                  : `Siap untuk ${sessionLabel} ✓  ·  ${doneCount}/5 hari ini`
+      statusLabel = lang === 'ar' ? `تم ✓ (${doneCount}/${slotCount})`
+                  : lang === 'en' ? `Done for ${sessionLabel} ✓  ·  ${doneCount}/${slotCount} today`
+                  : lang === 'id' ? `Selesai untuk ${sessionLabel} ✓  ·  ${doneCount}/${slotCount} hari ini`
+                  : `Siap untuk ${sessionLabel} ✓  ·  ${doneCount}/${slotCount} hari ini`
     } else {
-      statusLabel = lang === 'ar' ? `اضغط لـ ${sessionLabel} (${doneCount}/5)`
-                  : lang === 'en' ? `Tap for ${sessionLabel}  ·  ${doneCount}/5 today`
-                  : lang === 'id' ? `Tap untuk ${sessionLabel}  ·  ${doneCount}/5 hari ini`
-                  : `Tekan untuk ${sessionLabel}  ·  ${doneCount}/5 hari ini`
+      statusLabel = lang === 'ar' ? `اضغط لـ ${sessionLabel} (${doneCount}/${slotCount})`
+                  : lang === 'en' ? `Tap for ${sessionLabel}  ·  ${doneCount}/${slotCount} today`
+                  : lang === 'id' ? `Tap untuk ${sessionLabel}  ·  ${doneCount}/${slotCount} hari ini`
+                  : `Tekan untuk ${sessionLabel}  ·  ${doneCount}/${slotCount} hari ini`
     }
   }
   else if (isClaimed) statusLabel = t.kid_status_claimed
@@ -1207,6 +1208,9 @@ const KidHabitCard = ({ habit, busy, onTap, t, lang }) => {
         </div>
         <div className={`font-bold text-sm text-eq-ink leading-tight ${isVerified ? 'line-through opacity-60' : ''}`}>
           {title}
+          {fmtClock(clockTimeOf(habit, habit._sessionInstance || currentSession), lang) && (
+            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-black align-middle">⏰ {fmtClock(clockTimeOf(habit, habit._sessionInstance || currentSession), lang)}</span>
+          )}
           {habit.core && (
             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-black align-middle" data-testid={`kid-core-${habit.id}`}>🕌</span>
           )}
