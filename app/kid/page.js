@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Check, LogOut, Star, Plus, X, HelpCircle } from 'lucide-react'
@@ -21,6 +21,7 @@ import { KidRestBanner } from '@/components/eqrel/RestModeSheet'
 import HabitFocusCard from '@/components/eqrel/HabitFocusCard'
 import KidLinkScreen from '@/components/eqrel/KidLinkScreen'
 import { DayTimeline, KidReminderCard } from '@/components/eqrel/KidDayExtras'
+import { useAutoRefresh, usePullToRefresh, PullIndicator, RefreshButton } from '@/lib/useRefresh'
 import { useKidDeviceBoot } from '@/lib/kidDeviceClient'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
@@ -239,6 +240,27 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
 
   useEffect(() => { load() }, [load])
 
+  // Stay fresh: parent approvals show up without the child doing anything —
+  // reload when the app comes back to the screen and every 20s; plus pull-down & 🔄 button.
+  const kidScrollRef = useRef(null)
+  useAutoRefresh(useCallback(() => load(true), [load]), 20000)
+  const ptr = usePullToRefresh(kidScrollRef, useCallback(() => load(true), [load]))
+  // "+N 🎁" pop when points go up (e.g. a parent just approved)
+  const prevReward = useRef(null)
+  const [gain, setGain] = useState(null)
+  useEffect(() => {
+    const cur = child ? Number(child.mataReward || 0) + Number(child.mataBina || 0) : null
+    if (cur == null) return
+    if (prevReward.current != null && cur > prevReward.current) {
+      setGain({ reward: Number(child.mataReward || 0) - (prevReward.reward ?? 0), bina: Number(child.mataBina || 0) - (prevReward.bina ?? 0), key: Date.now() })
+      try { haptic.success?.() } catch { /* ignore */ }
+      setTimeout(() => setGain(null), 3200)
+    }
+    prevReward.current = cur
+    prevReward.reward = Number(child.mataReward || 0)
+    prevReward.bina = Number(child.mataBina || 0)
+  }, [child?.mataReward, child?.mataBina]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Milestone haptic: fires once when the last remaining habit becomes done
   // (transition from "some pending" → "all complete"). Guards against re-firing.
   const [milestoneFired, setMilestoneFired] = useState(false)
@@ -405,6 +427,7 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
 
   return (
     <div
+      ref={kidScrollRef}
       className="h-[100dvh] w-full relative overflow-x-hidden overflow-y-auto overscroll-contain"
       style={{
         background: `linear-gradient(180deg, ${favColor}15 0%, ${favColor}08 50%, #FFF8E7 100%)`,
@@ -417,8 +440,18 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
       <div className="pointer-events-none absolute bottom-40 right-0 w-72 h-72 rounded-full blur-3xl translate-x-1/3" style={{ background: '#FFB70322' }} />
 
       <div className="relative z-10 max-w-md mx-auto px-5">
-        {/* Help button — top-right */}
-        <div className="absolute top-2 right-4 z-20">
+        <PullIndicator pull={ptr.pull} refreshing={ptr.refreshing} label={lang === 'ms' ? 'Mengemas kini…' : lang === 'id' ? 'Memperbarui…' : lang === 'ar' ? 'جارٍ التحديث…' : 'Refreshing…'} />
+        {gain && (gain.reward > 0 || gain.bina > 0) && (
+          <motion.div key={gain.key} initial={{ y: -30, opacity: 0, scale: 0.8 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            className="fixed top-14 left-1/2 -translate-x-1/2 z-[110] rounded-full bg-gradient-to-r from-amber-400 to-emerald-400 text-white font-black text-sm px-4 py-2 shadow-xl"
+            data-testid="kid-points-gain">
+            {gain.bina > 0 && <>+{gain.bina} 🏗️ </>}{gain.reward > 0 && <>+{gain.reward} 🎁</>} · {lang === 'ms' ? 'Mata bertambah!' : lang === 'id' ? 'Poin bertambah!' : lang === 'ar' ? 'زادت نقاطك!' : 'Points added!'}
+          </motion.div>
+        )}
+        {/* Help + refresh buttons — top-right */}
+        <div className="absolute top-2 right-4 z-20 flex items-center gap-2">
+          <RefreshButton onClick={ptr.refresh} refreshing={ptr.refreshing} testId="kid-refresh" className="!w-9 !h-9"
+            label={lang === 'ms' ? 'Muat semula' : lang === 'id' ? 'Muat ulang' : lang === 'ar' ? 'تحديث' : 'Refresh'} />
           <button
             onClick={tutWelcome.forceOpen}
             className="w-9 h-9 rounded-full bg-white/80 backdrop-blur border-2 border-white/90 shadow-sm text-emerald-700 flex items-center justify-center active:scale-95"

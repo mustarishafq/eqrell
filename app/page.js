@@ -1,5 +1,6 @@
 'use client'
 
+import { useAutoRefresh, usePullToRefresh, PullIndicator, RefreshButton } from '@/lib/useRefresh'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, ChevronRight, Sparkles, Plus, X } from 'lucide-react'
@@ -192,6 +193,15 @@ const ParentDashboard = () => {
   const [dataVersion, setDataVersion] = useState(0)   // bump to refresh Tasks/Reports tabs
   const [pinChangeMode, setPinChangeMode] = useState(null)   // null | 'set' | 'change'
   const mainScrollRef = useRef(null)
+  // Refresh: 🔄 button, pull-down, return-to-app and every 30s → children/points/badges + current tab
+  const [reloadTick, setReloadTick] = useState(0)
+  const refreshAll = useCallback(async () => {
+    setReloadTick(v => v + 1)
+    setDataVersion(v => v + 1)
+    await new Promise(r => setTimeout(r, 600))
+  }, [])
+  useAutoRefresh(refreshAll, 30000)
+  const parentPtr = usePullToRefresh(mainScrollRef, refreshAll)
   useEffect(() => { mainScrollRef.current?.scrollTo?.({ top: 0 }) }, [activeTab])
   const doLogout = async () => {
     if (confirm(t.logout_confirm)) {
@@ -322,7 +332,7 @@ const ParentDashboard = () => {
         } catch (e) {}
       } catch (e) {}
     })()
-  }, [authChecked])
+  }, [authChecked, reloadTick])
 
   // Refresh habit count for one child (called after HabitsSheet updates) — memoized
   const refreshChildHabits = useCallback(async (childId) => {
@@ -446,6 +456,8 @@ const ParentDashboard = () => {
           )}
         </div>
         <div className="flex items-center gap-2 pt-3">
+          <RefreshButton onClick={parentPtr.refresh} refreshing={parentPtr.refreshing} testId="header-refresh" className="!w-11 !h-11 !bg-white !border-0 shadow-eq-card"
+            label={lang === 'ms' ? 'Muat semula' : lang === 'id' ? 'Muat ulang' : lang === 'ar' ? 'تحديث' : 'Refresh'} />
           <button onClick={() => setQuickVerifyOpen(true)} data-testid="header-bell" className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label={t.nav_notifications}>
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
@@ -506,6 +518,7 @@ const ParentDashboard = () => {
       </>)}
 
       {/* MAIN CONTENT — scrollable when content taller than viewport, so BottomNav always stays visible */}
+      <PullIndicator pull={parentPtr.pull} refreshing={parentPtr.refreshing} label={lang === 'ms' ? 'Mengemas kini…' : lang === 'id' ? 'Memperbarui…' : lang === 'ar' ? 'جارٍ التحديث…' : 'Refreshing…'} />
       <div ref={mainScrollRef} className="flex-1 flex flex-col px-3 mt-2 pb-2 max-w-md mx-auto w-full gap-2 min-h-0 relative z-10 overflow-y-auto overscroll-contain">
         {activeTab === 'tasks' && (
           <TasksTab kids={children} lang={lang} icon={ASSETS.navTasks} avatarSrc={resolveAvatarSrc}
