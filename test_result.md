@@ -70,6 +70,18 @@ backend:
           - Claims for multi-time habits require session parameter (400 if missing)
           - Each session can be claimed independently (separate claim documents)
           - sessionsClaimed array populated in GET /children/:id/habits response
+  - task: "School holidays + kid habit reminders (push)"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/habitSchedule.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET/POST /api/family/school-holidays {from,to,label} (validates dates, to>=from, <=120 days), DELETE /api/family/school-holidays/:id. During a holiday (parent tz local date) 'school' habits are offToday and 'weekend' habits are on; GET /children/:id/habits returns holiday. Kid device POST /api/push/subscribe stores in kid_push_subs (not push_subs). runReminderCron runs inside POST /api/cron/digests (Bearer WEBHOOK_CRON_SECRET): for habits with clockTimes, within [T-10,T+5) min local time, not yet claimed, scheduled today, logs reminder_log _id habit:slot:date (dedupe) and pushes to kid_push_subs."
+
   - task: "Multi-time habits (recurring multi + sessions + clockTimes)"
     implemented: true
     working: "NA"
@@ -701,6 +713,7 @@ metadata:
 
 test_plan:
   current_focus:
+    - "School Holidays + Kid Reminder Cron - TESTED ✅ (4/4 tests passed)"
     - "Multi-Time Habits - TESTED ✅ (6/6 tests passed)"
     - "Diagnosis assigns ALL age-appropriate templates (cap raised 12→40)"
     - "Weekly digest visual extras (days, bestHabit, village) for share card"
@@ -713,7 +726,168 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+backend:
+  - task: "School Holidays API - GET/POST/DELETE /api/family/school-holidays"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - School Holidays API (6/6)
+          
+          **TEST 1a: GET without auth → 401** ✅
+          **TEST 1b: GET with auth → returns holidays array** ✅
+          **TEST 1c: POST with valid data → holiday created with id** ✅
+          - Created holiday from 2026-11-09 to 2026-11-12 with label "Term break"
+          - Holiday returned in response with id, from, to, label
+          
+          **TEST 1d: POST with to < from → 400** ✅
+          **TEST 1e: POST with bad date format → 400** ✅
+          **TEST 1f: POST with >120 days → 400** ✅
+          
+          **KEY FINDINGS:**
+          - GET /api/family/school-holidays requires auth (401 without cookie)
+          - POST creates holiday with validation: valid date format, to >= from, max 120 days
+          - DELETE removes holiday by id
+          - All validation working correctly
+
+  - task: "Habits with School Schedule + Holiday Interaction"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/habitSchedule.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Habits with School Schedule and Holiday Interaction (5/5)
+          
+          **TEST 2a: Create habit with schedule:'school'** ✅
+          - Habit created successfully with schedule:'school'
+          
+          **TEST 2b: Create habit with schedule:'weekend'** ✅
+          - Habit created successfully with schedule:'weekend'
+          
+          **TEST 2c: GET habits during holiday** ✅
+          - School habit correctly appears in offTodayHabits array during holiday
+          - Response includes holiday object: {id, from, to, label, createdAt}
+          - Holiday covering today (2026-11-09 to 2026-11-12) correctly detected
+          
+          **TEST 2d: DELETE holiday** ✅
+          - Holiday successfully removed from family.schoolHolidays
+          - Holidays array empty after delete
+          
+          **TEST 2e: GET habits after holiday delete** ✅
+          - Holiday no longer in response (null)
+          - Habits follow normal weekday rules (schoolDays: [1,2,3,4,5], weekday: 1)
+          
+          **KEY FINDINGS:**
+          - School schedule habits correctly hidden during school holidays
+          - offTodayHabits array provides visibility into off-schedule habits
+          - Holiday info included in GET /children/:id/habits response when active
+          - Deleting holiday immediately restores normal weekday scheduling
+
+  - task: "Kid Reminder Cron - POST /api/cron/digests with habit clockTimes"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Kid Reminder Cron (6/6)
+          
+          **TEST 3a: Create habit with clockTimes for local now** ✅
+          - Habit created with clockTimes: {subuh: '13:01'} (local Asia/Kuala_Lumpur time)
+          
+          **TEST 3b: Insert fake kid_push_subs** ✅
+          - Fake subscription inserted into kid_push_subs collection
+          - Endpoint: https://example.invalid/push/x
+          
+          **TEST 3c: POST /cron/digests without auth → 401** ✅
+          - Cron endpoint requires Bearer token (WEBHOOK_CRON_SECRET)
+          
+          **TEST 3d: POST /cron/digests with auth → 202** ✅
+          - Cron endpoint accepted request with run_id
+          - Response: {ok: true, accepted: true, runId}
+          
+          **TEST 3e: Check reminder_log after 3s** ✅
+          - reminder_log entry created with _id: '{habitId}:subuh:{local_date}'
+          - Entry includes familyId, childId, at timestamp
+          - Reminder sent within time window (10 min before to 5 min after clockTime)
+          
+          **TEST 3f: Second cron call with different run_id → no duplicate** ✅
+          - Second call accepted (202)
+          - No duplicate reminder_log entry (idempotent via unique _id)
+          - reminder_log count remains 1
+          
+          **KEY FINDINGS:**
+          - Reminder cron (runReminderCron) runs as part of POST /cron/digests
+          - Reminders sent to kid_push_subs for habits with clockTimes
+          - Idempotent: uses composite _id '{habitId}:{slot}:{date}' to prevent duplicates
+          - Auth required: Bearer token from WEBHOOK_CRON_SECRET
+          - Skips habits already claimed, not scheduled today, or in rest mode
+          - Local timezone (Asia/Kuala_Lumpur) used for time calculations
+
+  - task: "Push Subscribe Regression - POST /api/push/subscribe with parent cookie"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Push Subscribe Regression (2/2)
+          
+          **TEST 4a: POST /push/subscribe with parent session** ✅
+          - Subscription accepted with fake endpoint and keys
+          - Response: {ok: true}
+          
+          **TEST 4b: Verify stored in push_subs (not kid_push_subs)** ✅
+          - Subscription correctly stored in push_subs collection
+          - Includes userId, familyId, endpoint, keys
+          - NOT stored in kid_push_subs (correct behavior for parent session)
+          
+          **KEY FINDINGS:**
+          - Parent sessions store push subscriptions in push_subs collection
+          - Kid sessions (role:'kid') store in kid_push_subs collection
+          - Endpoint validation: must start with 'https://' and include keys.p256dh and keys.auth
+          - No regression: parent push subscriptions working correctly
+
 agent_communication:
+  - agent: "testing"
+    message: |
+      ✅ SCHOOL HOLIDAYS + KID REMINDER CRON BACKEND TESTS COMPLETED - ALL TESTS PASSED (4/4)
+      
+      **TESTED SUCCESSFULLY:**
+      1. School Holidays API (GET/POST/DELETE) - 6 tests ✅
+      2. Habits with School Schedule + Holiday Interaction - 5 tests ✅
+      3. Kid Reminder Cron - 6 tests ✅
+      4. Push Subscribe Regression - 2 tests ✅
+      
+      **KEY FINDINGS:**
+      - School holidays API working correctly with full CRUD and validation
+      - School schedule habits correctly hidden during holidays (offTodayHabits)
+      - Holiday info included in GET /children/:id/habits response
+      - Reminder cron sends push notifications for habits with clockTimes
+      - Idempotent reminder_log prevents duplicate notifications
+      - Parent push subscriptions correctly stored in push_subs (not kid_push_subs)
+      - All auth checks working (401 without cookie/token)
+      
+      **TEST DATA:** All test data cleaned up successfully (kid_push_subs, reminder_log, holidays, habits)
   - agent: "testing"
     message: |
       ✅ MULTI-TIME HABITS BACKEND TESTS COMPLETED - ALL TESTS PASSED (6/6)

@@ -1457,6 +1457,7 @@ const SchedulePicker = ({ lang, schedule, days, schoolDays, onChange, onSchoolDa
               <p className="mt-1 text-[9px] text-indigo-700/70">{SP_L(lang, 'Berlaku untuk semua habit "Hari sekolah" & "Hujung minggu" dalam keluarga.', 'Applies to every "School days" and "Weekends" habit in your family.', 'Berlaku untuk semua kebiasaan "Hari sekolah" & "Akhir pekan".', 'ينطبق على كل عادات «أيام المدرسة» و«نهاية الأسبوع».')}</p>
             </>
           )}
+          <HolidaysEditor lang={lang} />
         </div>
       )}
     </div>
@@ -1554,6 +1555,69 @@ const TimeOfDayPicker = ({ lang, value, onChange }) => {
               {clock[sid] && <button type="button" onClick={() => setClock(sid, '')} className="text-[10px] text-eq-ink/40 font-bold">✕</button>}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// HolidaysEditor — school holiday periods: "School days" habits rest, "Weekends" habits run instead
+const HolidaysEditor = ({ lang }) => {
+  const [list, setList] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [label, setLabel] = useState('')
+  const [errMsg, setErrMsg] = useState('')
+  useEffect(() => {
+    fetch('/api/family/school-holidays', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setList(d?.holidays || [])).catch(() => setList([]))
+  }, [])
+  const add = async () => {
+    setErrMsg('')
+    const r = await fetch('/api/family/school-holidays', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: to || from, label }) }).catch(() => null)
+    const d = await r?.json().catch(() => ({}))
+    if (!r?.ok) { setErrMsg(d?.error || 'Error'); return }
+    setList(d.holidays || []); setFrom(''); setTo(''); setLabel(''); setOpen(false)
+  }
+  const remove = async (id) => {
+    const r = await fetch(`/api/family/school-holidays/${id}`, { method: 'DELETE', credentials: 'include' }).catch(() => null)
+    if (r?.ok) { const d = await r.json(); setList(d.holidays || []) }
+  }
+  const fmt = (d) => { try { return new Date(`${d}T00:00:00`).toLocaleDateString(lang === 'ms' ? 'ms-MY' : lang === 'id' ? 'id-ID' : lang === 'ar' ? 'ar' : 'en-GB', { day: 'numeric', month: 'short' }) } catch { return d } }
+  return (
+    <div className="mt-2 pt-2 border-t border-indigo-100" data-testid="school-holidays">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] text-indigo-800 font-bold">🏖️ {SP_L(lang, 'Cuti sekolah', 'School holidays', 'Libur sekolah', 'العطلة المدرسية')}</div>
+        <button type="button" onClick={() => setOpen(v => !v)} data-testid="school-holiday-add-toggle" className="text-[10px] font-black text-indigo-700 underline">
+          {open ? SP_L(lang, 'Batal', 'Cancel', 'Batal', 'إلغاء') : `+ ${SP_L(lang, 'Tambah', 'Add', 'Tambah', 'إضافة')}`}
+        </button>
+      </div>
+      {(list || []).length === 0 && !open && (
+        <p className="text-[9px] text-indigo-700/60 mt-0.5">{SP_L(lang, 'Semasa cuti, habit "Hari sekolah" berehat & habit "Hujung minggu" berjalan.', 'During a holiday, "School days" habits rest and "Weekends" habits run.', 'Saat libur, kebiasaan "Hari sekolah" istirahat & "Akhir pekan" berjalan.', 'في العطلة تتوقف عادات المدرسة وتعمل عادات نهاية الأسبوع.')}</p>
+      )}
+      {(list || []).map(h => (
+        <div key={h.id} className="mt-1 flex items-center gap-2 rounded-lg bg-white px-2 py-1" data-testid={`school-holiday-${h.id}`}>
+          <span className="flex-1 text-[11px] font-bold text-eq-ink truncate">{h.label || SP_L(lang, 'Cuti', 'Holiday', 'Libur', 'عطلة')} · {fmt(h.from)} – {fmt(h.to)}</span>
+          <button type="button" onClick={() => remove(h.id)} aria-label="remove holiday" className="text-[11px] text-red-400 font-black px-1">✕</button>
+        </div>
+      ))}
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          <input value={label} onChange={e => setLabel(e.target.value)} maxLength={40} placeholder={SP_L(lang, 'Nama (cth: Cuti Penggal 2)', 'Name (e.g. Term break)', 'Nama (cth: Libur semester)', 'الاسم')}
+            className="w-full rounded-lg border border-indigo-100 bg-white px-2 py-1.5 text-[12px]" data-testid="school-holiday-label" />
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="text-[9px] font-bold text-indigo-800">{SP_L(lang, 'Mula', 'From', 'Mulai', 'من')}
+              <input type="date" value={from} onChange={e => { setFrom(e.target.value); if (!to || to < e.target.value) setTo(e.target.value) }} className="mt-0.5 w-full rounded-lg border border-indigo-100 bg-white px-1.5 py-1 text-[12px]" data-testid="school-holiday-from" />
+            </label>
+            <label className="text-[9px] font-bold text-indigo-800">{SP_L(lang, 'Hingga', 'To', 'Sampai', 'إلى')}
+              <input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className="mt-0.5 w-full rounded-lg border border-indigo-100 bg-white px-1.5 py-1 text-[12px]" data-testid="school-holiday-to" />
+            </label>
+          </div>
+          {errMsg && <div className="text-[10px] text-red-500 font-bold">{errMsg}</div>}
+          <button type="button" onClick={add} disabled={!from} data-testid="school-holiday-save" className="w-full rounded-lg bg-indigo-500 text-white text-[12px] font-black py-1.5 disabled:opacity-40">
+            {SP_L(lang, 'Simpan cuti', 'Save holiday', 'Simpan libur', 'حفظ العطلة')}
+          </button>
         </div>
       )}
     </div>

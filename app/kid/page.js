@@ -20,6 +20,7 @@ import { haptic, showBurst } from '@/lib/feedback'
 import { KidRestBanner } from '@/components/eqrel/RestModeSheet'
 import HabitFocusCard from '@/components/eqrel/HabitFocusCard'
 import KidLinkScreen from '@/components/eqrel/KidLinkScreen'
+import { DayTimeline, KidReminderCard } from '@/components/eqrel/KidDayExtras'
 import { useKidDeviceBoot } from '@/lib/kidDeviceClient'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
@@ -740,6 +741,16 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
 
         <KidRestBanner rest={restMode} lang={lang} />
 
+        <KidReminderCard kidDevice={kidDevice} lang={lang} hasTimedHabits={habits.some(h => h.clockTimes && Object.keys(h.clockTimes).length > 0)} />
+
+        {!loading && habits.length > 0 && (
+          <DayTimeline habits={habits} lang={lang} onPick={(sid) => {
+            setViewMode('session')
+            if (sid !== 'anytime') setExpandedSession(sid)
+            setTimeout(() => document.querySelector(`[data-session-card="${sid}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+          }} />
+        )}
+
         {solatPause && (
           <div className="mt-4 rounded-3xl bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-100 px-4 py-3 flex items-center gap-3" data-testid="kid-solat-paused">
             <span className="text-3xl">{solatPause.reason === 'haid' ? '🌸' : '🤒'}</span>
@@ -1428,6 +1439,7 @@ const SessionCard = ({ group, expanded, canCollapse, busyHabit, onTap, onToggle,
         group.allDone ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300' : 'bg-white/70 backdrop-blur border-white/90'
       }`}
       style={!group.allDone ? { boxShadow: `0 0 0 1px ${meta.color}22` } : undefined}
+      data-session-card={group.sessionId}
     >
       {/* Session header (clickable if canCollapse) */}
       <button

@@ -4,7 +4,7 @@ import { getDb } from '@/lib/mongodb'
 import { createSession, getSession, destroySession, generateFamilyCode, peekSessionRole } from '@/lib/session'
 import { QUIZ_QUESTIONS, questionsForAge, pickRandomQuestions, POINTS_PER_CORRECT, QUESTIONS_PER_SESSION } from '@/lib/quizBank'
 import { TEMPLATE_DEFAULT_RECURRING, TEMPLATE_DEFAULT_SESSION } from '@/lib/prayerSession'
-import { TEMPLATE_BY_ID } from '@/lib/habitTemplates'
+import { TEMPLATE_BY_ID, getHabitTitle } from '@/lib/habitTemplates'
 import webpush from 'web-push'
 import nodeCrypto from 'crypto'
 import {
@@ -38,6 +38,67 @@ async function pushToUser(db, userId, payload) {
   }
   return { sent, failed }
 }
+/** Send a payload to raw subscription docs (kid devices); prunes dead ones from `col`. */
+async function pushToSubs(db, col, subs, payload) {
+  if (!ensureVapid()) return 0
+  let sent = 0
+  for (const sub of subs) {
+    try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload), { TTL: 1800 }); sent++ }
+    catch (e) { if (e?.statusCode === 404 || e?.statusCode === 410) await db.collection(col).deleteOne({ _id: sub._id }) }
+  }
+  return sent
+}
+const REMIND_COPY = {
+  ms: (t) => [`⏰ Masa untuk ${t}!`, 'Jom buat sekarang dan bina kampung anda 🏡'],
+  en: (t) => [`⏰ Time for ${t}!`, "Let's do it now and grow your village 🏡"],
+  id: (t) => [`⏰ Waktunya ${t}!`, 'Ayo lakukan sekarang dan bangun desamu 🏡'],
+  ar: (t) => [`⏰ حان وقت ${t}!`, 'هيا افعلها الآن وابنِ قريتك 🏡'],
+}
+/**
+ * Cron worker: gentle reminders on kids' own devices for habits with an exact clock time.
+ * Runs with the 15-min digest cron → a reminder for 07:30 goes out in the run between 07:20 and 07:35.
+ * Skips: habits already ticked for that time, habits not scheduled today (days / school holidays), rest mode.
+ */
+async function runReminderCron(db) {
+  const out = { families: 0, sent: 0 }
+  const subs = await db.collection('kid_push_subs').find({}).toArray()
+  const byFam = {}
+  subs.forEach(s => { if (s.familyId) (byFam[s.familyId] = byFam[s.familyId] || []).push(s) })
+  const dateStr = utcToday()
+  for (const [familyId, fsubs] of Object.entries(byFam)) {
+    const owner = await db.collection('users').findOne({ familyId, notifyPrefs: { $exists: true } }) || await db.collection('users').findOne({ familyId })
+    const sched = await scheduleCtx(db, familyId, owner)
+    const local = localNow(owner?.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+    out.families++
+    const anyAll = fsubs.some(s => !s.childId)
+    const childIds = anyAll
+      ? (await db.collection('children').find({ familyId }).project({ _id: 0, id: 1 }).toArray()).map(c => c.id)
+      : [...new Set(fsubs.map(s => s.childId))]
+    const habits = await db.collection('habits').find({ familyId, childId: { $in: childIds }, active: { $ne: false }, paused: { $ne: true }, locked: { $ne: true }, clockTimes: { $exists: true, $ne: {} } }).project({ _id: 0 }).toArray()
+    for (const h of habits) {
+      if (!isHabitOnDay(h, sched.weekday, sched.schoolDays, !!sched.holiday)) continue
+      if (await getRestState(db, familyId, h.childId)) continue
+      for (const [slot, hhmm] of Object.entries(h.clockTimes || {})) {
+        const [hh, mm] = String(hhmm).split(':').map(Number)
+        const T = hh * 60 + mm
+        if (!(local.minutes >= T - 10 && local.minutes < T + 5)) continue
+        const multi = isPerPrayerHabit(h)
+        const claimed = await db.collection('habit_claims').findOne(multi ? { habitId: h.id, dateStr, session: slot } : { habitId: h.id, dateStr })
+        if (claimed) continue
+        try { await db.collection('reminder_log').insertOne({ _id: `${h.id}:${slot}:${local.date}`, familyId, childId: h.childId, at: new Date() }) }
+        catch (e) { if (e?.code === 11000) continue; throw e }
+        const child = await db.collection('children').findOne({ id: h.childId }, { projection: { _id: 0, nickname: 1, preferredLang: 1 } })
+        const lang = REMIND_COPY[child?.preferredLang] ? child.preferredLang : 'en'
+        const title = h.i18n?.[lang]?.title || getHabitTitle(h, lang) || h.title
+        const [t1, b1] = REMIND_COPY[lang](title)
+        const targets = fsubs.filter(s => !s.childId || s.childId === h.childId)
+        out.sent += await pushToSubs(db, 'kid_push_subs', targets, { title: t1, body: `${hhmm} · ${b1}`, url: '/kid', tag: `remind-${h.id}-${slot}` })
+      }
+    }
+  }
+  return out
+}
+
 /** Cron worker: send due morning/night/weekly digests to every parent with push enabled. */
 async function runDigestCron(db) {
   const userIds = await db.collection('push_subs').distinct('userId')
@@ -84,7 +145,7 @@ import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/di
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import { getWeeklyAISummary } from '@/lib/aiWeekly'
 import { REWARD_TEMPLATES } from '@/lib/rewardTemplates'
-import { schoolDaysOf, isHabitOnDay, weekdayOfDateStr, sanitizeSchedule, sanitizeDays } from '@/lib/habitSchedule'
+import { schoolDaysOf, isHabitOnDay, weekdayOfDateStr, sanitizeSchedule, sanitizeDays, holidaysOf, isHolidayDate, holidayOn } from '@/lib/habitSchedule'
 import crypto from 'node:crypto'
 
 /**
@@ -242,13 +303,16 @@ const ensurePointsMigration = async () => {
 }
 
 /** Build-point balance = lifetime earned − spent on buildings */
+const shiftDateStr = (dateStr, days) => { const d = new Date(`${dateStr}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const buildBalanceOf = (c) => Number(c?.mataBina || 0) - Number(c?.mataBinaSpent || 0)
 
 /** Day-scheduling context for "today": family school days + local weekday (parent's timezone). */
 async function scheduleCtx(db, familyId, user) {
-  const fam = await db.collection('families').findOne({ id: familyId }, { projection: { _id: 0, schoolDays: 1 } })
+  const fam = await db.collection('families').findOne({ id: familyId }, { projection: { _id: 0, schoolDays: 1, schoolHolidays: 1 } })
   const tz = user?.notifyPrefs?.tz || DEFAULT_PREFS.tz
-  return { schoolDays: schoolDaysOf(fam), weekday: localNow(tz).weekday }
+  const local = localNow(tz)
+  const holidays = holidaysOf(fam)
+  return { schoolDays: schoolDaysOf(fam), weekday: local.weekday, date: local.date, holidays, holiday: holidayOn(local.date, holidays) }
 }
 /**
  * Assign a habit to a child without duplicates:
@@ -721,7 +785,7 @@ async function handleRoute(request, { params }) {
       // Day scheduling: habits not scheduled today are hidden from the day's list (?all=1 keeps them, flagged)
       const sched = await scheduleCtx(db, user.familyId, user)
       const includeAll = new URL(request.url).searchParams.get('all') === '1'
-      allActive.forEach(h => { if (!isHabitOnDay(h, sched.weekday, sched.schoolDays)) h.offToday = true })
+      allActive.forEach(h => { if (!isHabitOnDay(h, sched.weekday, sched.schoolDays, !!sched.holiday)) h.offToday = true })
       const habits = includeAll ? allActive : allActive.filter(h => !h.offToday)
       const offTodayHabits = allActive.filter(h => h.offToday).map(h => ({ id: h.id, title: h.title, i18n: h.i18n, templateId: h.templateId, icon: h.icon, category: h.category, schedule: h.schedule, days: h.days }))
 
@@ -783,7 +847,7 @@ async function handleRoute(request, { params }) {
       const frozen = await frozenDaysFor(db, user.familyId, childId)
       const streakOf = (h) => {
         const set = doneDays[h.id] || new Set()
-        const skip = (d) => frozen.has(d) || !isHabitOnDay(h, weekdayOfDateStr(d), sched.schoolDays)   // off-days never break a streak
+        const skip = (d) => frozen.has(d) || !isHabitOnDay(h, weekdayOfDateStr(d), sched.schoolDays, isHolidayDate(d, sched.holidays))   // off-days never break a streak
         let i = set.has(days7[0]) ? 0 : 1, n = 0
         while (i < days7.length && (set.has(days7[i]) || skip(days7[i]))) { if (set.has(days7[i])) n++; i++ }
         return Math.min(n, TRUST_DAYS)
@@ -810,7 +874,7 @@ async function handleRoute(request, { params }) {
         : null
 
       const restMode = await getRestState(db, user.familyId, childId)
-      return json({ habits: enriched, lockedHabits: locked, offTodayHabits, schoolDays: sched.schoolDays, weekday: sched.weekday, pausedHabits, solatPause, restMode, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
+      return json({ habits: enriched, lockedHabits: locked, offTodayHabits, schoolDays: sched.schoolDays, weekday: sched.weekday, holiday: sched.holiday, pausedHabits, solatPause, restMode, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
     }
 
     // POST /children/:id/habits  → assign a habit (from template or custom)
@@ -2016,7 +2080,7 @@ async function handleRoute(request, { params }) {
       const schedD = await scheduleCtx(db, user.familyId, user)
       const liveQ = { childId: { $in: childIds }, active: { $ne: false }, paused: { $ne: true }, locked: { $ne: true } }
       const habits = (await db.collection('habits').find(liveQ).project({ _id: 0, id: 1, childId: 1, schedule: 1, days: 1, core: 1 }).toArray())
-        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays))
+        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays, !!schedD.holiday))
       const habitsByChild = {}
       habits.forEach(h => { habitsByChild[h.childId] = (habitsByChild[h.childId] || 0) + 1 })
 
@@ -2040,7 +2104,7 @@ async function handleRoute(request, { params }) {
       const ihsanHabitSet = new Set(undoneClaims.filter(c => c.rubric === 'ihsan').map(c => `${c.childId}:${c.habitId}`))
       const allHabits = (await db.collection('habits').find(liveQ)
         .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1, schedule: 1, days: 1, core: 1, sessions: 1, clockTimes: 1 }).toArray())
-        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays))
+        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays, !!schedD.holiday))
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
 
       // Also build sessionsClaimed map for perPrayer habits (needed by TV display Suggestion Card)
@@ -2732,6 +2796,13 @@ async function handleRoute(request, { params }) {
       if (typeof sub.endpoint !== 'string' || !sub.endpoint.startsWith('https://') || !sub.keys?.p256dh || !sub.keys?.auth) return err('Invalid subscription', 400)
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
+      if (session.role === 'kid') {
+        await db.collection('push_subs').deleteMany({ endpoint: sub.endpoint })
+        await db.collection('kid_push_subs').updateOne({ endpoint: sub.endpoint },
+          { $set: { familyId: user?.familyId || null, childId: session.kidChildId || null, kidDeviceId: session.kidDeviceId || null, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }, updatedAt: new Date() },
+            $setOnInsert: { id: crypto.randomUUID(), createdAt: new Date() } }, { upsert: true })
+        return json({ ok: true, kid: true })
+      }
       await db.collection('push_subs').updateOne(
         { endpoint: sub.endpoint },
         { $set: { userId: session.userId, familyId: user?.familyId || null, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }, ua: String(request.headers.get('user-agent') || '').slice(0, 200), updatedAt: new Date() },
@@ -2750,6 +2821,10 @@ async function handleRoute(request, { params }) {
       if (!session) return err('unauthorized', 401)
       const body = await request.json().catch(() => ({}))
       const db = await getDb()
+      if (session.role === 'kid') {
+        const r = await db.collection('kid_push_subs').deleteMany(typeof body.endpoint === 'string' ? { endpoint: body.endpoint } : { kidDeviceId: session.kidDeviceId || '__none__' })
+        return json({ ok: true, removed: r.deletedCount })
+      }
       const q = { userId: session.userId }
       if (typeof body.endpoint === 'string') q.endpoint = body.endpoint
       const r = await db.collection('push_subs').deleteMany(q)
@@ -2792,6 +2867,7 @@ async function handleRoute(request, { params }) {
       }
       // Hand off — do not await (dispatcher only waits ~5s)
       runDigestCron(db)
+        .then(async r => ({ ...r, reminders: await runReminderCron(db).catch(e => ({ error: String(e?.message || e) })) }))
         .then(r => db.collection('cron_runs').updateOne({ _id: `digests:${runId}` }, { $set: { result: r, doneAt: new Date() } }))
         .catch(e => console.error('digest cron failed', e))
       return json({ ok: true, accepted: true, runId }, 202)
@@ -3336,6 +3412,32 @@ async function handleRoute(request, { params }) {
       }
       const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, schoolDays: 1 } })
       return json({ schoolDays: schoolDaysOf(fam) })
+    }
+
+    // GET/POST /family/school-holidays { from, to, label } · DELETE /family/school-holidays/:id
+    if (route.startsWith('/family/school-holidays') && ['GET', 'POST', 'DELETE'].includes(method)) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      if (method !== 'GET' && (session.role === 'kid' || session.role === 'tv')) return err('forbidden', 403)
+      const fams = db.collection('families')
+      if (method === 'POST' && route === '/family/school-holidays') {
+        const body = await request.json().catch(() => ({}))
+        const from = String(body.from || ''), to = String(body.to || '')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return err('Pick a valid start and end date', 400)
+        if ((new Date(to) - new Date(from)) / 86400000 > 120) return err('A holiday can be at most 120 days', 400)
+        await fams.updateOne({ id: user.familyId }, { $push: { schoolHolidays: { id: crypto.randomUUID(), from, to, label: String(body.label || '').trim().slice(0, 40), createdAt: new Date() } } })
+      } else if (method === 'DELETE') {
+        const id = route.split('/')[3]
+        if (!id) return err('id required', 400)
+        await fams.updateOne({ id: user.familyId }, { $pull: { schoolHolidays: { id } } })
+      }
+      const fam = await fams.findOne({ id: user.familyId }, { projection: { _id: 0, schoolHolidays: 1 } })
+      const today = utcToday()
+      const list = holidaysOf(fam).filter(h => h.to >= shiftDateStr(today, -1)).sort((a, b) => a.from.localeCompare(b.from)).map(({ createdAt, ...h }) => h)
+      return json({ holidays: list })
     }
 
     // GET /rewards/catalog  → family-custom rewards (frontend joins with rewardTemplates.js for built-ins)

@@ -1,6 +1,6 @@
 crons:
   - name: parent-digests
-    description: "Sends parents their Niat Pagi, Laporan Malam and Sunday weekly report push at their chosen times"
+    description: "Parent digests (Niat Pagi, Laporan Malam, weekly) + kids habit reminders at their exact times"
     cron: "*/15 * * * *"
     endpoint: "{{BASE_URL}}/api/cron/digests"
     method: POST
