@@ -20,7 +20,7 @@ const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
  *
  * Views: 'brief' (first-time popup) → 'list' (assigned habits) → 'add' (template picker) → 'custom' (custom habit form)
  */
-export function HabitsSheet({ open, onClose, child, onCountChange }) {
+export function HabitsSheet({ open, onClose, child, onCountChange, initialView = null }) {
   const { t, lang } = useLang()
   const [view, setView] = useState('list')
   const [habits, setHabits] = useState([])
@@ -98,6 +98,12 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   // First-time brief popup: check localStorage once when sheet opens
   useEffect(() => {
     if (!open) return
+    if (initialView === 'custom') {
+      // Opened from the Tasks tab "Create habit" button → straight to the form, for all children
+      resetCustomForm(); setTargetKids([]); setView('custom')
+      try { localStorage.setItem(BRIEF_STORAGE_KEY, '1') } catch { /* ignore */ }
+      return
+    }
     try {
       if (!localStorage.getItem(BRIEF_STORAGE_KEY)) {
         setView('brief')
@@ -105,7 +111,11 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         setView('list')
       }
     } catch (e) { setView('list') }
-  }, [open])
+  }, [open, initialView])
+  // "Create habit" from Tasks tab: pre-tick every child once the list loads
+  useEffect(() => {
+    if (open && initialView === 'custom' && allKids.length && targetKids.length === 0 && !editingHabit) setTargetKids(allKids.map(k => k.id))
+  }, [open, initialView, allKids]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismissBrief = () => {
     try { localStorage.setItem(BRIEF_STORAGE_KEY, '1') } catch { /* ignore */ }

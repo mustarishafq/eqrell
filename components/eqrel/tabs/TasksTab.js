@@ -14,7 +14,7 @@ const statusOf = (h) => {
   return 'pending'
 }
 
-export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild }) {
+export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild, onCreateHabit }) {
   const L = pick(lang)
   const [habitsByChild, setHabitsByChild] = useState({})
   const [lockedByChild, setLockedByChild] = useState({})
@@ -97,6 +97,15 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
           </button>
         ))}
       </div>
+
+      {kids.length > 0 && onCreateHabit && (
+        <button onClick={onCreateHabit} data-testid="tasks-create-habit"
+          className="flex-shrink-0 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-3 px-4 shadow-md flex items-center justify-center gap-2 font-extrabold text-sm active:scale-[0.99]">
+          <span className="text-lg leading-none">＋</span>
+          {L('Cipta Habit', 'Create Habit', 'Buat Kebiasaan', 'أنشئ عادة')}
+          <span className="text-[11px] font-bold opacity-80">· {kids.length > 1 ? L('untuk semua / pilih anak', 'for all or chosen kids', 'untuk semua / pilih anak', 'للجميع أو لأطفال محددين') : L('waktu, hari & mata', 'time, days & points', 'waktu, hari & poin', 'الوقت والأيام والنقاط')}</span>
+        </button>
+      )}
 
       {kids.length === 0 && (
         <div className="bg-white rounded-3xl p-6 shadow-eq-card text-center">

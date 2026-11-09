@@ -151,6 +151,7 @@ const ParentDashboard = () => {
   const [family, setFamily] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [habitsSheetChild, setHabitsSheetChild] = useState(null)  // when set, opens HabitsSheet
+  const [habitsSheetView, setHabitsSheetView] = useState(null)   // 'custom' → open straight on the create form
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
@@ -510,7 +511,8 @@ const ParentDashboard = () => {
           <TasksTab kids={children} lang={lang} icon={ASSETS.navTasks} avatarSrc={resolveAvatarSrc}
             pendingVerifyCount={pendingVerifyCount} refreshKey={dataVersion}
             onOpenVerify={() => setQuickVerifyOpen(true)}
-            onOpenHabits={(c) => setHabitsSheetChild(c)}
+            onOpenHabits={(c) => { setHabitsSheetView(null); setHabitsSheetChild(c) }}
+            onCreateHabit={() => { if (children[0]) { setHabitsSheetView('custom'); setHabitsSheetChild(children[0]) } }}
             onAddChild={openAddSheet} />
         )}
         {activeTab === 'reports' && (
@@ -826,9 +828,11 @@ const ParentDashboard = () => {
         onClose={() => {
           if (habitsSheetChild) refreshChildHabits(habitsSheetChild.id)
           setHabitsSheetChild(null)
+          setHabitsSheetView(null)
           setDataVersion(v => v + 1)
         }}
         child={habitsSheetChild}
+        initialView={habitsSheetView}
         onCountChange={handleHabitCountChange}
       />
 
