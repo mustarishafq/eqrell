@@ -13,6 +13,88 @@
 
 
 backend:
+  - task: "Habit Scheduling - School days, custom/daily/school/weekend schedules"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/habitSchedule.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Habit Scheduling (5/5)
+          
+          **TEST 1: School Days Management**
+          ✅ GET /api/family/school-days returns default [1,2,3,4,5] (Mon-Fri)
+          ✅ POST /api/family/school-days {days:[0,1,2,3,4]} saves successfully
+          ✅ POST with empty days [] returns 400 (validation working)
+          ✅ POST with all 7 days returns 400 (validation working)
+          ✅ Restored to [1,2,3,4,5] successfully
+          
+          **TEST 2: Family Habit Templates**
+          ✅ POST /api/habit-templates creates template + assigns to multiple children
+          ✅ Template includes familyTemplateId on created habits
+          ✅ GET /api/habit-templates returns templates with childIds array
+          ✅ Duplicate detection: POST same familyTemplateId returns duplicate:true
+          ✅ No duplicate habits created in MongoDB
+          ✅ DELETE /api/habit-templates soft-deletes template
+          ✅ Deleted template not in GET list
+          ✅ Habits remain after template deletion (correct behavior)
+          ✅ PATCH on deleted template returns 404
+          
+          **TEST 3: Custom Scheduling**
+          ✅ Created habit with schedule:'custom', days:[4] (Thursday)
+          ✅ GET /api/children/:id/habits excludes off-day habit from default list
+          ✅ Off-day habit appears in offTodayHabits array
+          ✅ Response includes schoolDays and weekday (computed in parent's timezone)
+          ✅ GET with ?all=1 includes off-day habit with offToday:true flag
+          ✅ PATCH habit to schedule:'daily' makes it appear in default list
+          ✅ schedule:'school' respects family schoolDays setting
+          
+          **TEST 4: Staged Unlock**
+          ✅ Inserted locked habit with unlockAt (7 days future)
+          ✅ GET /api/children/:id/habits includes habit in lockedHabits array
+          ✅ POST same templateId unlocks staged habit (unlocked:true, same ID)
+          ✅ Unlocked habit moves from lockedHabits to habits
+          ✅ POST /api/children/:id/habits/unlock-now unlocks all locked habits
+          ✅ lockedHabits becomes empty after unlock-now
+          ✅ Superseded scenario: locked copy of active templateId gets retired (supersededAt)
+          
+          **TEST 5-7: Regression**
+          ✅ GET /api/family/display-data returns 200 with children array
+          ✅ habitsTotal per child excludes off-day/locked habits
+          ✅ GET /api/digest/weekly returns 200
+          ✅ GET /api/digest/night returns 200
+          ✅ DELETE /api/habits/:id/claim with parent session works
+          ✅ Points correctly subtracted (mataBina -20, mataReward -4 for 20pt habit)
+          
+  - task: "Habit day scheduling + family habit templates + unlock staged habits"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/habitSchedule.js, /app/lib/engagement.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "habit.schedule daily|school|weekend|custom (+days[0..6]); family.schoolDays via GET/POST /api/family/school-days (default [1..5]). GET /children/:id/habits hides off-day habits (returns offTodayHabits, schoolDays, weekday), ?all=1 keeps them flagged offToday. PATCH /habits/:id accepts schedule/days. Family templates: GET/POST /api/habit-templates (POST with childIds creates habit per child, familyTemplateId), PATCH/DELETE /api/habit-templates/:id (soft). POST /children/:id/habits {familyTemplateId} copies template; duplicate template → returns existing (duplicate:true); if a staged locked habit with same templateId exists it is unlocked instead (unlocked:true). POST /children/:id/habits/unlock-now unlocks all locked. GET habits retires redundant locked copies. Kid session cannot DELETE a verified claim (403). display-data counts only live+scheduled habits."
+
+          **KEY FINDINGS:**
+          - School days management working correctly with validation
+          - Family templates create habits for multiple children with familyTemplateId
+          - Duplicate prevention works for both templateId and familyTemplateId
+          - Custom scheduling correctly filters habits by weekday
+          - offTodayHabits array provides visibility into off-schedule habits
+          - Staged unlock system working: locked habits unlock when parent adds same template
+          - unlock-now endpoint unlocks all locked habits at once
+          - Superseded locked habits automatically retired when active version exists
+          - Timezone-aware weekday calculation (Asia/Kuala_Lumpur)
+          - All regression endpoints working correctly
+          
+          **TEST DATA:** All test data cleaned up successfully using seed/cleanup scripts.
   - task: "Diagnosis assigns ALL age-appropriate templates (cap raised 12→40)"
     implemented: true
     working: "NA"
@@ -713,6 +795,7 @@ frontend:
 
 test_plan:
   current_focus:
+    - "Habit Scheduling / Family Templates / Staged-Unlock - TESTED ✅ (5/5 tests passed)"
     - "Points Economy v1 - TESTED ✅ (11/11 tests passed)"
     - "Rest Mode UI"
     - "TV-first link UI"
@@ -861,5 +944,54 @@ frontend:
       - All error responses (404, 400, 401, 403, 410) working correctly
       
       **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
+  - agent: "testing"
+    message: |
+      ✅ HABIT SCHEDULING / FAMILY TEMPLATES / STAGED-UNLOCK TESTS COMPLETED - ALL TESTS PASSED (5/5)
+      
+      **TESTED SUCCESSFULLY:**
+      1. School Days Management (GET/POST /api/family/school-days) ✅
+         - Default [1,2,3,4,5] (Mon-Fri)
+         - POST updates successfully
+         - Validation: empty array → 400, all 7 days → 400
+      
+      2. Family Habit Templates ✅
+         - POST /api/habit-templates creates template + assigns to multiple children
+         - GET /api/habit-templates returns templates with childIds
+         - Duplicate detection (duplicate:true, no new DB doc)
+         - DELETE soft-deletes template, habits remain
+         - PATCH on deleted template → 404
+      
+      3. Custom Scheduling (schedule: daily/school/weekend/custom) ✅
+         - Off-day habits excluded from default GET /api/children/:id/habits
+         - Off-day habits in offTodayHabits array
+         - Response includes schoolDays + weekday (timezone-aware)
+         - ?all=1 includes off-day habits with offToday:true
+         - PATCH schedule:'daily' makes habit appear in default list
+         - schedule:'school' respects family schoolDays
+      
+      4. Staged Unlock ✅
+         - Locked habits (locked:true, unlockAt) appear in lockedHabits
+         - POST same templateId unlocks staged habit (unlocked:true, same ID)
+         - POST /api/children/:id/habits/unlock-now unlocks all
+         - Superseded scenario: locked copy of active template retired (supersededAt)
+      
+      5. Regression ✅
+         - GET /api/family/display-data → 200, habitsTotal excludes off-day/locked
+         - GET /api/digest/weekly → 200
+         - GET /api/digest/night → 200
+         - DELETE /api/habits/:id/claim → points subtracted correctly
+      
+      **KEY FINDINGS:**
+      - Timezone-aware weekday calculation (Asia/Kuala_Lumpur, 0=Sunday format)
+      - Family templates support multi-child assignment with familyTemplateId
+      - Duplicate prevention works for both templateId and familyTemplateId
+      - offTodayHabits provides visibility into off-schedule habits
+      - Staged unlock: locked habits unlock when parent adds same template
+      - unlock-now unlocks all locked habits at once
+      - Superseded locked habits auto-retired when active version exists
+      - All validation and error handling working correctly
+      
+      **TEST DATA:** All test data cleaned up successfully using seed/cleanup scripts.
 
 

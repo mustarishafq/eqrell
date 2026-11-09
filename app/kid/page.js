@@ -282,6 +282,11 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
     const busyKey = sessionForClaim ? `${habit.id}::${sessionForClaim}` : habit.id
     setBusyHabit(busyKey)
     try {
+      // Already verified by a parent / Trust Mode → kids can't undo it (that would take the points away)
+      const verifiedAlready = isPerPrayer
+        ? habit.perPrayerClaims?.[sessionForClaim]?.status === 'verified'
+        : habit.todayStatus === 'verified'
+      if (verifiedAlready) { haptic.locked(); return }
       if (thisIsDone) {
         // Undo (allowed because still pending review)
         const url = sessionForClaim

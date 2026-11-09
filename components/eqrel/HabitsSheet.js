@@ -10,6 +10,7 @@ import { useLang } from '@/lib/i18n/LangProvider'
 import { Tutorial, useTutorial } from '@/components/eqrel/Tutorial'
 import { getTutorial } from '@/lib/tutorials'
 import { haptic, showBurst } from '@/lib/feedback'
+import { DEFAULT_SCHOOL_DAYS, WEEK_ORDER, dayShort, scheduleLabel, scheduleName } from '@/lib/habitSchedule'
 
 const BRIEF_STORAGE_KEY = 'eqrel-habits-brief-seen-v1'
 
@@ -51,6 +52,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
   const [customSession, setCustomSession] = useState('anytime')
   const [customRecurring, setCustomRecurring] = useState('daily')  // 'daily' | 'perPrayer'
   const [editingHabit, setEditingHabit] = useState(null)           // null = create mode, else habit being edited
+  const [customSchedule, setCustomSchedule] = useState('daily')    // 'daily' | 'school' | 'weekend' | 'custom'
+  const [customDays, setCustomDays] = useState([])
+  const [schoolDays, setSchoolDays] = useState(DEFAULT_SCHOOL_DAYS)
+  const [allKids, setAllKids] = useState([])                       // for "give to these children"
+  const [targetKids, setTargetKids] = useState([])
+  const [famTemplates, setFamTemplates] = useState([])             // family-made templates (create once, add to any child)
+  const [famBusy, setFamBusy] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   const avatarSrc = child ? (AVATAR_BY_ID[child.avatarId]?.src ||
     (child.gender === 'female' ? AVATAR_BY_ID[DEFAULT_GIRL_ID].src : AVATAR_BY_ID[DEFAULT_BOY_ID].src)) : null
@@ -63,13 +72,21 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     setLoading(true)
     ;(async () => {
       try {
-        const res = await fetch(`/api/children/${childId}/habits`, { credentials: 'include' })
+        const res = await fetch(`/api/children/${childId}/habits?all=1`, { credentials: 'include' })
         if (cancelled) return
         if (res.ok) {
           const data = await res.json()
           setHabits(data.habits || [])
+          if (Array.isArray(data.schoolDays)) setSchoolDays(data.schoolDays)
           onCountChange?.(data.habits?.length || 0)
         }
+        const [rk, rt] = await Promise.all([
+          fetch('/api/children', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/habit-templates', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
+        ])
+        if (cancelled) return
+        setAllKids(rk?.children || [])
+        setFamTemplates(rt?.templates || [])
       } catch (e) { console.error(e) }
       finally { if (!cancelled) setLoading(false) }
     })()
@@ -101,6 +118,46 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     for (const h of habits) if (h.templateId) map[h.templateId] = h
     return map
   }, [habits])
+  const famTplToHabit = useMemo(() => {
+    const map = {}
+    for (const h of habits) if (h.familyTemplateId) map[h.familyTemplateId] = h
+    return map
+  }, [habits])
+
+  // Family template: add to / remove from THIS child
+  const toggleFamTemplate = async (tpl) => {
+    if (!childId || famBusy) return
+    setFamBusy(tpl.id)
+    try {
+      const existing = famTplToHabit[tpl.id]
+      if (existing) {
+        const r = await fetch(`/api/habits/${existing.id}`, { method: 'DELETE', credentials: 'include' })
+        if (r.ok) setHabits(prev => { const next = prev.filter(h => h.id !== existing.id); onCountChange?.(next.length); return next })
+      } else {
+        const r = await fetch(`/api/children/${childId}/habits`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ familyTemplateId: tpl.id }),
+        })
+        if (r.ok) {
+          const d = await r.json()
+          if (!d.duplicate) setHabits(prev => { const next = [...prev, { ...d.habit, todayStatus: 'pending' }]; onCountChange?.(next.length); return next })
+        }
+      }
+    } catch (e) { console.error(e) }
+    finally { setFamBusy(null) }
+  }
+  const deleteFamTemplate = async (tpl) => {
+    const msg = lang === 'ms' ? `Padam template "${tpl.title}"? Habit yang sudah diberi kepada anak kekal.` : lang === 'id' ? `Hapus template "${tpl.title}"? Kebiasaan yang sudah diberikan tetap ada.` : lang === 'ar' ? `حذف القالب «${tpl.title}»؟ تبقى العادات المضافة للأطفال.` : `Delete template "${tpl.title}"? Habits already given to children stay.`
+    if (!window.confirm(msg)) return
+    const r = await fetch(`/api/habit-templates/${tpl.id}`, { method: 'DELETE', credentials: 'include' }).catch(() => null)
+    if (r?.ok) setFamTemplates(prev => prev.filter(x => x.id !== tpl.id))
+  }
+  const saveSchoolDays = async (days) => {
+    const prev = schoolDays
+    setSchoolDays(days)
+    const r = await fetch('/api/family/school-days', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days }) }).catch(() => null)
+    if (!r?.ok) setSchoolDays(prev)
+  }
 
   const assignFromTemplate = useCallback(async (tpl) => {
     if (!childId || busyTemplateId) return
@@ -374,6 +431,13 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     setCustomPoints(habit.points ?? 10)
     setCustomSession(habit.session || 'anytime')
     setCustomRecurring(habit.recurring === 'perPrayer' ? 'perPrayer' : 'daily')
+    setCustomSchedule(habit.schedule || 'daily')
+    setCustomDays(Array.isArray(habit.days) ? habit.days : [])
+    setView('custom')
+  }
+  const openCreateCustom = () => {
+    resetCustomForm()
+    setTargetKids(childId ? [childId] : [])
     setView('custom')
   }
 
@@ -381,6 +445,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
     setEditingHabit(null)
     setCustomTitle(''); setCustomDesc(''); setCustomCategory('ibadah'); setCustomPoints(10)
     setCustomSession('anytime'); setCustomRecurring('daily')
+    setCustomSchedule('daily'); setCustomDays([])
   }
 
   const submitCustom = async () => {
@@ -399,6 +464,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
             title: customTitle.trim(),
             desc: customDesc.trim(),
             points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
+            schedule: customSchedule,
+            days: customDays,
           }),
         })
         if (res.ok) {
@@ -415,13 +482,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
         }
         return
       }
-      // CREATE mode → POST new habit
-      const res = await fetch(`/api/children/${childId}/habits`, {
+      // CREATE mode → save as a family template + give it to every ticked child in one go
+      if (saving) return
+      setSaving(true)
+      const res = await fetch('/api/habit-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          templateId: null,
           category: customCategory,
           session: customSession,
           recurring: customRecurring,
@@ -429,24 +497,33 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
           desc: customDesc.trim(),
           points: Math.max(1, Math.min(50, parseInt(customPoints) || 10)),
           frequency: 'daily',
+          schedule: customSchedule,
+          days: customDays,
+          childIds: targetKids.length ? targetKids : [childId],
         }),
       })
+      setSaving(false)
       if (res.ok) {
         const data = await res.json()
-        setHabits(prev => {
-          const next = [...prev, { ...data.habit, todayStatus: 'pending' }]
-          onCountChange?.(next.length)
-          return next
-        })
+        if (data.template) setFamTemplates(prev => [...prev, data.template])
+        const mine = (data.habits || []).find(h => h.childId === childId)
+        if (mine) {
+          setHabits(prev => {
+            const next = [...prev, { ...mine, todayStatus: 'pending' }]
+            onCountChange?.(next.length)
+            return next
+          })
+        }
         resetCustomForm()
         setView('list')
       }
     } catch (e) { console.error(e) }
   }
 
-  const totalPoints = habits.reduce((sum, h) =>
+  const todayHabits = habits.filter(h => !h.offToday)
+  const totalPoints = todayHabits.reduce((sum, h) =>
     sum + ((h.todayStatus === 'claimed' || h.todayStatus === 'verified') ? h.points : 0), 0)
-  const completedCount = habits.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+  const completedCount = todayHabits.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
 
   return (
     <AnimatePresence>
@@ -558,7 +635,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200">
                       <div className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">{t.habits_done_today}</div>
                       <div className="text-2xl font-extrabold text-emerald-800 mt-0.5">
-                        {completedCount}<span className="text-sm opacity-60">/{habits.length}</span>
+                        {completedCount}<span className="text-sm opacity-60">/{todayHabits.length}</span>
                       </div>
                     </div>
                     <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200">
@@ -600,6 +677,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   })
                   // Sort within each group: incomplete first
                   Object.values(groups).forEach(list => list.sort((a, b) => {
+                    if (!!a.offToday !== !!b.offToday) return a.offToday ? 1 : -1
                     const aDone = a.todayStatus === 'claimed' || a.todayStatus === 'verified'
                     const bDone = b.todayStatus === 'claimed' || b.todayStatus === 'verified'
                     return aDone === bDone ? 0 : (aDone ? 1 : -1)
@@ -609,14 +687,15 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     .filter(id => groups[id])
                     .map(id => {
                       const list = groups[id]
-                      const done = list.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
-                      return { id, list, done, total: list.length, allDone: done === list.length }
+                      const due = list.filter(h => !h.offToday)
+                      const done = due.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+                      return { id, list, done, total: due.length, allDone: due.length > 0 && done === due.length }
                     })
                   groupList.sort((a, b) => (a.allDone === b.allDone ? 0 : a.allDone ? 1 : -1))
 
                   // Apply category filter
                   const filteredGroups = catFilter === 'all' ? groupList : groupList.filter(g => g.id === catFilter)
-                  const overallDone = habits.filter(h => h.todayStatus === 'claimed' || h.todayStatus === 'verified').length
+                  const overallDone = completedCount
 
                   const renderHabit = (habit) => {
                     const cat = HABIT_CATEGORIES[habit.category] || HABIT_CATEGORIES.ibadah
@@ -625,6 +704,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                     const displayTitle = getHabitTitle(habit, lang)
                     const displayDesc  = getHabitDesc(habit, lang)
                     const shownPts = habit.pointsAwarded ?? habit.points
+                    const isOff = !!habit.offToday
+                    const schedTxt = scheduleLabel(habit, lang, schoolDays)
 
                     let pressTimer = null
                     const startPress = () => {
@@ -635,12 +716,14 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
 
                     return (
                       <div key={habit.id} data-habitrow-id={habit.id} className={`relative rounded-2xl p-3 border-2 transition-all ${
+                        isOff ? 'bg-slate-50 border-dashed border-slate-200 opacity-75' :
                         isIhsan ? 'bg-amber-50 border-amber-300' :
                         isDone ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-eq-cream'
                       }`}>
                         <div className="flex items-start gap-2">
                           <button
-                            onClick={() => toggleClaim(habit)}
+                            onClick={() => { if (!isOff) toggleClaim(habit) }}
+                            disabled={isOff}
                             onPointerDown={startPress}
                             onPointerUp={endPress}
                             onPointerLeave={endPress}
@@ -660,6 +743,11 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                               <span className={`text-[10px] font-bold ${isIhsan ? 'text-amber-700' : 'text-amber-600'}`}>+{shownPts} {t.habits_points_word}{isIhsan ? ' 🌟' : ''}</span>
                               {!habit.templateId && (
                                 <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">{t.habits_custom_badge}</span>
+                              )}
+                              {schedTxt && (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isOff ? 'bg-slate-200 text-slate-600' : 'bg-indigo-50 text-indigo-700'}`} data-testid={`habit-schedule-${habit.id}`}>
+                                  {isOff ? '🌙 ' : '📅 '}{schedTxt}{isOff ? ` · ${lang === 'ms' ? 'rehat hari ini' : lang === 'id' ? 'libur hari ini' : lang === 'ar' ? 'ليست اليوم' : 'not today'}` : ''}
+                                </span>
                               )}
                             </div>
                             <div className={`font-bold text-sm leading-tight ${isDone ? 'text-emerald-900 line-through opacity-70' : 'text-eq-ink'}`}>
@@ -705,7 +793,7 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                           icon="✨"
                           color="#00B894"
                           done={overallDone}
-                          total={habits.length}
+                          total={todayHabits.length}
                           onClick={() => setCatFilter('all')}
                         />
                         {Object.keys(HABIT_CATEGORIES).map(id => {
@@ -799,7 +887,8 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                       <Plus className="w-5 h-5" strokeWidth={3} /> {t.habits_add_template}
                     </button>
                     <button
-                      onClick={() => setView('custom')}
+                      onClick={openCreateCustom}
+                      data-testid="habits-add-custom"
                       className="w-full bg-white border-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-extrabold py-2.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]"
                     >
                       <Pencil className="w-4 h-4" strokeWidth={2.5} /> {t.habits_add_custom}
@@ -850,6 +939,40 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                 </div>
 
                 <div className="px-5 py-3 space-y-2">
+                  {famTemplates.filter(tpl => activeCategory === null || tpl.category === activeCategory).length > 0 && (
+                    <div className="rounded-2xl bg-purple-50/60 border border-purple-100 p-2.5 space-y-2" data-testid="habits-family-templates">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-purple-700 px-1">
+                        👨‍👩‍👧 {lang === 'ms' ? 'Template keluarga anda' : lang === 'id' ? 'Template keluarga Anda' : lang === 'ar' ? 'قوالب عائلتك' : 'Your family templates'}
+                      </div>
+                      {famTemplates.filter(tpl => activeCategory === null || tpl.category === activeCategory).map(tpl => {
+                        const cat = HABIT_CATEGORIES[tpl.category] || HABIT_CATEGORIES.ibadah
+                        const assigned = !!famTplToHabit[tpl.id]
+                        const sched = scheduleLabel(tpl, lang, schoolDays)
+                        const others = (tpl.childIds || []).filter(id => id !== childId).map(id => allKids.find(k => k.id === id)?.nickname).filter(Boolean)
+                        return (
+                          <div key={tpl.id} className={`rounded-2xl p-3 border-2 flex items-start gap-2 ${assigned ? 'bg-emerald-50 border-emerald-400' : 'bg-white border-eq-cream'}`} data-testid={`famtpl-${tpl.id}`}>
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ background: `${cat.color}22` }}>{cat.icon}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                <span className="text-[10px] text-amber-600 font-bold">+{tpl.points} {t.habits_points_word}</span>
+                                {sched && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700">📅 {sched}</span>}
+                              </div>
+                              <div className="font-bold text-sm text-eq-ink leading-tight">{tpl.title}</div>
+                              {others.length > 0 && <div className="text-[10px] text-eq-ink/50 mt-0.5">{lang === 'ms' ? 'Juga untuk' : lang === 'id' ? 'Juga untuk' : lang === 'ar' ? 'أيضاً لـ' : 'Also for'}: {others.join(', ')}</div>}
+                            </div>
+                            <button onClick={() => deleteFamTemplate(tpl)} aria-label="delete template" data-testid={`famtpl-del-${tpl.id}`}
+                              className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center flex-shrink-0 self-center">
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                            <button onClick={() => toggleFamTemplate(tpl)} disabled={famBusy === tpl.id} data-testid={`famtpl-toggle-${tpl.id}`}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 self-center ${assigned ? 'bg-emerald-500' : 'border-2 border-emerald-500'} ${famBusy === tpl.id ? 'opacity-50' : ''}`}>
+                              {assigned ? <Check className="w-5 h-5 text-white" strokeWidth={3} /> : <Plus className="w-4 h-4 text-emerald-500" strokeWidth={3} />}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                   {templates
                     .filter(tpl => activeCategory === null || tpl.category === activeCategory)
                     .map(tpl => {
@@ -1063,9 +1186,37 @@ export function HabitsSheet({ open, onClose, child, onCountChange }) {
                   )}
                 </div>
 
+                <SchedulePicker lang={lang} schedule={customSchedule} days={customDays} schoolDays={schoolDays}
+                  onChange={(sc, d) => { setCustomSchedule(sc); setCustomDays(d) }} onSchoolDays={saveSchoolDays} />
+
+                {!editingHabit && allKids.length > 1 && (
+                  <div data-testid="habits-kid-picker">
+                    <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
+                      {lang === 'ms' ? 'Beri kepada' : lang === 'id' ? 'Berikan kepada' : lang === 'ar' ? 'أعطِ لـ' : 'Give to'}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allKids.map(k => {
+                        const on = targetKids.includes(k.id)
+                        const src = AVATAR_BY_ID[k.avatarId]?.src || (k.gender === 'female' ? AVATAR_BY_ID[DEFAULT_GIRL_ID].src : AVATAR_BY_ID[DEFAULT_BOY_ID].src)
+                        return (
+                          <button key={k.id} type="button" data-testid={`habits-kid-${k.id}`}
+                            onClick={() => setTargetKids(prev => on ? prev.filter(x => x !== k.id) : [...prev, k.id])}
+                            className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border-2 text-xs font-extrabold transition-all ${on ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-eq-cream bg-white text-eq-ink/50'}`}>
+                            <img src={src} alt="" className="w-6 h-6 rounded-full object-cover object-top bg-amber-50" />
+                            {k.nickname} {on ? '✓' : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-1 text-[10px] text-eq-ink/50 leading-snug">
+                      {lang === 'ms' ? 'Disimpan sebagai template keluarga — boleh ditambah kepada anak lain bila-bila masa dari "Tambah dari template".' : lang === 'id' ? 'Disimpan sebagai template keluarga — bisa ditambahkan ke anak lain kapan saja.' : lang === 'ar' ? 'يُحفظ كقالب عائلي — يمكن إضافته لطفل آخر في أي وقت.' : 'Saved as a family template — add it to another child any time from "Add from templates".'}
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={submitCustom}
-                  disabled={!customTitle.trim()}
+                  disabled={!customTitle.trim() || saving || (!editingHabit && allKids.length > 1 && targetKids.length === 0)}
                   className="w-full mt-2 bg-gradient-to-r from-emerald-500 to-emerald-600 disabled:from-eq-ink/20 disabled:to-eq-ink/20 disabled:cursor-not-allowed hover:brightness-110 text-white font-extrabold py-3.5 rounded-2xl shadow-lg active:scale-[0.99]"
                 >
                   {editingHabit
@@ -1248,5 +1399,81 @@ const HabitCategoryChip = ({ active, label, icon, color, done, total, allDone, d
         </div>
       </div>
     </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SchedulePicker — which days a habit appears: every day / school days / weekends / chosen days
+const SP_L = (lang, ms, en, id, ar) => (lang === 'ms' ? ms : lang === 'id' ? id : lang === 'ar' ? ar : en)
+const SchedulePicker = ({ lang, schedule, days, schoolDays, onChange, onSchoolDays }) => {
+  const [editSchool, setEditSchool] = useState(false)
+  const schoolTxt = WEEK_ORDER.filter(d => schoolDays.includes(d)).map(d => dayShort(d, lang)).join(' · ')
+  const weekendTxt = WEEK_ORDER.filter(d => !schoolDays.includes(d)).map(d => dayShort(d, lang)).join(' · ')
+  const opts = [
+    { id: 'daily', icon: '📅', sub: SP_L(lang, '7 hari', '7 days', '7 hari', '٧ أيام') },
+    { id: 'school', icon: '🎒', sub: schoolTxt },
+    { id: 'weekend', icon: '🏡', sub: weekendTxt },
+    { id: 'custom', icon: '✍️', sub: SP_L(lang, 'Pilih sendiri', 'Pick days', 'Pilih sendiri', 'اختر') },
+  ]
+  const toggleDay = (d) => {
+    const next = days.includes(d) ? days.filter(x => x !== d) : [...days, d]
+    onChange('custom', next)
+  }
+  const toggleSchool = (d) => {
+    const next = schoolDays.includes(d) ? schoolDays.filter(x => x !== d) : [...schoolDays, d]
+    if (next.length === 0 || next.length === 7) return
+    onSchoolDays([...next].sort())
+  }
+  return (
+    <div data-testid="habit-schedule-picker">
+      <label className="block text-[11px] font-extrabold text-eq-ink/70 mb-1.5 uppercase tracking-wider">
+        {SP_L(lang, 'Hari', 'Days', 'Hari', 'الأيام')}
+      </label>
+      <div className="grid grid-cols-2 gap-1.5">
+        {opts.map(o => (
+          <button key={o.id} type="button" data-testid={`habit-schedule-${o.id}`}
+            onClick={() => onChange(o.id, o.id === 'custom' ? days : [])}
+            className={`rounded-xl border-2 py-2 px-2 text-left transition-all ${schedule === o.id ? 'border-emerald-500 bg-emerald-50' : 'border-transparent bg-eq-cream/50 opacity-70'}`}>
+            <div className="text-xs font-black text-eq-ink">{o.icon} {scheduleName(o.id, lang)}</div>
+            <div className="text-[9px] text-eq-ink/60 mt-0.5 truncate">{o.sub}</div>
+          </button>
+        ))}
+      </div>
+      {schedule === 'custom' && (
+        <div className="mt-2 flex gap-1" data-testid="habit-schedule-days">
+          {WEEK_ORDER.map(d => (
+            <button key={d} type="button" onClick={() => toggleDay(d)} data-testid={`habit-day-${d}`}
+              className={`flex-1 rounded-lg py-1.5 text-[10px] font-black border-2 ${days.includes(d) ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-eq-cream text-eq-ink/50'}`}>
+              {dayShort(d, lang)}
+            </button>
+          ))}
+        </div>
+      )}
+      {(schedule === 'school' || schedule === 'weekend') && (
+        <div className="mt-2 rounded-xl bg-indigo-50/70 px-2.5 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] text-indigo-800 font-bold">
+              🎒 {SP_L(lang, 'Hari sekolah keluarga', 'Family school days', 'Hari sekolah keluarga', 'أيام المدرسة')}: {schoolTxt}
+            </div>
+            <button type="button" onClick={() => setEditSchool(v => !v)} data-testid="habit-school-edit" className="text-[10px] font-black text-indigo-700 underline flex-shrink-0">
+              {editSchool ? SP_L(lang, 'Siap', 'Done', 'Selesai', 'تم') : SP_L(lang, 'Tukar', 'Change', 'Ubah', 'تغيير')}
+            </button>
+          </div>
+          {editSchool && (
+            <>
+              <div className="mt-1.5 flex gap-1">
+                {WEEK_ORDER.map(d => (
+                  <button key={d} type="button" onClick={() => toggleSchool(d)} data-testid={`school-day-${d}`}
+                    className={`flex-1 rounded-lg py-1.5 text-[10px] font-black border-2 ${schoolDays.includes(d) ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-indigo-100 text-indigo-300'}`}>
+                    {dayShort(d, lang)}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[9px] text-indigo-700/70">{SP_L(lang, 'Berlaku untuk semua habit "Hari sekolah" & "Hujung minggu" dalam keluarga.', 'Applies to every "School days" and "Weekends" habit in your family.', 'Berlaku untuk semua kebiasaan "Hari sekolah" & "Akhir pekan".', 'ينطبق على كل عادات «أيام المدرسة» و«نهاية الأسبوع».')}</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

@@ -84,6 +84,7 @@ import { scoreDiagnosis, bandFromAge, GOALS, PRACTICE_QUESTIONS } from '@/lib/di
 import { BUILDING_TEMPLATES } from '@/lib/worldEngine'
 import { getWeeklyAISummary } from '@/lib/aiWeekly'
 import { REWARD_TEMPLATES } from '@/lib/rewardTemplates'
+import { schoolDaysOf, isHabitOnDay, weekdayOfDateStr, sanitizeSchedule, sanitizeDays } from '@/lib/habitSchedule'
 import crypto from 'node:crypto'
 
 /**
@@ -200,9 +201,13 @@ async function runPointsMigrationOnce(db) {
     }
   } catch { return }
   try {
-    const children = await db.collection('children').find({}).project({ _id: 0, id: 1, familyId: 1, mataReward: 1, mataBina: 1 }).toArray()
+    const children = await db.collection('children').find({ pointsEconomy: { $ne: 1 } }).project({ _id: 0, id: 1, familyId: 1, mataReward: 1, mataBina: 1 }).toArray()
+    console.log(`[migration] ${POINTS_MIGRATION_ID}: claimed, ${children.length} children not yet migrated`)
     let worldsReset = 0
     for (const c of children) {
+      // Per-child guard: a child already migrated is NEVER reset again (protects worlds + balances on any re-run)
+      const claimed = await db.collection('children').updateOne({ id: c.id, pointsEconomy: { $ne: 1 }, pointsMigrating: { $ne: true } }, { $set: { pointsMigrating: true } })
+      if (!claimed.modifiedCount) continue
       // 1) World reset (backup first)
       const w = await db.collection('family_worlds').findOne({ childId: c.id }, { projection: { _id: 0 } })
       if (w) {
@@ -219,7 +224,7 @@ async function runPointsMigrationOnce(db) {
       const redeemed = await db.collection('reward_requests').find({ childId: c.id, status: { $in: ['approved', 'fulfilled', 'delivered', 'redeemed'] } }).project({ _id: 0, snapshot: 1 }).toArray()
       const spent = redeemed.reduce((sum, r) => sum + (Number(r.snapshot?.cost) || 0), 0)
       await db.collection('children').updateOne({ id: c.id }, { $set: {
-        mataReward: Math.max(0, earned - spent), mataBinaSpent: 0, pointsEconomy: 1,
+        mataReward: Math.max(0, earned - spent), mataBinaSpent: 0, pointsEconomy: 1, pointsMigrating: false,
         preMigration: { mataReward: c.mataReward || 0, mataBina: c.mataBina || 0 },
       } })
     }
@@ -237,6 +242,52 @@ const ensurePointsMigration = async () => {
 
 /** Build-point balance = lifetime earned − spent on buildings */
 const buildBalanceOf = (c) => Number(c?.mataBina || 0) - Number(c?.mataBinaSpent || 0)
+
+/** Day-scheduling context for "today": family school days + local weekday (parent's timezone). */
+async function scheduleCtx(db, familyId, user) {
+  const fam = await db.collection('families').findOne({ id: familyId }, { projection: { _id: 0, schoolDays: 1 } })
+  const tz = user?.notifyPrefs?.tz || DEFAULT_PREFS.tz
+  return { schoolDays: schoolDaysOf(fam), weekday: localNow(tz).weekday }
+}
+/**
+ * Assign a habit to a child without duplicates:
+ *  - same template already active → return it (duplicate: true)
+ *  - same template waiting as a staged "next week" habit → unlock that one now (no 🔒 leftover)
+ *  - otherwise insert a new habit
+ */
+async function assignHabitToChild(db, { user, child, session, templateId = null, familyTemplateId = null, fields }) {
+  const col = db.collection('habits')
+  const key = templateId ? { templateId } : familyTemplateId ? { familyTemplateId } : null
+  if (key) {
+    const existing = await col.findOne({ childId: child.id, familyId: user.familyId, ...key, active: { $ne: false }, locked: { $ne: true } }, { projection: { _id: 0 } })
+    if (existing) return { habit: existing, duplicate: true }
+    const staged = await col.findOne({ childId: child.id, familyId: user.familyId, ...key, locked: true }, { projection: { _id: 0 } })
+    if (staged) {
+      const $set = { locked: false, active: true, updatedAt: new Date(), unlockedEarlyAt: new Date(), schedule: fields.schedule, days: fields.days }
+      await col.updateOne({ id: staged.id }, { $set, $unset: { unlockAt: 1 } })
+      const h = { ...staged, ...$set }; delete h.unlockAt
+      return { habit: h, unlocked: true }
+    }
+  }
+  const habit = {
+    id: crypto.randomUUID(), familyId: user.familyId, childId: child.id,
+    templateId, familyTemplateId, ...fields,
+    active: true, assignedBy: session.userId, createdAt: new Date(), updatedAt: new Date(),
+  }
+  await col.insertOne(habit)
+  delete habit._id
+  return { habit }
+}
+const HABIT_FIELDS_FROM_BODY = (body) => ({
+  category: body.category || 'ibadah',
+  session: body.session || 'anytime',
+  recurring: body.recurring === 'perPrayer' ? 'perPrayer' : 'daily',
+  title: String(body.title || '').trim().slice(0, 80),
+  desc: String(body.desc || '').slice(0, 200),
+  points: Math.max(1, Math.min(50, Number(body.points) || 10)),
+  frequency: body.frequency || 'daily',
+  ...sanitizeSchedule(body),
+})
 
 export async function OPTIONS() {
   return CORS(new NextResponse(null, { status: 200 }))
@@ -581,6 +632,7 @@ async function handleRoute(request, { params }) {
         claimMode: ['self','parent'].includes(body.claimMode) ? body.claimMode : 'parent',
         mataBina: 0,
         mataReward: 0,
+        pointsEconomy: 1,
         createdBy: session.userId,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -649,11 +701,17 @@ async function handleRoute(request, { params }) {
       await unlockDueHabits(db, { childId, familyId: user.familyId })
       await ensureSolatCore(db, child, session.userId)
 
-      const habits = await db.collection('habits')
+      const allActive = await db.collection('habits')
         .find({ childId, familyId: user.familyId, active: { $ne: false }, paused: { $ne: true } })
         .sort({ createdAt: 1 })
         .project({ _id: 0 })
         .toArray()
+      // Day scheduling: habits not scheduled today are hidden from the day's list (?all=1 keeps them, flagged)
+      const sched = await scheduleCtx(db, user.familyId, user)
+      const includeAll = new URL(request.url).searchParams.get('all') === '1'
+      allActive.forEach(h => { if (!isHabitOnDay(h, sched.weekday, sched.schoolDays)) h.offToday = true })
+      const habits = includeAll ? allActive : allActive.filter(h => !h.offToday)
+      const offTodayHabits = allActive.filter(h => h.offToday).map(h => ({ id: h.id, title: h.title, i18n: h.i18n, templateId: h.templateId, icon: h.icon, category: h.category, schedule: h.schedule, days: h.days }))
 
       // Attach today's claim status + rubric + pointsAwarded (needed by Kid Mode + parent-log UI)
       // For perPrayer habits, aggregate ALL session claims into sessionsClaimed[] array
@@ -711,17 +769,26 @@ async function handleRoute(request, { params }) {
       const doneDays = {}
       recent.forEach(c => { (doneDays[c.habitId] = doneDays[c.habitId] || new Set()).add(c.dateStr) })
       const frozen = await frozenDaysFor(db, user.familyId, childId)
-      const streakOf = (hid) => {
-        const set = doneDays[hid] || new Set()
+      const streakOf = (h) => {
+        const set = doneDays[h.id] || new Set()
+        const skip = (d) => frozen.has(d) || !isHabitOnDay(h, weekdayOfDateStr(d), sched.schoolDays)   // off-days never break a streak
         let i = set.has(days7[0]) ? 0 : 1, n = 0
-        while (i < days7.length && (set.has(days7[i]) || frozen.has(days7[i]))) { if (set.has(days7[i])) n++; i++ }
+        while (i < days7.length && (set.has(days7[i]) || skip(days7[i]))) { if (set.has(days7[i])) n++; i++ }
         return Math.min(n, TRUST_DAYS)
       }
-      enriched.forEach(h => { h.trustStreak = h.autoVerify ? TRUST_DAYS : streakOf(h.id) })
+      enriched.forEach(h => { h.trustStreak = h.autoVerify ? TRUST_DAYS : streakOf(h) })
 
-      const locked = await db.collection('habits')
+      let locked = await db.collection('habits')
         .find({ childId, familyId: user.familyId, locked: true })
         .project({ _id: 0, id: 1, title: 1, templateId: 1, i18n: 1, category: 1, unlockAt: 1, points: 1 }).toArray()
+      // Parent already added the same template manually → the staged copy is redundant (soft-retire it)
+      const activeTpl = new Set(allActive.map(h => h.templateId).filter(Boolean))
+      const redundant = locked.filter(h => h.templateId && activeTpl.has(h.templateId))
+      if (redundant.length) {
+        await db.collection('habits').updateMany({ id: { $in: redundant.map(h => h.id) } },
+          { $set: { locked: false, active: false, supersededAt: new Date(), updatedAt: new Date() }, $unset: { unlockAt: 1 } })
+        locked = locked.filter(h => !redundant.includes(h))
+      }
 
       const pausedHabits = await db.collection('habits')
         .find({ childId, familyId: user.familyId, active: { $ne: false }, paused: true })
@@ -731,7 +798,7 @@ async function handleRoute(request, { params }) {
         : null
 
       const restMode = await getRestState(db, user.familyId, childId)
-      return json({ habits: enriched, lockedHabits: locked, pausedHabits, solatPause, restMode, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
+      return json({ habits: enriched, lockedHabits: locked, offTodayHabits, schoolDays: sched.schoolDays, weekday: sched.weekday, pausedHabits, solatPause, restMode, canCutiSolat: canCutiSolat(child), solatWajib: childAgeYears(child) >= SOLAT_WAJIB_AGE })
     }
 
     // POST /children/:id/habits  → assign a habit (from template or custom)
@@ -747,28 +814,86 @@ async function handleRoute(request, { params }) {
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
       if (!child) return err('Child not found', 404)
 
-      if (!body.title?.trim()) return err('Habit title is required', 400)
-
-      const habit = {
-        id: crypto.randomUUID(),
-        familyId: user.familyId,
-        childId,
-        templateId: body.templateId || null,   // if from template, keep reference
-        category: body.category || 'ibadah',
-        session: body.session || 'anytime',    // prayer-time anchor: subuh|zohor|asar|maghrib|isyak|sebelumTidur|anytime
-        recurring: body.recurring === 'perPrayer' ? 'perPrayer' : 'daily',  // 'daily' (1x/day) or 'perPrayer' (5x/day)
-        title: body.title.trim(),
-        desc: body.desc || '',
-        points: body.points ?? 10,
-        frequency: body.frequency || 'daily',
-        active: true,
-        assignedBy: session.userId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      // Family template → copy its fields
+      let famTpl = null
+      if (body.familyTemplateId) {
+        famTpl = await db.collection('habit_templates_family').findOne({ id: String(body.familyTemplateId), familyId: user.familyId, deletedAt: null }, { projection: { _id: 0 } })
+        if (!famTpl) return err('Template not found', 404)
       }
-      await db.collection('habits').insertOne(habit)
-      const { _id, ...clean } = habit
-      return json({ habit: clean })
+      const src = famTpl ? { ...famTpl, ...(body.schedule ? sanitizeSchedule(body) : {}) } : body
+      if (!String(src.title || '').trim()) return err('Habit title is required', 400)
+      const r = await assignHabitToChild(db, { user, child, session, templateId: body.templateId || null, familyTemplateId: famTpl?.id || null, fields: HABIT_FIELDS_FROM_BODY(src) })
+      return json(r)
+    }
+
+    // ═══ Family habit templates ("create once, add to any child") ═══
+    // GET  /habit-templates               → this family's templates (+ which children already have each)
+    // POST /habit-templates { title, desc, category, points, session, recurring, schedule, days, childIds[] }
+    // PATCH /habit-templates/:id { ...fields }   (does not change habits already assigned)
+    // DELETE /habit-templates/:id          → soft delete (assigned habits stay)
+    if (route === '/habit-templates' && (method === 'GET' || method === 'POST')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      if (method === 'GET') {
+        const templates = await db.collection('habit_templates_family').find({ familyId: user.familyId, deletedAt: null }).sort({ createdAt: 1 }).project({ _id: 0 }).toArray()
+        const assigned = templates.length ? await db.collection('habits').find({ familyId: user.familyId, familyTemplateId: { $in: templates.map(t => t.id) }, active: { $ne: false } }).project({ _id: 0, familyTemplateId: 1, childId: 1 }).toArray() : []
+        templates.forEach(t => { t.childIds = [...new Set(assigned.filter(a => a.familyTemplateId === t.id).map(a => a.childId))] })
+        return json({ templates })
+      }
+      const body = await request.json().catch(() => ({}))
+      const fields = HABIT_FIELDS_FROM_BODY(body)
+      if (!fields.title) return err('Habit title is required', 400)
+      const tpl = { id: crypto.randomUUID(), familyId: user.familyId, ...fields, createdBy: session.userId, createdAt: new Date(), updatedAt: new Date(), deletedAt: null }
+      await db.collection('habit_templates_family').insertOne(tpl)
+      delete tpl._id
+      const childIds = Array.isArray(body.childIds) ? body.childIds.map(String) : []
+      const kids = childIds.length ? await db.collection('children').find({ id: { $in: childIds }, familyId: user.familyId }).toArray() : []
+      const habits = []
+      for (const child of kids) {
+        const r = await assignHabitToChild(db, { user, child, session, templateId: null, familyTemplateId: tpl.id, fields })
+        habits.push(r.habit)
+      }
+      return json({ template: { ...tpl, childIds: kids.map(k => k.id) }, habits })
+    }
+    if (route.match(/^\/habit-templates\/[^/]+$/) && (method === 'PATCH' || method === 'DELETE')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const id = route.split('/')[2]
+      const q = { id, familyId: user.familyId, deletedAt: null }
+      if (method === 'DELETE') {
+        const r = await db.collection('habit_templates_family').updateOne(q, { $set: { deletedAt: new Date() } })
+        if (!r.matchedCount) return err('Template not found', 404)
+        return json({ ok: true })
+      }
+      const body = await request.json().catch(() => ({}))
+      const cur = await db.collection('habit_templates_family').findOne(q, { projection: { _id: 0 } })
+      if (!cur) return err('Template not found', 404)
+      const fields = HABIT_FIELDS_FROM_BODY({ ...cur, ...body })
+      if (!fields.title) return err('Habit title is required', 400)
+      await db.collection('habit_templates_family').updateOne(q, { $set: { ...fields, updatedAt: new Date() } })
+      return json({ template: { ...cur, ...fields } })
+    }
+
+    // POST /children/:id/habits/unlock-now → start every "next week" (staged) habit today
+    if (route.match(/^\/children\/[^/]+\/habits\/unlock-now$/) && method === 'POST') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+      const childId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const r = await db.collection('habits').updateMany({ childId, familyId: user.familyId, locked: true },
+        { $set: { locked: false, active: true, updatedAt: new Date(), unlockedEarlyAt: new Date() }, $unset: { unlockAt: 1 } })
+      return json({ ok: true, unlocked: r.modifiedCount })
     }
 
     // PATCH /habits/:id  → update habit
@@ -788,6 +913,7 @@ async function handleRoute(request, { params }) {
       const allowed = ['title', 'desc', 'category', 'session', 'recurring', 'points', 'frequency', 'active']
       const $set = { updatedAt: new Date() }
       for (const k of allowed) if (k in body) $set[k] = body[k]
+      if ('schedule' in body) Object.assign($set, sanitizeSchedule(body))
       if ('autoVerify' in body) {
         $set.autoVerify = !!body.autoVerify
         $set.trustOptOut = !body.autoVerify        // parent turned it off → don't auto re-enable
@@ -954,6 +1080,8 @@ async function handleRoute(request, { params }) {
         : { habitId, dateStr, familyId: user.familyId, session: { $in: [null, undefined] } }
       const claim = await db.collection('habit_claims').findOne(claimKey)
       if (!claim) return json({ ok: true, removed: false })
+      // A child can only undo a claim still waiting for review — never one a parent (or Trust Mode) already verified
+      if (session.role === 'kid' && claim.status === 'verified') return err('Already verified — ask your parent to undo', 403)
       const deleteKey = claimSession
         ? { habitId, dateStr, session: claimSession }
         : { habitId, dateStr, session: { $in: [null, undefined] } }
@@ -1869,7 +1997,10 @@ async function handleRoute(request, { params }) {
       const now = new Date()
       const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
       const childIds = children.map(c => c.id)
-      const habits = await db.collection('habits').find({ childId: { $in: childIds } }).project({ _id: 0, id: 1, childId: 1 }).toArray()
+      const schedD = await scheduleCtx(db, user.familyId, user)
+      const liveQ = { childId: { $in: childIds }, active: { $ne: false }, paused: { $ne: true }, locked: { $ne: true } }
+      const habits = (await db.collection('habits').find(liveQ).project({ _id: 0, id: 1, childId: 1, schedule: 1, days: 1, core: 1 }).toArray())
+        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays))
       const habitsByChild = {}
       habits.forEach(h => { habitsByChild[h.childId] = (habitsByChild[h.childId] || 0) + 1 })
 
@@ -1891,8 +2022,9 @@ async function handleRoute(request, { params }) {
       }).project({ _id: 0, habitId: 1, childId: 1, rubric: 1 }).toArray()
       const doneSet = new Set(undoneClaims.map(c => `${c.childId}:${c.habitId}`))
       const ihsanHabitSet = new Set(undoneClaims.filter(c => c.rubric === 'ihsan').map(c => `${c.childId}:${c.habitId}`))
-      const allHabits = await db.collection('habits').find({ childId: { $in: childIds } })
-        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1 }).toArray()
+      const allHabits = (await db.collection('habits').find(liveQ)
+        .project({ _id: 0, id: 1, childId: 1, title: 1, icon: 1, category: 1, i18n: 1, points: 1, session: 1, recurring: 1, templateId: 1, schedule: 1, days: 1, core: 1 }).toArray())
+        .filter(h => isHabitOnDay(h, schedD.weekday, schedD.schoolDays))
       const undoneHabits = allHabits.filter(h => !doneSet.has(`${h.childId}:${h.id}`))
 
       // Also build sessionsClaimed map for perPrayer habits (needed by TV display Suggestion Card)
@@ -2894,7 +3026,7 @@ async function handleRoute(request, { params }) {
             preferredLang: ['ms', 'en', 'id', 'ar'].includes(body.lang) ? body.lang : 'en',
             todayCompleted: 0, todayTotal: 0, lightLevel: 100, blackClouds: 0, buildingCount: 0,
             claimMode: 'parent',
-            mataBina: 0, mataReward: 0,
+            mataBina: 0, mataReward: 0, pointsEconomy: 1,
             diagnosis,
             createdBy: session.userId,
             createdAt: new Date(), updatedAt: new Date(),
@@ -3171,6 +3303,24 @@ async function handleRoute(request, { params }) {
     }
 
     // ═══ Reward Shop ═══
+    // GET/POST /family/school-days { days:[0..6] } → which weekdays count as "School days" for this family
+    if (route === '/family/school-days' && (method === 'GET' || method === 'POST')) {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      if (method === 'POST') {
+        if (session.role === 'kid' || session.role === 'tv') return err('forbidden', 403)
+        const body = await request.json().catch(() => ({}))
+        const days = sanitizeDays(body.days)
+        if (days.length === 0 || days.length === 7) return err('Pick between 1 and 6 school days', 400)
+        await db.collection('families').updateOne({ id: user.familyId }, { $set: { schoolDays: days, updatedAt: new Date() } })
+      }
+      const fam = await db.collection('families').findOne({ id: user.familyId }, { projection: { _id: 0, schoolDays: 1 } })
+      return json({ schoolDays: schoolDaysOf(fam) })
+    }
+
     // GET /rewards/catalog  → family-custom rewards (frontend joins with rewardTemplates.js for built-ins)
     if (route === '/rewards/catalog' && method === 'GET') {
       const session = await getSession()

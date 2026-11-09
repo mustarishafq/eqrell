@@ -29,7 +29,7 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
     await Promise.all(kids.map(async (c) => {
       try {
         const r = await fetch(`/api/children/${c.id}/habits`, { credentials: 'include' })
-        if (r.ok) { const d = await r.json(); map[c.id] = d.habits || []; lmap[c.id] = d.lockedHabits || []; mmap[c.id] = { solatPause: d.solatPause, canCutiSolat: d.canCutiSolat, solatWajib: d.solatWajib } }
+        if (r.ok) { const d = await r.json(); map[c.id] = d.habits || []; lmap[c.id] = d.lockedHabits || []; mmap[c.id] = { solatPause: d.solatPause, canCutiSolat: d.canCutiSolat, solatWajib: d.solatWajib, offToday: d.offTodayHabits || [] } }
       } catch { /* ignore */ }
     }))
     setHabitsByChild(map)
@@ -45,6 +45,14 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
     if (!next && !confirm(L('Matikan Mod Percaya? Habit ini perlu disahkan semula oleh anda.', 'Turn off Trust Mode? You will need to verify this habit again.', 'Matikan Mode Percaya?', 'إيقاف وضع الثقة؟'))) return
     setHabitsByChild(prev => ({ ...prev, [childId]: (prev[childId] || []).map(x => x.id === h.id ? { ...x, autoVerify: next } : x) }))
     await fetch(`/api/habits/${h.id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoVerify: next }) }).catch(() => {})
+  }
+
+  // Start every "next week" habit today (parent decides they're ready)
+  const [unlocking, setUnlocking] = useState(null)
+  const unlockNow = async (childId) => {
+    setUnlocking(childId)
+    try { await fetch(`/api/children/${childId}/habits/unlock-now`, { method: 'POST', credentials: 'include' }) } catch { /* ignore */ }
+    await load(); setUnlocking(null)
   }
 
   const filterLabel = {
@@ -216,6 +224,22 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {lockedByChild[c.id].map(h => (
                       <span key={h.id} className="px-2 py-0.5 rounded-full bg-gray-100 text-[11px] font-bold text-eq-ink/55">{habitTitle(h, lang)}</span>
+                    ))}
+                  </div>
+                  <button onClick={() => unlockNow(c.id)} disabled={unlocking === c.id} data-testid={`tasks-unlock-now-${c.id}`}
+                    className="mt-2 w-full rounded-xl bg-emerald-500 text-white text-[12px] font-extrabold py-2 active:scale-[0.99] disabled:opacity-50">
+                    🔓 {unlocking === c.id ? '…' : L('Mulakan semua hari ini', 'Start all of them today', 'Mulai semua hari ini', 'ابدأ الكل اليوم')}
+                  </button>
+                </div>
+              )}
+              {(metaByChild[c.id]?.offToday || []).length > 0 && (
+                <div className="rounded-xl bg-white/60 px-3 py-2" data-testid={`tasks-offtoday-${c.id}`}>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-eq-ink/45">
+                    🌙 {L('Rehat hari ini (ikut jadual hari)', 'Not scheduled today', 'Libur hari ini (sesuai jadwal)', 'غير مجدولة اليوم')}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {metaByChild[c.id].offToday.map(h => (
+                      <span key={h.id} className="px-2 py-0.5 rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-700/70">{habitTitle(h, lang)}</span>
                     ))}
                   </div>
                 </div>
