@@ -20,18 +20,21 @@ const dayLabel = (d, lang) => {
 /** Fetch the catch-up summary (used for the entry button badge). */
 export function useCatchUp(childId, refreshKey = 0) {
   const [days, setDays] = useState([])
+  const [until, setUntil] = useState(null)
   useEffect(() => {
     if (!childId) return
     let off = false
     fetch(`/api/children/${childId}/catchup`, { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : { days: [] })).then(d => { if (!off) setDays(d.days || []) }).catch(() => {})
+      .then(r => (r.ok ? r.json() : { days: [] })).then(d => { if (!off) { setDays(d.days || []); setUntil(d.kidUntil || null) } }).catch(() => {})
     return () => { off = true }
   }, [childId, refreshKey])
+  days.kidUntil = until
   return days
 }
 
 export default function CatchUpSheet({ open, onClose, child, lang = 'en', mode = 'parent', onChanged }) {
   const [days, setDays] = useState(null)
+  const [until, setUntil] = useState(null)
   const [date, setDate] = useState(null)
   const [rows, setRows] = useState(null)
   const [busy, setBusy] = useState(null)
@@ -44,6 +47,7 @@ export default function CatchUpSheet({ open, onClose, child, lang = 'en', mode =
     const r = await fetch(`/api/children/${child.id}/catchup`, { credentials: 'include' }).catch(() => null)
     const d = r?.ok ? await r.json() : { days: [] }
     setDays(d.days || [])
+    setUntil(d.kidUntil || null)
     setDate(prev => (prev && (d.days || []).some(x => x.dateStr === prev)) ? prev : (d.days?.[0]?.dateStr || null))
   }, [child?.id])
 
@@ -103,7 +107,7 @@ export default function CatchUpSheet({ open, onClose, child, lang = 'en', mode =
             </div>
             <div className="text-[10px] text-eq-ink/50 mt-0.5">
               {mode === 'kid'
-                ? L(lang, 'Boleh tanda semalam sehingga 2 petang. Ibu/Ayah akan sahkan.', 'You can tick yesterday until 2 pm. A parent will check it.', 'Bisa centang kemarin sampai jam 2 siang.', 'يمكنك حتى الساعة ٢ ظهراً.')
+                ? L(lang, `Boleh tanda semalam sehingga Maghrib${until ? ` (${until})` : ''}. Ibu/Ayah akan sahkan.`, `You can tick yesterday until Maghrib${until ? ` (${until})` : ''}. A parent will check it.`, `Bisa centang kemarin sampai Maghrib${until ? ` (${until})` : ''}.`, `يمكنك حتى المغرب${until ? ` (${until})` : ''}.`)
                 : L(lang, 'Sehingga 7 hari ke belakang. Mata, rantaian & laporan dikira untuk hari sebenar.', 'Up to 7 days back. Points, streaks & reports count for the real day.', 'Hingga 7 hari ke belakang.', 'حتى ٧ أيام للخلف.')}
             </div>
           </div>
@@ -204,7 +208,7 @@ export function CatchUpButton({ days = [], lang = 'en', mode = 'parent', onClick
       <span className="text-2xl">🌙</span>
       <div className="flex-1 text-left">
         <div className="text-[13px] font-black leading-tight">{L(lang, 'Lupa tanda semalam?', 'Forgot to tick yesterday?', 'Lupa centang kemarin?', 'نسيت التحديد أمس؟')}</div>
-        <div className="text-[11px] opacity-85">{L(lang, `${missed} habit belum ditanda · tanda sebelum 2 petang`, `${missed} not ticked · update before 2 pm`, `${missed} belum dicentang`, `${missed} غير محددة`)}</div>
+        <div className="text-[11px] opacity-85">{L(lang, `${missed} habit belum ditanda · sebelum Maghrib${days.kidUntil ? ` (${days.kidUntil})` : ''}`, `${missed} not ticked · update before Maghrib${days.kidUntil ? ` (${days.kidUntil})` : ''}`, `${missed} belum dicentang · sebelum Maghrib`, `${missed} غير محددة · قبل المغرب`)}</div>
       </div>
       <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-black">{L(lang, 'Kemas kini', 'Update', 'Perbarui', 'تحديث')}</span>
     </button>

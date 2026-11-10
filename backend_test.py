@@ -1,815 +1,385 @@
 #!/usr/bin/env python3
 """
-Backend Test: Multi-Time Habit Feature
-Tests recurring:'multi' with sessions array, clockTimes validation, session claims, and regression.
+Backend test for Maghrib-based kid catch-up cutoff.
+Tests that kid catch-up cutoff changed from fixed 14:00 to today's Maghrib time.
 """
+import os
+import sys
 import requests
 import subprocess
-import sys
-import json
-from datetime import datetime
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+import pytz
 
-# Get base URL from .env
-BASE_URL = "https://pwa-trial-cohort.preview.emergentagent.com/api"
+# Config
+BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://pwa-trial-cohort.preview.emergentagent.com')
+API_URL = f'{BASE_URL}/api'
+MONGO_URL = os.getenv('MONGO_URL', 'mongodb://localhost:27017')
+DB_NAME = os.getenv('DB_NAME', 'eqrel')
 
-def get_auth_cookie():
-    """Run seed script to get auth cookie and test family data"""
+# Malaysia timezone
+KL_TZ = pytz.timezone('Asia/Kuala_Lumpur')
+
+def get_local_time():
+    """Get current time in Asia/Kuala_Lumpur timezone"""
+    return datetime.now(KL_TZ)
+
+def get_local_date_str():
+    """Get current date string in Asia/Kuala_Lumpur timezone"""
+    return get_local_time().strftime('%Y-%m-%d')
+
+def get_yesterday_utc():
+    """Get yesterday's date in UTC (YYYY-MM-DD)"""
+    return (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+
+def format_time_hhmm(dt):
+    """Format datetime to HH:MM"""
+    return dt.strftime('%H:%M')
+
+def run_seed_script():
+    """Run seed_test_family.py and extract credentials"""
+    print("\n=== Running seed_test_family.py ===")
     result = subprocess.run(['python', '/app/scripts/seed_test_family.py'], 
                           capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"❌ Failed to seed test family: {result.stderr}")
+        print(f"❌ Seed script failed: {result.stderr}")
         sys.exit(1)
     
-    lines = result.stdout.strip().split('\n')
-    data = {}
-    for line in lines:
+    # Parse output
+    creds = {}
+    for line in result.stdout.strip().split('\n'):
         if '=' in line:
-            key, value = line.split('=', 1)
-            data[key] = value
+            key, val = line.split('=', 1)
+            creds[key] = val
     
-    cookie_value = data.get('COOKIE', '').replace('eqrel_session=', '')
-    return {
-        'cookie': cookie_value,
-        'child1': data.get('CHILD_ID_1'),
-        'child2': data.get('CHILD_ID_2'),
-        'family': data.get('FAMILY_ID')
-    }
+    print(f"✅ Test family created: {creds.get('FAMILY_ID')}")
+    print(f"   Child 1: {creds.get('CHILD_ID_1')}")
+    print(f"   Child 2: {creds.get('CHILD_ID_2')}")
+    return creds
 
-def cleanup():
-    """Cleanup test data"""
-    result = subprocess.run(['python', '/app/scripts/cleanup_test_family.py'], 
+def create_kid_device(parent_cookie, child_id):
+    """Create kid device and return kid session cookie"""
+    print(f"\n=== Creating kid device for child {child_id} ===")
+    
+    # Step 1: Kid device start
+    resp = requests.post(f'{API_URL}/kid/device/start')
+    if resp.status_code != 200:
+        print(f"❌ Kid device start failed: {resp.status_code} {resp.text}")
+        return None
+    
+    device_data = resp.json()
+    device_id = device_data['deviceId']
+    secret = device_data['secret']
+    code = device_data['code']
+    print(f"✅ Kid device started: code={code}")
+    
+    # Step 2: Parent approves
+    resp = requests.post(f'{API_URL}/kid/device/approve',
+                        json={'code': code, 'childId': child_id},
+                        cookies={'eqrel_session': parent_cookie})
+    if resp.status_code != 200:
+        print(f"❌ Kid device approve failed: {resp.status_code} {resp.text}")
+        return None
+    print(f"✅ Kid device approved by parent")
+    
+    # Step 3: Kid connects
+    resp = requests.post(f'{API_URL}/kid/device/connect',
+                        json={'deviceId': device_id, 'secret': secret})
+    if resp.status_code != 200:
+        print(f"❌ Kid device connect failed: {resp.status_code} {resp.text}")
+        return None
+    
+    # Extract session cookie
+    kid_cookie = resp.cookies.get('eqrel_session')
+    if not kid_cookie:
+        print(f"❌ No session cookie in connect response")
+        return None
+    
+    print(f"✅ Kid device connected, session cookie obtained")
+    return kid_cookie
+
+def test_maghrib_cutoff():
+    """Main test function"""
+    print("\n" + "="*80)
+    print("TESTING: Kid Catch-up Cutoff Changed to Maghrib Time")
+    print("="*80)
+    
+    # Setup
+    creds = run_seed_script()
+    parent_cookie = creds['COOKIE']
+    family_id = creds['FAMILY_ID']
+    child_id = creds['CHILD_ID_1']
+    
+    # Create kid device
+    kid_cookie = create_kid_device(parent_cookie, child_id)
+    if not kid_cookie:
+        print("❌ Failed to create kid device")
+        sys.exit(1)
+    
+    # Connect to MongoDB
+    client = MongoClient(MONGO_URL)
+    db = client[DB_NAME]
+    
+    # Get current local time
+    local_now = get_local_time()
+    local_date_str = get_local_date_str()
+    yesterday_utc = get_yesterday_utc()
+    
+    print(f"\n📅 Current local time (KL): {local_now.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📅 Local date string: {local_date_str}")
+    print(f"📅 Yesterday UTC: {yesterday_utc}")
+    
+    # Get a habit ID for testing and backdate it
+    habit = db.habits.find_one({'childId': child_id, 'active': True})
+    if not habit:
+        print("❌ No active habit found for child")
+        sys.exit(1)
+    habit_id = habit['id']
+    
+    # Backdate habit creation to 30 days ago so we can claim yesterday
+    backdated_created_at = datetime.utcnow() - timedelta(days=30)
+    db.habits.update_one(
+        {'id': habit_id},
+        {'$set': {'createdAt': backdated_created_at}}
+    )
+    print(f"\n✅ Using habit: {habit['title']} (ID: {habit_id})")
+    print(f"   Backdated createdAt to: {backdated_created_at.strftime('%Y-%m-%d')}")
+    
+    # TEST 1: Maghrib 1 hour AFTER current time → kid can claim yesterday
+    print("\n" + "="*80)
+    print("TEST 1: Maghrib 1 hour AFTER current time → kid can claim yesterday")
+    print("="*80)
+    
+    maghrib_after = local_now + timedelta(hours=1)
+    maghrib_after_str = format_time_hhmm(maghrib_after)
+    print(f"Setting Maghrib to: {maghrib_after_str} (1 hour after current time)")
+    
+    # Insert prayer_times_cache
+    db.prayer_times_cache.delete_many({'familyId': family_id})
+    db.prayer_times_cache.insert_one({
+        'familyId': family_id,
+        'dateStr': local_date_str,
+        'timings': {
+            'Fajr': '06:00',
+            'Dhuhr': '13:00',
+            'Asr': '16:30',
+            'Maghrib': maghrib_after_str,
+            'Isha': '20:00'
+        }
+    })
+    print(f"✅ Inserted prayer_times_cache for {local_date_str}")
+    
+    # Kid claims yesterday
+    print(f"\nKid claiming yesterday ({yesterday_utc})...")
+    resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                        json={'dateStr': yesterday_utc},
+                        cookies={'eqrel_session': kid_cookie})
+    
+    if resp.status_code == 200:
+        print(f"✅ TEST 1 PASSED: Kid claim yesterday returned 200 (allowed before Maghrib)")
+        claim_data = resp.json()
+        print(f"   Claim status: {claim_data.get('status')}")
+    else:
+        print(f"❌ TEST 1 FAILED: Expected 200, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+    
+    # Check GET /api/children/:id/catchup (use parent cookie - kid sessions can't access this endpoint)
+    print(f"\nChecking GET /api/children/{child_id}/catchup...")
+    resp = requests.get(f'{API_URL}/children/{child_id}/catchup',
+                       cookies={'eqrel_session': parent_cookie})
+    
+    if resp.status_code == 200:
+        catchup_data = resp.json()
+        kid_until = catchup_data.get('kidUntil')
+        print(f"✅ GET catchup returned 200")
+        print(f"   kidUntil: {kid_until}")
+        
+        if kid_until == maghrib_after_str:
+            print(f"✅ TEST 1 PASSED: kidUntil matches Maghrib time ({maghrib_after_str})")
+        else:
+            print(f"❌ TEST 1 FAILED: kidUntil={kid_until}, expected {maghrib_after_str}")
+    else:
+        print(f"❌ GET catchup failed: {resp.status_code} {resp.text}")
+    
+    # Clean up claim for next test
+    db.habit_claims.delete_many({'habitId': habit_id, 'dateStr': yesterday_utc})
+    
+    # TEST 2: Maghrib 1 hour BEFORE current time → kid cannot claim yesterday
+    print("\n" + "="*80)
+    print("TEST 2: Maghrib 1 hour BEFORE current time → kid cannot claim yesterday")
+    print("="*80)
+    
+    maghrib_before = local_now - timedelta(hours=1)
+    maghrib_before_str = format_time_hhmm(maghrib_before)
+    print(f"Setting Maghrib to: {maghrib_before_str} (1 hour before current time)")
+    
+    # Update prayer_times_cache
+    db.prayer_times_cache.update_one(
+        {'familyId': family_id, 'dateStr': local_date_str},
+        {'$set': {'timings.Maghrib': maghrib_before_str}}
+    )
+    print(f"✅ Updated prayer_times_cache Maghrib to {maghrib_before_str}")
+    
+    # Kid tries to claim yesterday
+    print(f"\nKid claiming yesterday ({yesterday_utc})...")
+    resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                        json={'dateStr': yesterday_utc},
+                        cookies={'eqrel_session': kid_cookie})
+    
+    if resp.status_code == 400:
+        print(f"✅ TEST 2 PASSED: Kid claim yesterday returned 400 (blocked after Maghrib)")
+        print(f"   Error: {resp.json().get('error')}")
+    else:
+        print(f"❌ TEST 2 FAILED: Expected 400, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+    
+    # Check GET catchup with parent cookie (parent sees 7-day window)
+    resp = requests.get(f'{API_URL}/children/{child_id}/catchup',
+                       cookies={'eqrel_session': parent_cookie})
+    
+    if resp.status_code == 200:
+        catchup_data = resp.json()
+        days = catchup_data.get('days', [])
+        kid_until = catchup_data.get('kidUntil')
+        print(f"✅ GET catchup returned 200")
+        print(f"   kidUntil: {kid_until}")
+        print(f"   Parent sees {len(days)} days (7-day window)")
+        
+        if kid_until == maghrib_before_str:
+            print(f"✅ TEST 2 PASSED: kidUntil correctly shows Maghrib cutoff ({maghrib_before_str})")
+        else:
+            print(f"❌ TEST 2 FAILED: kidUntil={kid_until}, expected {maghrib_before_str}")
+        
+        # Note: Parent session returns 7-day window, kid session would return empty array
+        print(f"   Note: Kid session would see empty days array (after Maghrib cutoff)")
+    else:
+        print(f"❌ GET catchup failed: {resp.status_code} {resp.text}")
+    
+    # TEST 3: No cache doc → fallback to 19:15
+    print("\n" + "="*80)
+    print("TEST 3: No cache doc → fallback to 19:15")
+    print("="*80)
+    
+    # Delete prayer_times_cache
+    db.prayer_times_cache.delete_many({'familyId': family_id})
+    print(f"✅ Deleted all prayer_times_cache docs for family")
+    
+    # Check GET catchup (use parent cookie)
+    resp = requests.get(f'{API_URL}/children/{child_id}/catchup',
+                       cookies={'eqrel_session': parent_cookie})
+    
+    if resp.status_code == 200:
+        catchup_data = resp.json()
+        kid_until = catchup_data.get('kidUntil')
+        print(f"✅ GET catchup returned 200")
+        print(f"   kidUntil: {kid_until}")
+        
+        if kid_until == '19:15':
+            print(f"✅ TEST 3 PASSED: kidUntil fallback to 19:15 when no cache doc")
+        else:
+            print(f"❌ TEST 3 FAILED: kidUntil={kid_until}, expected 19:15")
+    else:
+        print(f"❌ GET catchup failed: {resp.status_code} {resp.text}")
+    
+    # Test claim behavior with fallback
+    current_hour = local_now.hour
+    current_minute = local_now.minute
+    current_minutes = current_hour * 60 + current_minute
+    fallback_minutes = 19 * 60 + 15  # 19:15 = 1155 minutes
+    
+    print(f"\nCurrent time: {local_now.strftime('%H:%M')} ({current_minutes} minutes)")
+    print(f"Fallback cutoff: 19:15 ({fallback_minutes} minutes)")
+    
+    if current_minutes < fallback_minutes:
+        print(f"Current time is BEFORE 19:15 → kid should be able to claim yesterday")
+        resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                            json={'dateStr': yesterday_utc},
+                            cookies={'eqrel_session': kid_cookie})
+        
+        if resp.status_code == 200:
+            print(f"✅ TEST 3 PASSED: Kid claim allowed before 19:15 fallback")
+        else:
+            print(f"❌ TEST 3 FAILED: Expected 200, got {resp.status_code}")
+            print(f"   Response: {resp.text}")
+        
+        # Clean up
+        db.habit_claims.delete_many({'habitId': habit_id, 'dateStr': yesterday_utc})
+    else:
+        print(f"Current time is AFTER 19:15 → kid should NOT be able to claim yesterday")
+        resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                            json={'dateStr': yesterday_utc},
+                            cookies={'eqrel_session': kid_cookie})
+        
+        if resp.status_code == 400:
+            print(f"✅ TEST 3 PASSED: Kid claim blocked after 19:15 fallback")
+        else:
+            print(f"❌ TEST 3 FAILED: Expected 400, got {resp.status_code}")
+            print(f"   Response: {resp.text}")
+    
+    # TEST 4: Parent 7-day window unaffected
+    print("\n" + "="*80)
+    print("TEST 4: Parent 7-day window unaffected")
+    print("="*80)
+    
+    # Parent should be able to claim up to 7 days back regardless of Maghrib time
+    days_ago_7 = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d')
+    days_ago_8 = (datetime.utcnow() - timedelta(days=8)).strftime('%Y-%m-%d')
+    
+    print(f"Parent claiming 7 days ago ({days_ago_7})...")
+    resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                        json={'dateStr': days_ago_7, 'status': 'claimed'},
+                        cookies={'eqrel_session': parent_cookie})
+    
+    if resp.status_code == 200:
+        print(f"✅ TEST 4 PASSED: Parent can claim 7 days ago (200)")
+    else:
+        print(f"❌ TEST 4 FAILED: Expected 200, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+    
+    # Clean up
+    db.habit_claims.delete_many({'habitId': habit_id, 'dateStr': days_ago_7})
+    
+    print(f"\nParent claiming 8 days ago ({days_ago_8})...")
+    resp = requests.post(f'{API_URL}/habits/{habit_id}/claim',
+                        json={'dateStr': days_ago_8, 'status': 'claimed'},
+                        cookies={'eqrel_session': parent_cookie})
+    
+    if resp.status_code == 400:
+        print(f"✅ TEST 4 PASSED: Parent cannot claim 8 days ago (400)")
+        print(f"   Error: {resp.json().get('error')}")
+    else:
+        print(f"❌ TEST 4 FAILED: Expected 400, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+    
+    # Cleanup
+    print("\n" + "="*80)
+    print("CLEANUP")
+    print("="*80)
+    
+    # Delete prayer_times_cache docs
+    result = db.prayer_times_cache.delete_many({'familyId': family_id})
+    print(f"✅ Deleted {result.deleted_count} prayer_times_cache docs")
+    
+    # Run cleanup script
+    print("\nRunning cleanup_test_family.py...")
+    result = subprocess.run(['python', '/app/scripts/cleanup_test_family.py'],
                           capture_output=True, text=True)
     if result.returncode == 0:
-        print("✅ Cleanup completed successfully")
+        print(f"✅ Cleanup completed: {result.stdout.strip()}")
     else:
-        print(f"⚠️  Cleanup warning: {result.stderr}")
-
-def test_multi_time_habit_creation(auth):
-    """
-    TEST 1: POST /api/children/<kid>/habits with recurring:'multi'
-    - Sessions array with valid + invalid (bogus) sessions
-    - clockTimes with valid + invalid times
-    - Verify: bogus sessions dropped, invalid clockTimes dropped, sessions ordered
-    """
+        print(f"❌ Cleanup failed: {result.stderr}")
+    
+    client.close()
+    
     print("\n" + "="*80)
-    print("TEST 1: Multi-Time Habit Creation with Validation")
+    print("ALL TESTS COMPLETED")
     print("="*80)
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Create multi-time habit with mixed valid/invalid data
-        payload = {
-            'title': 'TEST_Makan',
-            'category': 'kesihatan',
-            'points': 5,
-            'recurring': 'multi',
-            'sessions': ['isyak', 'subuh', 'zohor', 'bogus'],  # bogus should be dropped
-            'clockTimes': {
-                'subuh': '07:30',    # valid
-                'zohor': '25:00',    # invalid hour
-                'asar': '16:00',     # valid but not in sessions
-                'isyak': '20:00'     # valid
-            }
-        }
-        
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits")
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 1 FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return None
-        
-        data = response.json()
-        habit = data.get('habit')
-        
-        if not habit:
-            print(f"❌ TEST 1 FAILED: No habit in response")
-            return None
-        
-        print(f"\n✅ Habit created: {habit['id']}")
-        print(f"   Title: {habit['title']}")
-        print(f"   Recurring: {habit['recurring']}")
-        print(f"   Sessions: {habit.get('sessions', [])}")
-        print(f"   Session (single): {habit.get('session')}")
-        print(f"   ClockTimes: {habit.get('clockTimes', {})}")
-        
-        # Validate results
-        errors = []
-        
-        # Check recurring is 'multi'
-        if habit['recurring'] != 'multi':
-            errors.append(f"recurring should be 'multi', got '{habit['recurring']}'")
-        
-        # Check sessions are ordered and bogus is dropped
-        expected_sessions = ['subuh', 'zohor', 'isyak']  # ordered by SLOT_IDS, bogus dropped
-        if habit.get('sessions') != expected_sessions:
-            errors.append(f"sessions should be {expected_sessions}, got {habit.get('sessions')}")
-        
-        # Check session is 'anytime' for multi
-        if habit.get('session') != 'anytime':
-            errors.append(f"session should be 'anytime' for multi, got '{habit.get('session')}'")
-        
-        # Check clockTimes: only subuh (valid + in sessions), invalid and non-chosen dropped
-        expected_clock = {'subuh': '07:30', 'isyak': '20:00'}  # zohor invalid, asar not in sessions
-        if habit.get('clockTimes') != expected_clock:
-            errors.append(f"clockTimes should be {expected_clock}, got {habit.get('clockTimes')}")
-        
-        if errors:
-            print(f"\n❌ TEST 1 FAILED:")
-            for err in errors:
-                print(f"   - {err}")
-            return None
-        
-        print(f"\n✅ TEST 1 PASSED: Multi-time habit created with correct validation")
-        print(f"   ✓ Bogus session 'bogus' dropped")
-        print(f"   ✓ Sessions ordered: {expected_sessions}")
-        print(f"   ✓ Invalid clockTime '25:00' dropped")
-        print(f"   ✓ Non-chosen clockTime 'asar' dropped")
-        print(f"   ✓ Valid clockTimes kept: {expected_clock}")
-        
-        return habit['id']
-        
-    except Exception as e:
-        print(f"❌ TEST 1 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-def test_single_session_fallback(auth):
-    """
-    TEST 2: Fallback to 'daily' when only 1 session provided
-    Also test single-slot daily habit with session + clockTime
-    """
-    print("\n" + "="*80)
-    print("TEST 2: Single Session Fallback to Daily")
-    print("="*80)
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Test 2a: recurring:'multi' with only 1 session should fallback to 'daily'
-        payload = {
-            'title': 'TEST_Single_Session',
-            'category': 'ibadah',
-            'points': 10,
-            'recurring': 'multi',
-            'sessions': ['asar']  # Only 1 session
-        }
-        
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits (multi with 1 session)")
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 2a FAILED: Expected 200, got {response.status_code}")
-            return None, None
-        
-        data = response.json()
-        habit = data.get('habit')
-        
-        print(f"\n✅ Habit created: {habit['id']}")
-        print(f"   Recurring: {habit['recurring']}")
-        print(f"   Sessions: {habit.get('sessions', [])}")
-        
-        if habit['recurring'] != 'daily':
-            print(f"❌ TEST 2a FAILED: Expected fallback to 'daily', got '{habit['recurring']}'")
-            return None, None
-        
-        if habit.get('sessions') != []:
-            print(f"❌ TEST 2a FAILED: Expected empty sessions array, got {habit.get('sessions')}")
-            return None, None
-        
-        print(f"✅ TEST 2a PASSED: Multi with 1 session correctly fell back to 'daily'")
-        habit_2a = habit['id']
-        
-        # Test 2b: Single-slot daily habit with session + clockTime
-        payload = {
-            'title': 'TEST_Daily_Maghrib',
-            'category': 'ibadah',
-            'points': 15,
-            'recurring': 'daily',
-            'session': 'maghrib',
-            'clockTimes': {
-                'maghrib': '19:45'
-            }
-        }
-        
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits (daily with session)")
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 2b FAILED: Expected 200, got {response.status_code}")
-            return habit_2a, None
-        
-        data = response.json()
-        habit = data.get('habit')
-        
-        print(f"\n✅ Habit created: {habit['id']}")
-        print(f"   Recurring: {habit['recurring']}")
-        print(f"   Session: {habit.get('session')}")
-        print(f"   ClockTimes: {habit.get('clockTimes', {})}")
-        
-        if habit['recurring'] != 'daily':
-            print(f"❌ TEST 2b FAILED: Expected 'daily', got '{habit['recurring']}'")
-            return habit_2a, None
-        
-        if habit.get('session') != 'maghrib':
-            print(f"❌ TEST 2b FAILED: Expected session 'maghrib', got '{habit.get('session')}'")
-            return habit_2a, None
-        
-        if habit.get('clockTimes') != {'maghrib': '19:45'}:
-            print(f"❌ TEST 2b FAILED: Expected clockTimes {{'maghrib': '19:45'}}, got {habit.get('clockTimes')}")
-            return habit_2a, None
-        
-        print(f"✅ TEST 2b PASSED: Daily habit with session + clockTime kept correctly")
-        
-        return habit_2a, habit['id']
-        
-    except Exception as e:
-        print(f"❌ TEST 2 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None, None
-
-def test_multi_time_claims(auth, multi_habit_id):
-    """
-    TEST 3: POST /api/habits/<multi>/claim with session parameter
-    - Claim without session should return 400
-    - Claim with session 'subuh' should succeed
-    - Claim with session 'zohor' should succeed
-    - Check child mataBina increased by total points
-    - GET /api/children/<kid>/habits should show sessionsClaimed
-    """
-    print("\n" + "="*80)
-    print("TEST 3: Multi-Time Habit Claims with Session")
-    print("="*80)
-    
-    if not multi_habit_id:
-        print("⚠️  Skipping TEST 3: No multi-time habit ID from TEST 1")
-        return False
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Get initial mataBina
-        response = requests.get(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            cookies=cookies
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ Failed to get initial state: {response.status_code}")
-            return False
-        
-        data = response.json()
-        child = data.get('child', {})
-        initial_bina = child.get('mataBina', 0)
-        print(f"\n📊 Initial mataBina: {initial_bina}")
-        
-        # Test 3a: Claim without session (should fail)
-        print(f"\n📤 POST /api/habits/{multi_habit_id}/claim (no session)")
-        response = requests.post(
-            f"{BASE_URL}/habits/{multi_habit_id}/claim",
-            json={'rubric': 'sah'},
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 400:
-            print(f"❌ TEST 3a FAILED: Expected 400 for missing session, got {response.status_code}")
-            return False
-        
-        print(f"✅ TEST 3a PASSED: Claim without session correctly rejected (400)")
-        
-        # Test 3b: Claim with session 'subuh'
-        print(f"\n📤 POST /api/habits/{multi_habit_id}/claim (session='subuh', rubric='sah')")
-        response = requests.post(
-            f"{BASE_URL}/habits/{multi_habit_id}/claim",
-            json={'rubric': 'sah', 'session': 'subuh'},
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 3b FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        points_subuh = data.get('points', 0)
-        print(f"✅ TEST 3b PASSED: Subuh session claimed, points awarded: {points_subuh}")
-        
-        # Test 3c: Claim with session 'zohor'
-        print(f"\n📤 POST /api/habits/{multi_habit_id}/claim (session='zohor', rubric='sah')")
-        response = requests.post(
-            f"{BASE_URL}/habits/{multi_habit_id}/claim",
-            json={'rubric': 'sah', 'session': 'zohor'},
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 3c FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        points_zohor = data.get('points', 0)
-        print(f"✅ TEST 3c PASSED: Zohor session claimed, points awarded: {points_zohor}")
-        
-        # Test 3d: Check mataBina increased (with retry for DB propagation)
-        import time
-        time.sleep(0.5)  # Small delay for DB update
-        
-        response = requests.get(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            cookies=cookies
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ Failed to get updated state: {response.status_code}")
-            return False
-        
-        data = response.json()
-        child = data.get('child', {})
-        final_bina = child.get('mataBina', 0)
-        expected_increase = points_subuh + points_zohor
-        actual_increase = final_bina - initial_bina
-        
-        print(f"\n📊 Final mataBina: {final_bina}")
-        print(f"   Expected increase: {expected_increase}")
-        print(f"   Actual increase: {actual_increase}")
-        
-        if actual_increase == expected_increase:
-            print(f"✅ TEST 3d PASSED: mataBina increased correctly by {expected_increase}")
-        else:
-            # Note: mataBina update might have propagation delay, but claims were successful
-            print(f"⚠️  TEST 3d: mataBina not yet updated (DB propagation delay)")
-            print(f"   Claims were created successfully (verified by 200 responses)")
-        
-        # Test 3e: Check sessionsClaimed in GET response
-        habits = data.get('habits', [])
-        multi_habit = next((h for h in habits if h['id'] == multi_habit_id), None)
-        
-        if not multi_habit:
-            print(f"❌ TEST 3e FAILED: Multi-time habit not found in GET response")
-            return False
-        
-        sessions_claimed = multi_habit.get('sessionsClaimed', [])
-        print(f"\n📊 sessionsClaimed: {sessions_claimed}")
-        
-        if 'subuh' not in sessions_claimed or 'zohor' not in sessions_claimed:
-            print(f"❌ TEST 3e FAILED: Expected ['subuh', 'zohor'] in sessionsClaimed, got {sessions_claimed}")
-            return False
-        
-        print(f"✅ TEST 3e PASSED: sessionsClaimed contains both 'subuh' and 'zohor'")
-        
-        print(f"\n✅ TEST 3 PASSED: All multi-time claim tests successful")
-        return True
-        
-    except Exception as e:
-        print(f"❌ TEST 3 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def test_patch_multi_habit(auth, multi_habit_id):
-    """
-    TEST 4: PATCH /api/habits/<multi> to update sessions
-    - Update sessions array
-    - Change from multi to daily
-    """
-    print("\n" + "="*80)
-    print("TEST 4: PATCH Multi-Time Habit")
-    print("="*80)
-    
-    if not multi_habit_id:
-        print("⚠️  Skipping TEST 4: No multi-time habit ID from TEST 1")
-        return False
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Test 4a: Update sessions array
-        print(f"\n📤 PATCH /api/habits/{multi_habit_id}")
-        payload = {
-            'sessions': ['subuh', 'maghrib'],
-            'recurring': 'multi'
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.patch(
-            f"{BASE_URL}/habits/{multi_habit_id}",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 4a FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        habit = data.get('habit')
-        
-        print(f"\n✅ Habit updated")
-        print(f"   Sessions: {habit.get('sessions', [])}")
-        
-        if habit.get('sessions') != ['subuh', 'maghrib']:
-            print(f"❌ TEST 4a FAILED: Expected ['subuh', 'maghrib'], got {habit.get('sessions')}")
-            return False
-        
-        print(f"✅ TEST 4a PASSED: Sessions updated to ['subuh', 'maghrib']")
-        
-        # Test 4b: Change from multi to daily
-        print(f"\n📤 PATCH /api/habits/{multi_habit_id} (change to daily)")
-        payload = {
-            'recurring': 'daily',
-            'session': 'asar'
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.patch(
-            f"{BASE_URL}/habits/{multi_habit_id}",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 4b FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        habit = data.get('habit')
-        
-        print(f"\n✅ Habit updated")
-        print(f"   Recurring: {habit.get('recurring')}")
-        print(f"   Session: {habit.get('session')}")
-        print(f"   Sessions: {habit.get('sessions', [])}")
-        
-        if habit.get('recurring') != 'daily':
-            print(f"❌ TEST 4b FAILED: Expected recurring 'daily', got '{habit.get('recurring')}'")
-            return False
-        
-        if habit.get('sessions') != []:
-            print(f"❌ TEST 4b FAILED: Expected empty sessions array, got {habit.get('sessions')}")
-            return False
-        
-        if habit.get('session') != 'asar':
-            print(f"❌ TEST 4b FAILED: Expected session 'asar', got '{habit.get('session')}'")
-            return False
-        
-        print(f"✅ TEST 4b PASSED: Habit changed from multi to daily correctly")
-        
-        print(f"\n✅ TEST 4 PASSED: All PATCH tests successful")
-        return True
-        
-    except Exception as e:
-        print(f"❌ TEST 4 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def test_family_template_multi(auth):
-    """
-    TEST 5: POST /api/habit-templates with recurring:'multi'
-    - Create template with multi-time habit
-    - Assign to multiple children
-    - Create habit from template using familyTemplateId
-    """
-    print("\n" + "="*80)
-    print("TEST 5: Family Template with Multi-Time Habit")
-    print("="*80)
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Test 5a: Create family template with multi-time habit
-        print(f"\n📤 POST /api/habit-templates")
-        payload = {
-            'title': 'TEST_Family_Multi',
-            'category': 'ibadah',
-            'points': 8,
-            'recurring': 'multi',
-            'sessions': ['subuh', 'zohor', 'maghrib'],
-            'clockTimes': {
-                'subuh': '06:00',
-                'maghrib': '19:00'
-            },
-            'childIds': [auth['child1'], auth['child2']]
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/habit-templates",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 5a FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        template = data.get('template')
-        habits = data.get('habits', [])
-        
-        print(f"\n✅ Template created: {template['id']}")
-        print(f"   Title: {template['title']}")
-        print(f"   Recurring: {template['recurring']}")
-        print(f"   Sessions: {template.get('sessions', [])}")
-        print(f"   ClockTimes: {template.get('clockTimes', {})}")
-        print(f"   Habits created: {len(habits)}")
-        
-        if template['recurring'] != 'multi':
-            print(f"❌ TEST 5a FAILED: Expected recurring 'multi', got '{template['recurring']}'")
-            return False
-        
-        if template.get('sessions') != ['subuh', 'zohor', 'maghrib']:
-            print(f"❌ TEST 5a FAILED: Expected sessions ['subuh', 'zohor', 'maghrib'], got {template.get('sessions')}")
-            return False
-        
-        if len(habits) != 2:
-            print(f"❌ TEST 5a FAILED: Expected 2 habits created, got {len(habits)}")
-            return False
-        
-        # Check both habits have the same timing
-        for i, habit in enumerate(habits):
-            print(f"\n   Habit {i+1}: {habit['id']}")
-            print(f"      Child: {habit['childId']}")
-            print(f"      Recurring: {habit['recurring']}")
-            print(f"      Sessions: {habit.get('sessions', [])}")
-            print(f"      ClockTimes: {habit.get('clockTimes', {})}")
-            
-            if habit['recurring'] != 'multi':
-                print(f"❌ TEST 5a FAILED: Habit {i+1} recurring should be 'multi', got '{habit['recurring']}'")
-                return False
-            
-            if habit.get('sessions') != ['subuh', 'zohor', 'maghrib']:
-                print(f"❌ TEST 5a FAILED: Habit {i+1} sessions mismatch")
-                return False
-        
-        print(f"\n✅ TEST 5a PASSED: Family template with multi-time habit created and assigned")
-        
-        # Test 5b: Create habit from template using familyTemplateId
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits (from familyTemplateId)")
-        payload = {
-            'familyTemplateId': template['id']
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 5b FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        
-        # Should return duplicate:true since we already created it in 5a
-        if data.get('duplicate'):
-            print(f"✅ TEST 5b PASSED: Duplicate detection working (habit already exists)")
-        else:
-            habit = data.get('habit')
-            print(f"\n✅ Habit created from template: {habit['id']}")
-            print(f"   Recurring: {habit['recurring']}")
-            print(f"   Sessions: {habit.get('sessions', [])}")
-            
-            if habit['recurring'] != 'multi':
-                print(f"❌ TEST 5b FAILED: Expected recurring 'multi', got '{habit['recurring']}'")
-                return False
-            
-            print(f"✅ TEST 5b PASSED: Habit from template keeps multi-time timing")
-        
-        print(f"\n✅ TEST 5 PASSED: All family template tests successful")
-        return True
-        
-    except Exception as e:
-        print(f"❌ TEST 5 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def test_regression(auth):
-    """
-    TEST 6: Regression - perPrayer and daily habits still work
-    - Create perPrayer habit and claim with session
-    - Create daily habit and claim without session
-    """
-    print("\n" + "="*80)
-    print("TEST 6: Regression - perPrayer and Daily Habits")
-    print("="*80)
-    
-    cookies = {'eqrel_session': auth['cookie']}
-    
-    try:
-        # Test 6a: perPrayer habit
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits (perPrayer)")
-        payload = {
-            'title': 'TEST_PerPrayer_Wudhu',
-            'category': 'ibadah',
-            'points': 10,
-            'recurring': 'perPrayer',
-            'session': 'subuh'
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 6a FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        per_prayer_habit = data.get('habit')
-        
-        print(f"\n✅ perPrayer habit created: {per_prayer_habit['id']}")
-        print(f"   Recurring: {per_prayer_habit['recurring']}")
-        
-        # Claim with session
-        print(f"\n📤 POST /api/habits/{per_prayer_habit['id']}/claim (session='subuh')")
-        response = requests.post(
-            f"{BASE_URL}/habits/{per_prayer_habit['id']}/claim",
-            json={'rubric': 'sah', 'session': 'subuh'},
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 6a FAILED: perPrayer claim failed with {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        print(f"✅ TEST 6a PASSED: perPrayer habit claim with session works")
-        
-        # Test 6b: Daily habit
-        print(f"\n📤 POST /api/children/{auth['child1']}/habits (daily)")
-        payload = {
-            'title': 'TEST_Daily_Reading',
-            'category': 'ibadah',
-            'points': 15,
-            'recurring': 'daily'
-        }
-        print(f"   Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(
-            f"{BASE_URL}/children/{auth['child1']}/habits",
-            json=payload,
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 6b FAILED: Expected 200, got {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        data = response.json()
-        daily_habit = data.get('habit')
-        
-        print(f"\n✅ Daily habit created: {daily_habit['id']}")
-        print(f"   Recurring: {daily_habit['recurring']}")
-        
-        # Claim without session
-        print(f"\n📤 POST /api/habits/{daily_habit['id']}/claim (no session)")
-        response = requests.post(
-            f"{BASE_URL}/habits/{daily_habit['id']}/claim",
-            json={'rubric': 'sah'},
-            cookies=cookies
-        )
-        
-        print(f"   Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"❌ TEST 6b FAILED: Daily claim failed with {response.status_code}")
-            print(f"   Response: {response.text}")
-            return False
-        
-        print(f"✅ TEST 6b PASSED: Daily habit claim without session works")
-        
-        print(f"\n✅ TEST 6 PASSED: All regression tests successful")
-        return True
-        
-    except Exception as e:
-        print(f"❌ TEST 6 EXCEPTION: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def main():
-    """Run all tests"""
-    print("\n" + "="*80)
-    print("MULTI-TIME HABIT BACKEND TESTS")
-    print("="*80)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # Get auth once for all tests
-    print("\n🔐 Setting up test family...")
-    auth = get_auth_cookie()
-    print(f"   Family: {auth['family']}")
-    print(f"   Child 1: {auth['child1']}")
-    print(f"   Child 2: {auth['child2']}")
-    
-    results = {}
-    
-    try:
-        # TEST 1: Multi-time habit creation with validation
-        multi_habit_id = test_multi_time_habit_creation(auth)
-        results['test1'] = multi_habit_id is not None
-        
-        # TEST 2: Single session fallback
-        habit_2a, habit_2b = test_single_session_fallback(auth)
-        results['test2'] = habit_2a is not None and habit_2b is not None
-        
-        # TEST 3: Multi-time claims with session
-        results['test3'] = test_multi_time_claims(auth, multi_habit_id)
-        
-        # TEST 4: PATCH multi-time habit
-        results['test4'] = test_patch_multi_habit(auth, multi_habit_id)
-        
-        # TEST 5: Family template with multi-time
-        results['test5'] = test_family_template_multi(auth)
-        
-        # TEST 6: Regression tests
-        results['test6'] = test_regression(auth)
-        
-    finally:
-        # Always cleanup
-        print("\n" + "="*80)
-        print("CLEANUP")
-        print("="*80)
-        cleanup()
-    
-    # Summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
-    
-    passed = sum(1 for v in results.values() if v)
-    total = len(results)
-    
-    for test, result in results.items():
-        status = "✅ PASSED" if result else "❌ FAILED"
-        print(f"{test.upper()}: {status}")
-    
-    print(f"\nTotal: {passed}/{total} tests passed")
-    print(f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        sys.exit(0)
-    else:
-        print(f"\n⚠️  {total - passed} TEST(S) FAILED")
-        sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    try:
+        test_maghrib_cutoff()
+    except Exception as e:
+        print(f"\n❌ TEST FAILED WITH EXCEPTION: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

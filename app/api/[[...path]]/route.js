@@ -307,12 +307,24 @@ const ensurePointsMigration = async () => {
  * Catch-up window for habits missed on earlier days ("I did it last night but forgot to tick").
  * Child: yesterday only, until 14:00 local (≈ Zohor). Parent: up to 7 days back. Claims keep the real day.
  */
-const KID_CATCHUP_UNTIL_MIN = 14 * 60
+const KID_CATCHUP_FALLBACK_MIN = 19 * 60 + 15   // ≈ Maghrib in Malaysia when prayer times aren't cached yet
+/** Local "now" + the child's catch-up cutoff = today's Maghrib (from the family's cached prayer times). */
+async function catchupLocal(db, user) {
+  const local = localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+  let cutoff = KID_CATCHUP_FALLBACK_MIN
+  try {
+    const c = await db.collection('prayer_times_cache').findOne({ familyId: user?.familyId, dateStr: local.date }, { projection: { _id: 0, timings: 1 } })
+      || await db.collection('prayer_times_cache').findOne({ familyId: user?.familyId }, { sort: { dateStr: -1 }, projection: { _id: 0, timings: 1 } })
+    const m = String(c?.timings?.Maghrib || '').match(/(\d{1,2}):(\d{2})/)
+    if (m) cutoff = Number(m[1]) * 60 + Number(m[2])
+  } catch { /* fallback */ }
+  return { ...local, cutoff, cutoffHHMM: `${String(Math.floor(cutoff / 60)).padStart(2, '0')}:${String(cutoff % 60).padStart(2, '0')}` }
+}
 const PARENT_CATCHUP_DAYS = 7
 function catchupDates(session, local) {
   const today = utcToday()
   if (session?.role === 'tv') return []
-  if (session?.role === 'kid') return local && local.minutes < KID_CATCHUP_UNTIL_MIN ? [shiftDateStr(today, -1)] : []
+  if (session?.role === 'kid') return local && local.minutes < (local.cutoff ?? KID_CATCHUP_FALLBACK_MIN) ? [shiftDateStr(today, -1)] : []
   return Array.from({ length: PARENT_CATCHUP_DAYS }, (_, i) => shiftDateStr(today, -(i + 1)))
 }
 /** null when ok, else an error message. Today is always fine. */
@@ -322,8 +334,8 @@ async function checkClaimDate(db, session, user, habit, dateStr) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return 'Invalid date'
   if (dateStr > today) return 'That day has not come yet'
   const sched = await scheduleCtx(db, user.familyId, user)
-  if (!catchupDates(session, { minutes: localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz).minutes }).includes(dateStr)) {
-    return session?.role === 'kid' ? 'Yesterday can only be updated until midday — ask your parent' : 'Too far back to update'
+  if (!catchupDates(session, await catchupLocal(db, user)).includes(dateStr)) {
+    return session?.role === 'kid' ? 'Yesterday can only be updated until Maghrib — ask your parent' : 'Too far back to update'
   }
   const created = habit.createdAt ? new Date(habit.createdAt).toISOString().slice(0, 10) : null
   if (created && dateStr < created) return 'This habit did not exist yet on that day'
@@ -801,9 +813,9 @@ async function handleRoute(request, { params }) {
       if (!user?.familyId) return err('No family', 400)
       const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
       if (!child) return err('Child not found', 404)
-      const local = localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+      const local = await catchupLocal(db, user)
       const dates = catchupDates(session, local)
-      if (!dates.length) return json({ days: [], kidUntil: '14:00' })
+      if (!dates.length) return json({ days: [], kidUntil: local.cutoffHHMM })
       const sched = await scheduleCtx(db, user.familyId, user)
       const habits = await db.collection('habits').find({ childId, familyId: user.familyId, active: { $ne: false }, paused: { $ne: true }, locked: { $ne: true } }).project({ _id: 0 }).toArray()
       const claims = await db.collection('habit_claims').find({ childId, dateStr: { $in: dates } }).project({ _id: 0, habitId: 1, dateStr: 1, session: 1, status: 1 }).toArray()
@@ -824,7 +836,7 @@ async function handleRoute(request, { params }) {
         }
         return { dateStr: d, daysAgo: Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${d}T00:00:00Z`)) / 86400000), total, done, pending, missed: Math.max(0, total - done - pending) }
       }).filter(x => x.total > 0)
-      return json({ days, kidUntil: '14:00' })
+      return json({ days, kidUntil: local.cutoffHHMM })
     }
 
     if (route.match(/^\/children\/[^/]+\/habits$/) && method === 'GET') {
@@ -851,7 +863,7 @@ async function handleRoute(request, { params }) {
       const includeAll = new URL(request.url).searchParams.get('all') === '1'
       const forDate = new URL(request.url).searchParams.get('date')
       const pastDate = forDate && forDate !== utcToday() ? forDate : null
-      if (pastDate && !catchupDates(session, localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)).includes(pastDate)) return err('Too far back to update', 400)
+      if (pastDate && !catchupDates(session, await catchupLocal(db, user)).includes(pastDate)) return err('Too far back to update', 400)
       if (pastDate) {
         const wd = weekdayOfDateStr(pastDate), hol = isHolidayDate(pastDate, sched.holidays)
         allActive.forEach(h => {
@@ -1240,7 +1252,7 @@ async function handleRoute(request, { params }) {
       if (!claim) return json({ ok: true, removed: false })
       // A child can only undo a claim still waiting for review — never one a parent (or Trust Mode) already verified
       if (session.role === 'kid' && claim.status === 'verified') return err('Already verified — ask your parent to undo', 403)
-      if (dateStr !== utcToday() && !catchupDates(session, localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)).includes(dateStr)) return err('Too far back to update', 400)
+      if (dateStr !== utcToday() && !catchupDates(session, await catchupLocal(db, user)).includes(dateStr)) return err('Too far back to update', 400)
       const deleteKey = claimSession
         ? { habitId, dateStr, session: claimSession }
         : { habitId, dateStr, session: { $in: [null, undefined] } }

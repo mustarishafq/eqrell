@@ -72,15 +72,49 @@ backend:
           - sessionsClaimed array populated in GET /children/:id/habits response
   - task: "Catch-up claims for earlier days (late ticks) + multi-day verify queue"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/api/[[...path]]/route.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "POST /api/habits/:id/claim accepts dateStr in the past: kid session only yesterday (UTC dates) and only before 14:00 local (parent tz, default Asia/Kuala_Lumpur); parent up to 7 days back; future → 400; before habit createdAt → 400; habit not scheduled that day → 400. Kid cannot send rubric (403). Late kid claims are status 'claimed' + late:true and are NOT auto-verified even with autoVerify. Parent rubric on past day works and awards points. DELETE claim with past dateStr outside window → 400. GET /api/children/:id/catchup → days[{dateStr,daysAgo,total,done,pending,missed}]. GET /api/children/:id/habits?date=YYYY-MM-DD returns that day's statuses (outside window → 400). verify-queue, verify-queue/items (now with session, late, daysAgo; claimId includes __session for per-session claims) and verify-all include last 7 days. POST /verify-queue/items/:claimId/verify is session-aware."
+        comment: "POST /api/habits/:id/claim accepts dateStr in the past: kid session only yesterday (UTC dates) and only before today's Maghrib local (prayer_times_cache, fallback 19:15) (parent tz, default Asia/Kuala_Lumpur); parent up to 7 days back; future → 400; before habit createdAt → 400; habit not scheduled that day → 400. Kid cannot send rubric (403). Late kid claims are status 'claimed' + late:true and are NOT auto-verified even with autoVerify. Parent rubric on past day works and awards points. DELETE claim with past dateStr outside window → 400. GET /api/children/:id/catchup → days[{dateStr,daysAgo,total,done,pending,missed}]. GET /api/children/:id/habits?date=YYYY-MM-DD returns that day's statuses (outside window → 400). verify-queue, verify-queue/items (now with session, late, daysAgo; claimId includes __session for per-session claims) and verify-all include last 7 days. POST /verify-queue/items/:claimId/verify is session-aware."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Maghrib-based Kid Catch-up Cutoff (4/4)
+          
+          **TEST 1: Maghrib 1 hour AFTER current time → kid can claim yesterday**
+          ✅ Inserted prayer_times_cache with Maghrib = current time + 1 hour
+          ✅ Kid POST /api/habits/:id/claim {dateStr: yesterday} → 200 (allowed before Maghrib)
+          ✅ GET /api/children/:id/catchup → kidUntil matches Maghrib time (HH:MM format)
+          
+          **TEST 2: Maghrib 1 hour BEFORE current time → kid cannot claim yesterday**
+          ✅ Updated prayer_times_cache with Maghrib = current time - 1 hour
+          ✅ Kid POST /api/habits/:id/claim {dateStr: yesterday} → 400 'Yesterday can only be updated until Maghrib — ask your parent'
+          ✅ GET /api/children/:id/catchup → kidUntil shows correct Maghrib cutoff time
+          ✅ Kid session would see empty days array (after Maghrib cutoff)
+          
+          **TEST 3: No cache doc → fallback to 19:15**
+          ✅ Deleted all prayer_times_cache docs for family
+          ✅ GET /api/children/:id/catchup → kidUntil = '19:15' (fallback working)
+          ✅ Kid claim allowed before 19:15, blocked after 19:15
+          
+          **TEST 4: Parent 7-day window unaffected**
+          ✅ Parent can claim 7 days ago (200)
+          ✅ Parent cannot claim 8 days ago (400 'Too far back to update')
+          ✅ Parent catch-up window independent of Maghrib cutoff
+          
+          **KEY FINDINGS:**
+          - catchupLocal() function reads prayer_times_cache {familyId, dateStr: local date} timings.Maghrib
+          - Fallback chain: today's cache → latest cache doc → 19:15 default (KID_CATCHUP_FALLBACK_MIN)
+          - Kid catch-up cutoff changed from fixed 14:00 to dynamic Maghrib time
+          - catchupDates() returns yesterday only if local.minutes < local.cutoff for kid sessions
+          - Parent 7-day window (PARENT_CATCHUP_DAYS=7) unaffected by Maghrib cutoff
+          - GET /api/children/:id/catchup returns kidUntil field with cutoff time in HH:MM format
+          - All test data cleaned up successfully (prayer_times_cache + seed/cleanup scripts)
 
   - task: "School holidays + kid habit reminders (push)"
     implemented: true
@@ -1405,3 +1439,36 @@ frontend:
       **TEST DATA:** All test data cleaned up successfully using seed/cleanup scripts.
 
 
+
+  - agent: "testing"
+    message: |
+      ✅ MAGHRIB-BASED KID CATCH-UP CUTOFF TESTS COMPLETED - ALL TESTS PASSED (4/4)
+      
+      **TESTED SUCCESSFULLY:**
+      1. Maghrib 1 hour AFTER current time → kid can claim yesterday (200) ✅
+         - prayer_times_cache with Maghrib = current time + 1 hour
+         - Kid POST /api/habits/:id/claim {dateStr: yesterday} → 200
+         - GET /api/children/:id/catchup → kidUntil matches Maghrib time
+      
+      2. Maghrib 1 hour BEFORE current time → kid cannot claim yesterday (400) ✅
+         - prayer_times_cache with Maghrib = current time - 1 hour
+         - Kid claim yesterday → 400 'Yesterday can only be updated until Maghrib — ask your parent'
+         - kidUntil shows correct Maghrib cutoff time
+      
+      3. No cache doc → fallback to 19:15 ✅
+         - Deleted all prayer_times_cache docs
+         - kidUntil = '19:15' (fallback working)
+         - Kid claim allowed before 19:15, blocked after 19:15
+      
+      4. Parent 7-day window unaffected ✅
+         - Parent can claim 7 days ago (200)
+         - Parent cannot claim 8 days ago (400)
+      
+      **KEY FINDINGS:**
+      - catchupLocal() reads prayer_times_cache {familyId, dateStr: local date} timings.Maghrib
+      - Fallback chain: today's cache → latest cache doc → 19:15 default
+      - Kid cutoff changed from fixed 14:00 to dynamic Maghrib time
+      - Parent 7-day window independent of Maghrib cutoff
+      - GET /api/children/:id/catchup returns kidUntil field with cutoff time (HH:MM)
+      
+      **TEST DATA:** All test data cleaned up successfully (prayer_times_cache + seed/cleanup scripts)
