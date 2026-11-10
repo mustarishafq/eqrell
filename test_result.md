@@ -70,6 +70,18 @@ backend:
           - Claims for multi-time habits require session parameter (400 if missing)
           - Each session can be claimed independently (separate claim documents)
           - sessionsClaimed array populated in GET /children/:id/habits response
+  - task: "Catch-up claims for earlier days (late ticks) + multi-day verify queue"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/habits/:id/claim accepts dateStr in the past: kid session only yesterday (UTC dates) and only before 14:00 local (parent tz, default Asia/Kuala_Lumpur); parent up to 7 days back; future → 400; before habit createdAt → 400; habit not scheduled that day → 400. Kid cannot send rubric (403). Late kid claims are status 'claimed' + late:true and are NOT auto-verified even with autoVerify. Parent rubric on past day works and awards points. DELETE claim with past dateStr outside window → 400. GET /api/children/:id/catchup → days[{dateStr,daysAgo,total,done,pending,missed}]. GET /api/children/:id/habits?date=YYYY-MM-DD returns that day's statuses (outside window → 400). verify-queue, verify-queue/items (now with session, late, daysAgo; claimId includes __session for per-session claims) and verify-all include last 7 days. POST /verify-queue/items/:claimId/verify is session-aware."
+
   - task: "School holidays + kid habit reminders (push)"
     implemented: true
     working: "NA"
@@ -867,6 +879,90 @@ backend:
           - Endpoint validation: must start with 'https://' and include keys.p256dh and keys.auth
           - No regression: parent push subscriptions working correctly
 
+  - task: "Catch-up (Late) Claims - Parent and Kid backdated habit claims"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED - Catch-up (Late) Claims (18/18)
+          
+          **PARENT TESTS (11/11):**
+          
+          **TEST 1: Daily habit with backdated createdAt**
+          ✅ 1a: Claim yesterday with rubric 'sah' → 200, points 10, mataBina +10
+          ✅ 1b: Claim 7 days ago → 200 (within PARENT_CATCHUP_DAYS=7)
+          ✅ 1c: Claim 8 days ago → 400 'Too far back to update'
+          ✅ 1d: Claim tomorrow → 400 'That day has not come yet'
+          ✅ 1e: Claim with bad date format → 400 'Invalid date'
+          
+          **TEST 2: Habit created today, claim yesterday**
+          ✅ Claim yesterday → 400 'This habit did not exist yet on that day'
+          
+          **TEST 3: Custom schedule excluding yesterday's weekday**
+          ✅ Claim yesterday → 400 'This habit was not scheduled that day'
+          
+          **TEST 4: GET /api/children/:id/catchup**
+          ✅ Returns days array with up to 7 entries
+          ✅ Each day has {dateStr, daysAgo, total, done, pending, missed}
+          ✅ Yesterday shows done=1 after claim, daysAgo=1
+          
+          **TEST 5: GET /api/children/:id/habits?date=<dateStr>**
+          ✅ ?date=yesterday → habit shows todayStatus='verified'
+          ✅ ?date=9 days ago → 400 'Too far back to update'
+          
+          **TEST 6: Multi-time habit with late claim**
+          ✅ Created multi habit (recurring:'multi', sessions:['subuh','isyak'])
+          ✅ POST claim {dateStr: yesterday, session:'isyak', status:'claimed'} → 200
+          ✅ GET /verify-queue/items shows claimId '<id>__<yesterday>__isyak'
+          ✅ Item has daysAgo=1, late=true
+          ✅ POST /verify-queue/items/<claimId>/verify {rubric:'sah'} → 200
+          ✅ Isyak session verified, subuh session not claimed (correct)
+          
+          **TEST 7: verify-all includes pending claim from 2 days ago**
+          ✅ Claimed 2 days ago with status:'claimed'
+          ✅ POST /verify-queue/verify-all {rubric:'sah'} → verified claim from 2 days ago
+          
+          **REGRESSION: Today claims (no dateStr) still work**
+          ✅ Daily habit claim without dateStr → 200
+          ✅ Multi-time habit claim without dateStr → 200
+          
+          **KID TESTS (4/4):**
+          
+          **TEST 1: Kid claim yesterday (time-dependent)**
+          ✅ Before 14:00 KL time → 200 (allowed)
+          ✅ After 14:00 KL time → 400 'Yesterday can only be updated until midday'
+          
+          **TEST 2: Kid claim with rubric**
+          ✅ POST claim {rubric:'sah'} → 403 (kid cannot set rubric)
+          
+          **TEST 3: Late kid claim on autoVerify habit**
+          ✅ Kid claims yesterday → status='claimed' (not auto-verified for late claims)
+          
+          **TEST 4: Kid claim 2 days ago**
+          ✅ POST claim {dateStr: 2 days ago} → 400 'Too far back'
+          
+          **KEY FINDINGS:**
+          - Parent can claim up to 7 days back (PARENT_CATCHUP_DAYS=7)
+          - Kid can claim yesterday only before 14:00 local time (KID_CATCHUP_UNTIL_MIN=840)
+          - checkClaimDate validates: date format, not future, within catchup window, habit existed, habit scheduled that day
+          - catchupDates function returns allowed dates based on session role
+          - Late claims marked with late=true in verify-queue
+          - Multi-time habits support late claims per session
+          - GET /children/:id/catchup provides 7-day overview with done/pending/missed counts
+          - GET /children/:id/habits?date=<dateStr> shows historical habit status
+          - verify-all includes all pending claims within catchup window
+          - Kid late claims on autoVerify habits stay 'claimed' (not auto-verified)
+          - All date validations working correctly (format, range, habit existence, schedule)
+          
+          **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
+
 agent_communication:
   - agent: "testing"
     message: |
@@ -1045,6 +1141,43 @@ agent_communication:
       - Revoked devices properly blocked from all endpoints
       
       **TEST DATA:** All test data cleaned up successfully using seed/cleanup scripts.
+  - agent: "testing"
+    message: |
+      ✅ CATCH-UP (LATE) CLAIMS BACKEND TESTS COMPLETED - ALL TESTS PASSED (18/18)
+      
+      **TESTED SUCCESSFULLY:**
+      1. Parent catch-up claims (11 tests) ✅
+         - Daily habit with backdated createdAt (5 validation tests)
+         - Habit created today, claim yesterday (existence check)
+         - Custom schedule validation
+         - GET /children/:id/catchup endpoint
+         - GET /children/:id/habits?date=<dateStr> endpoint
+         - Multi-time habit with late claim + verify-queue
+         - verify-all with 2-day-old claim
+         - Regression: today claims still work
+      
+      2. Kid catch-up claims (4 tests) ✅
+         - Time-dependent yesterday claim (before/after 14:00 KL)
+         - Rubric restriction (403)
+         - Late claim on autoVerify habit (stays 'claimed')
+         - 2 days ago rejection (400)
+      
+      **KEY FINDINGS:**
+      - Parent can claim up to 7 days back (PARENT_CATCHUP_DAYS=7)
+      - Kid can claim yesterday only before 14:00 local time (KID_CATCHUP_UNTIL_MIN=840 minutes)
+      - checkClaimDate validates: date format (YYYY-MM-DD), not future, within catchup window, habit existed on that day, habit scheduled that day
+      - catchupDates function returns allowed dates based on session role (parent/kid/tv)
+      - Late claims marked with late=true in verify-queue items
+      - Multi-time habits support late claims per session (claimId format: <habitId>__<dateStr>__<session>)
+      - GET /children/:id/catchup provides 7-day overview with done/pending/missed counts per day
+      - GET /children/:id/habits?date=<dateStr> shows historical habit status (todayStatus field)
+      - verify-all includes all pending claims within catchup window (up to 7 days back)
+      - Kid late claims on autoVerify habits stay 'claimed' (not auto-verified)
+      - All date validations working correctly
+      - Regression verified: today claims (no dateStr) work for both daily and multi-time habits
+      
+      **TEST DATA:** All test data cleaned up successfully using cleanup_test_family.py
+
 
 frontend:
   - task: "Rest Mode UI (Profile row, sheet with family/per-child, Home banner, Kid banner, World ambience)"

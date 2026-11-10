@@ -1,5 +1,6 @@
 'use client'
 
+import CatchUpSheet, { CatchUpChip } from '@/components/eqrel/CatchUpSheet'
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronRight, Settings2, CheckCircle2, Clock, Circle, Star } from 'lucide-react'
@@ -15,6 +16,8 @@ const statusOf = (h) => {
 }
 
 export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pendingVerifyCount = 0, refreshKey = 0, onOpenVerify, onOpenHabits, onAddChild, onCreateHabit }) {
+  const [catchUpChild, setCatchUpChild] = useState(null)   // 🌙 update earlier days
+  const [cuTick, setCuTick] = useState(0)
   const L = pick(lang)
   const [habitsByChild, setHabitsByChild] = useState({})
   const [lockedByChild, setLockedByChild] = useState({})
@@ -98,6 +101,9 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
         ))}
       </div>
 
+      <CatchUpSheet open={!!catchUpChild} child={catchUpChild} lang={lang} mode="parent"
+        onClose={() => { setCatchUpChild(null); setCuTick(t => t + 1); load() }} onChanged={() => load()} />
+
       {kids.length > 0 && onCreateHabit && (
         <button onClick={onCreateHabit} data-testid="tasks-create-habit"
           className="flex-shrink-0 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-3 px-4 shadow-md flex items-center justify-center gap-2 font-extrabold text-sm active:scale-[0.99]">
@@ -139,6 +145,9 @@ export default function TasksTab({ kids = [], lang = 'en', icon, avatarSrc, pend
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-eq-cream/60 text-eq-ink text-[11px] font-bold active:scale-95">
                 <Settings2 className="w-3.5 h-3.5" /> {L('Urus Habit', 'Manage', 'Kelola', 'إدارة')}
               </button>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <CatchUpChip childId={c.id} lang={lang} refreshKey={refreshKey + cuTick} onOpen={() => setCatchUpChild(c)} />
             </div>
             {/* Solat Teras: pause / resume */}
             {(() => {

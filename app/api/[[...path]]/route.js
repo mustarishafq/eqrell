@@ -303,6 +303,34 @@ const ensurePointsMigration = async () => {
 }
 
 /** Build-point balance = lifetime earned − spent on buildings */
+/**
+ * Catch-up window for habits missed on earlier days ("I did it last night but forgot to tick").
+ * Child: yesterday only, until 14:00 local (≈ Zohor). Parent: up to 7 days back. Claims keep the real day.
+ */
+const KID_CATCHUP_UNTIL_MIN = 14 * 60
+const PARENT_CATCHUP_DAYS = 7
+function catchupDates(session, local) {
+  const today = utcToday()
+  if (session?.role === 'tv') return []
+  if (session?.role === 'kid') return local && local.minutes < KID_CATCHUP_UNTIL_MIN ? [shiftDateStr(today, -1)] : []
+  return Array.from({ length: PARENT_CATCHUP_DAYS }, (_, i) => shiftDateStr(today, -(i + 1)))
+}
+/** null when ok, else an error message. Today is always fine. */
+async function checkClaimDate(db, session, user, habit, dateStr) {
+  const today = utcToday()
+  if (dateStr === today) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return 'Invalid date'
+  if (dateStr > today) return 'That day has not come yet'
+  const sched = await scheduleCtx(db, user.familyId, user)
+  if (!catchupDates(session, { minutes: localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz).minutes }).includes(dateStr)) {
+    return session?.role === 'kid' ? 'Yesterday can only be updated until midday — ask your parent' : 'Too far back to update'
+  }
+  const created = habit.createdAt ? new Date(habit.createdAt).toISOString().slice(0, 10) : null
+  if (created && dateStr < created) return 'This habit did not exist yet on that day'
+  if (!isHabitOnDay(habit, weekdayOfDateStr(dateStr), sched.schoolDays, isHolidayDate(dateStr, sched.holidays))) return 'This habit was not scheduled that day'
+  return null
+}
+
 const shiftDateStr = (dateStr, days) => { const d = new Date(`${dateStr}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const buildBalanceOf = (c) => Number(c?.mataBina || 0) - Number(c?.mataBinaSpent || 0)
 
@@ -763,6 +791,42 @@ async function handleRoute(request, { params }) {
     // ══════════ HABITS ══════════
 
     // GET /children/:id/habits  → list habits assigned to child (with today's completion state)
+    // GET /children/:id/catchup → { days:[{ dateStr, daysAgo, total, done, pending, missed }], kidUntil }
+    if (route.match(/^\/children\/[^/]+\/catchup$/) && method === 'GET') {
+      const session = await getSession()
+      if (!session) return err('unauthorized', 401)
+      const childId = route.split('/')[2]
+      const db = await getDb()
+      const user = await db.collection('users').findOne({ id: session.userId })
+      if (!user?.familyId) return err('No family', 400)
+      const child = await db.collection('children').findOne({ id: childId, familyId: user.familyId })
+      if (!child) return err('Child not found', 404)
+      const local = localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)
+      const dates = catchupDates(session, local)
+      if (!dates.length) return json({ days: [], kidUntil: '14:00' })
+      const sched = await scheduleCtx(db, user.familyId, user)
+      const habits = await db.collection('habits').find({ childId, familyId: user.familyId, active: { $ne: false }, paused: { $ne: true }, locked: { $ne: true } }).project({ _id: 0 }).toArray()
+      const claims = await db.collection('habit_claims').find({ childId, dateStr: { $in: dates } }).project({ _id: 0, habitId: 1, dateStr: 1, session: 1, status: 1 }).toArray()
+      const today = utcToday()
+      const days = dates.map(d => {
+        const wd = weekdayOfDateStr(d), hol = isHolidayDate(d, sched.holidays)
+        let total = 0, done = 0, pending = 0
+        for (const h of habits) {
+          const created = h.createdAt ? new Date(h.createdAt).toISOString().slice(0, 10) : null
+          if ((created && created > d) || !isHabitOnDay(h, wd, sched.schoolDays, hol)) continue
+          const slots = isPerPrayerHabit(h) ? (h.recurring === 'multi' && Array.isArray(h.sessions) && h.sessions.length ? h.sessions : ['subuh', 'zohor', 'asar', 'maghrib', 'isyak']) : [null]
+          for (const sl of slots) {
+            total++
+            const c = claims.find(x => x.habitId === h.id && x.dateStr === d && (sl ? x.session === sl : !x.session))
+            if (c?.status === 'verified') done++
+            else if (c?.status === 'claimed') pending++
+          }
+        }
+        return { dateStr: d, daysAgo: Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${d}T00:00:00Z`)) / 86400000), total, done, pending, missed: Math.max(0, total - done - pending) }
+      }).filter(x => x.total > 0)
+      return json({ days, kidUntil: '14:00' })
+    }
+
     if (route.match(/^\/children\/[^/]+\/habits$/) && method === 'GET') {
       const session = await getSession()
       if (!session) return err('unauthorized', 401)
@@ -785,13 +849,22 @@ async function handleRoute(request, { params }) {
       // Day scheduling: habits not scheduled today are hidden from the day's list (?all=1 keeps them, flagged)
       const sched = await scheduleCtx(db, user.familyId, user)
       const includeAll = new URL(request.url).searchParams.get('all') === '1'
-      allActive.forEach(h => { if (!isHabitOnDay(h, sched.weekday, sched.schoolDays, !!sched.holiday)) h.offToday = true })
+      const forDate = new URL(request.url).searchParams.get('date')
+      const pastDate = forDate && forDate !== utcToday() ? forDate : null
+      if (pastDate && !catchupDates(session, localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)).includes(pastDate)) return err('Too far back to update', 400)
+      if (pastDate) {
+        const wd = weekdayOfDateStr(pastDate), hol = isHolidayDate(pastDate, sched.holidays)
+        allActive.forEach(h => {
+          const created = h.createdAt ? new Date(h.createdAt).toISOString().slice(0, 10) : null
+          if ((created && created > pastDate) || !isHabitOnDay(h, wd, sched.schoolDays, hol)) h.offToday = true
+        })
+      } else allActive.forEach(h => { if (!isHabitOnDay(h, sched.weekday, sched.schoolDays, !!sched.holiday)) h.offToday = true })
       const habits = includeAll ? allActive : allActive.filter(h => !h.offToday)
       const offTodayHabits = allActive.filter(h => h.offToday).map(h => ({ id: h.id, title: h.title, i18n: h.i18n, templateId: h.templateId, icon: h.icon, category: h.category, schedule: h.schedule, days: h.days }))
 
       // Attach today's claim status + rubric + pointsAwarded (needed by Kid Mode + parent-log UI)
       // For perPrayer habits, aggregate ALL session claims into sessionsClaimed[] array
-      const todayStr = new Date().toISOString().slice(0, 10)
+      const todayStr = pastDate || new Date().toISOString().slice(0, 10)
       const claims = await db.collection('habit_claims')
         .find({ childId, dateStr: todayStr })
         .project({ _id: 0, habitId: 1, status: 1, rubric: 1, pointsAwarded: 1, note: 1, session: 1 })
@@ -1046,7 +1119,11 @@ async function handleRoute(request, { params }) {
       if (habit.paused) return err('This habit is paused', 409)
 
       const dateStr = body.dateStr || new Date().toISOString().slice(0, 10)
+      const dateErr = await checkClaimDate(db, session, user, habit, dateStr)
+      if (dateErr) return err(dateErr, 400)
+      const isLate = dateStr !== utcToday()
       const rubric = body.rubric
+      if (rubric && session.role === 'kid') return err('forbidden', 403)
       const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
 
       // Determine claim session (perPrayer habits scope claims by prayer session)
@@ -1112,7 +1189,7 @@ async function handleRoute(request, { params }) {
       }
 
       // Regular claim (Kid Mode or plain toggle)
-      const status = body.status || 'claimed'  // 'claimed' | 'verified' | 'rejected' | 'skipped'
+      const status = session.role === 'kid' ? 'claimed' : (body.status || 'claimed')  // 'claimed' | 'verified' | 'rejected' | 'skipped'
       const claimData = {
         habitId,
         childId: habit.childId,
@@ -1122,6 +1199,7 @@ async function handleRoute(request, { params }) {
         status,
         claimedAt: new Date(),
         claimedBy: session.userId,
+        ...(isLate ? { late: true } : {}),
       }
       const upsertKey = claimSession
         ? { habitId, dateStr, session: claimSession }
@@ -1132,7 +1210,7 @@ async function handleRoute(request, { params }) {
         { upsert: true }
       )
       // Mod Percaya: trusted habit → verify instantly as 'sah' (no parent action needed)
-      if (habit.autoVerify && status === 'claimed') {
+      if (habit.autoVerify && status === 'claimed' && !isLate) {
         const doc = await db.collection('habit_claims').findOne(upsertKey)
         const points = await verifyClaimDoc(db, { claim: doc, habit, rubric: 'sah', verifierId: 'trust', applyMataDelta, auto: true })
         if (session.role === 'kid') await notifyParentsOfClaim(db, habit, { autoVerified: true })
@@ -1162,6 +1240,7 @@ async function handleRoute(request, { params }) {
       if (!claim) return json({ ok: true, removed: false })
       // A child can only undo a claim still waiting for review — never one a parent (or Trust Mode) already verified
       if (session.role === 'kid' && claim.status === 'verified') return err('Already verified — ask your parent to undo', 403)
+      if (dateStr !== utcToday() && !catchupDates(session, localNow(user?.notifyPrefs?.tz || DEFAULT_PREFS.tz)).includes(dateStr)) return err('Too far back to update', 400)
       const deleteKey = claimSession
         ? { habitId, dateStr, session: claimSession }
         : { habitId, dateStr, session: { $in: [null, undefined] } }
@@ -1178,9 +1257,8 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return json({ claims: [] })
 
-      const todayStr = new Date().toISOString().slice(0, 10)
       const claims = await db.collection('habit_claims')
-        .find({ familyId: user.familyId, status: 'claimed', dateStr: todayStr })
+        .find({ familyId: user.familyId, status: 'claimed', dateStr: { $gte: shiftDateStr(utcToday(), -PARENT_CATCHUP_DAYS), $lte: utcToday() } })
         .project({ _id: 0 })
         .toArray()
       return json({ claims })
@@ -1194,9 +1272,8 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return json({ items: [] })
 
-      const todayStr = new Date().toISOString().slice(0, 10)
       const claims = await db.collection('habit_claims')
-        .find({ familyId: user.familyId, status: 'claimed', dateStr: todayStr })
+        .find({ familyId: user.familyId, status: 'claimed', dateStr: { $gte: shiftDateStr(utcToday(), -PARENT_CATCHUP_DAYS), $lte: utcToday() } })
         .sort({ claimedAt: -1 })
         .project({ _id: 0 })
         .toArray()
@@ -1213,11 +1290,15 @@ async function handleRoute(request, { params }) {
       const habitMap = Object.fromEntries(habits.map(h => [h.id, h]))
       const childMap = Object.fromEntries(childrenList.map(c => [c.id, c]))
 
+      const today = utcToday()
       const items = claims.map(c => ({
-        claimId: `${c.habitId}__${c.dateStr}`,
+        claimId: c.session ? `${c.habitId}__${c.dateStr}__${c.session}` : `${c.habitId}__${c.dateStr}`,
         habitId: c.habitId,
         childId: c.childId,
         dateStr: c.dateStr,
+        session: c.session || null,
+        late: !!c.late || c.dateStr !== today,
+        daysAgo: Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${c.dateStr}T00:00:00Z`)) / 86400000),
         status: c.status,
         claimedAt: c.claimedAt,
         claimedBy: c.claimedBy,
@@ -1238,8 +1319,9 @@ async function handleRoute(request, { params }) {
       if (!session) return err('unauthorized', 401)
       const parts = route.split('/')
       const claimId = parts[3]
-      const [habitId, dateStr] = claimId.split('__')
+      const [habitId, dateStr, claimSess] = decodeURIComponent(claimId).split('__')
       if (!habitId || !dateStr) return err('Invalid claim id', 400)
+      const cKey = claimSess ? { habitId, dateStr, session: claimSess } : { habitId, dateStr, session: { $in: [null, undefined] } }
 
       const body = await request.json().catch(() => ({}))
       const rubric = body.rubric
@@ -1250,7 +1332,7 @@ async function handleRoute(request, { params }) {
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
 
-      const claim = await db.collection('habit_claims').findOne({ habitId, dateStr, familyId: user.familyId })
+      const claim = await db.collection('habit_claims').findOne({ ...cKey, familyId: user.familyId })
       if (!claim) return err('Claim not found', 404)
       if (claim.status !== 'claimed') return err('Claim already processed', 409)
 
@@ -1259,7 +1341,7 @@ async function handleRoute(request, { params }) {
 
       // 'belum' → remove claim so child can retry today
       if (rubric === 'belum') {
-        await db.collection('habit_claims').deleteOne({ habitId, dateStr })
+        await db.collection('habit_claims').deleteOne(cKey)
         await applyMataDelta(db, claim.childId, claim, null)
         // audit trail
         await db.collection('verify_log').insertOne({
@@ -1281,7 +1363,7 @@ async function handleRoute(request, { params }) {
         excellence: rubric === 'ihsan',
       }
       await db.collection('habit_claims').updateOne(
-        { habitId, dateStr },
+        cKey,
         { $set: {
             status: 'verified',
             rubric,
@@ -1313,7 +1395,7 @@ async function handleRoute(request, { params }) {
       const db = await getDb()
       const user = await db.collection('users').findOne({ id: session.userId })
       if (!user?.familyId) return err('No family', 400)
-      const q = { familyId: user.familyId, status: 'claimed', dateStr: utcToday() }
+      const q = { familyId: user.familyId, status: 'claimed', dateStr: { $gte: shiftDateStr(utcToday(), -PARENT_CATCHUP_DAYS), $lte: utcToday() } }
       if (typeof body.childId === 'string') q.childId = body.childId
       let claims = await db.collection('habit_claims').find(q).toArray()
       if (Array.isArray(body.claimIds) && body.claimIds.length) {

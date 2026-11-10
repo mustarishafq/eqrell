@@ -316,6 +316,11 @@ const ClaimCard = ({ item, timeAgo, t, lang }) => {
 
   return (
     <div className="bg-white border-2 border-emerald-100 rounded-2xl p-3 shadow-sm">
+      {item.daysAgo > 0 && (
+        <div className="mb-2 inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5" data-testid="verify-late-chip">
+          🌙 {item.daysAgo === 1 ? (lang === 'ms' ? 'Untuk semalam' : lang === 'id' ? 'Untuk kemarin' : lang === 'ar' ? 'عن الأمس' : 'For yesterday') : (lang === 'ms' ? `Untuk ${item.daysAgo} hari lalu` : lang === 'ar' ? `قبل ${item.daysAgo} أيام` : `For ${item.daysAgo} days ago`)} · {item.dateStr}
+        </div>
+      )}
       {/* Child + time */}
       <div className="flex items-center gap-3 mb-2.5">
         <div

@@ -122,7 +122,10 @@ export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDet
                     {g.list.map(it => (
                       <div key={it.claimId} className="flex items-center gap-2 rounded-xl bg-eq-warm/60 px-2.5 py-2" data-testid={`quick-item-${it.claimId}`}>
                         <span className="text-lg">{it.habit?.icon || '⭐'}</span>
-                        <span className="flex-1 min-w-0 text-[13px] font-bold text-eq-ink truncate">{habitTitle(it.habit, lang)}</span>
+                        <span className="flex-1 min-w-0 text-[13px] font-bold text-eq-ink truncate">{habitTitle(it.habit, lang)}
+                          {it.session && <span className="ml-1 text-[9px] font-black text-indigo-600 uppercase">{it.session}</span>}
+                          {it.daysAgo > 0 && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-black align-middle" data-testid={`quick-late-${it.claimId}`}>🌙 {it.daysAgo === 1 ? L('Semalam', 'Yesterday', 'Kemarin', 'أمس') : L(`${it.daysAgo} hari lalu`, `${it.daysAgo} days ago`, `${it.daysAgo} hari lalu`, `قبل ${it.daysAgo} أيام`)}</span>}
+                        </span>
                         <button onClick={() => verifyOne(it, 'belum')} disabled={!!busy} aria-label="belum" title={L('Belum — anak boleh cuba lagi', 'Not yet — child can retry', 'Belum', 'ليس بعد')}
                           className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center active:scale-90 disabled:opacity-40"><RotateCcw className="w-3.5 h-3.5 text-gray-500" /></button>
                         <button onClick={() => verifyOne(it, 'ihsan')} disabled={!!busy} aria-label="ihsan" data-testid={`quick-ihsan-${it.claimId}`}

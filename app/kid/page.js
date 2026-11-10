@@ -22,6 +22,7 @@ import HabitFocusCard from '@/components/eqrel/HabitFocusCard'
 import KidLinkScreen from '@/components/eqrel/KidLinkScreen'
 import { DayTimeline, KidReminderCard } from '@/components/eqrel/KidDayExtras'
 import { useAutoRefresh, usePullToRefresh, PullIndicator, RefreshButton } from '@/lib/useRefresh'
+import CatchUpSheet, { CatchUpButton, useCatchUp } from '@/components/eqrel/CatchUpSheet'
 import { useKidDeviceBoot } from '@/lib/kidDeviceClient'
 
 const KID_REWARD_EMOJIS = ['🎁','📺','🍪','🍦','📖','🍜','🌳','📚','🧸','🎬','🕌','🎨','⚽','🎮','🚴','🎈','🍫','🧁','🎪','🏊','🚀','🦄','🐻','🌟']
@@ -243,8 +244,11 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
   // Stay fresh: parent approvals show up without the child doing anything —
   // reload when the app comes back to the screen and every 20s; plus pull-down & 🔄 button.
   const kidScrollRef = useRef(null)
-  useAutoRefresh(useCallback(() => load(true), [load]), 20000)
-  const ptr = usePullToRefresh(kidScrollRef, useCallback(() => load(true), [load]))
+  const [cuKey, setCuKey] = useState(0)
+  const [catchUpOpen, setCatchUpOpen] = useState(false)
+  const catchUpDays = useCatchUp(childId, cuKey)
+  useAutoRefresh(useCallback(() => { load(true); setCuKey(k => k + 1) }, [load]), 20000)
+  const ptr = usePullToRefresh(kidScrollRef, useCallback(() => { setCuKey(k => k + 1); return load(true) }, [load]))
   // "+N 🎁" pop when points go up (e.g. a parent just approved)
   const prevReward = useRef(null)
   const [gain, setGain] = useState(null)
@@ -773,6 +777,9 @@ function KidHomeActive({ router, childId, t, lang, kidDevice }) {
         )}
 
         <KidRestBanner rest={restMode} lang={lang} />
+
+        <CatchUpButton days={catchUpDays} lang={lang} mode="kid" onClick={() => setCatchUpOpen(true)} />
+        <CatchUpSheet open={catchUpOpen} onClose={() => { setCatchUpOpen(false); setCuKey(k => k + 1); load(true) }} child={child} lang={lang} mode="kid" onChanged={() => load(true)} />
 
         <KidReminderCard kidDevice={kidDevice} lang={lang} hasTimedHabits={habits.some(h => h.clockTimes && Object.keys(h.clockTimes).length > 0)} />
 
