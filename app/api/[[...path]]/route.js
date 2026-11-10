@@ -518,6 +518,29 @@ async function notifyParentsOfClaim(db, habit, { autoVerified = false } = {}) {
   } catch (e) { console.error('notifyParentsOfClaim', e?.message) }
 }
 
+/** Push to every parent in the family. copy(lang) → [title, body]. Respects the "claims" notification toggle. */
+async function notifyParents(db, familyId, copy, { url = '/?parent=1&quick=1', tag } = {}) {
+  try {
+    const parents = await db.collection('users').find({ familyId }).project({ _id: 0, id: 1, notifyPrefs: 1 }).toArray()
+    for (const p of parents) {
+      if (p.notifyPrefs?.claims?.enabled === false) continue
+      const [title, body] = copy(p.notifyPrefs?.lang || 'en')
+      await pushToUser(db, p.id, { title, body, url, tag })
+    }
+  } catch (e) { console.error('notifyParents', e?.message) }
+}
+/** Push to a child's own linked devices (if they turned reminders/notifications on). */
+async function notifyKid(db, familyId, childId, copy, tag) {
+  try {
+    const subs = await db.collection('kid_push_subs').find({ familyId, $or: [{ childId }, { childId: null }] }).toArray()
+    if (!subs.length) return
+    const child = await db.collection('children').findOne({ id: childId }, { projection: { _id: 0, preferredLang: 1 } })
+    const [title, body] = copy(child?.preferredLang || 'en')
+    await pushToSubs(db, 'kid_push_subs', subs, { title, body, url: '/kid', tag })
+  } catch (e) { console.error('notifyKid', e?.message) }
+}
+const pickL = (lang, ms, en, id, ar) => (lang === 'ms' ? ms : lang === 'id' ? id : lang === 'ar' ? ar : en)
+
 // ────────────────────── ROUTES ──────────────────────
 async function handleRoute(request, { params }) {
   const { path = [] } = await params
@@ -1273,7 +1296,11 @@ async function handleRoute(request, { params }) {
         .find({ familyId: user.familyId, status: 'claimed', dateStr: { $gte: shiftDateStr(utcToday(), -PARENT_CATCHUP_DAYS), $lte: utcToday() } })
         .project({ _id: 0 })
         .toArray()
-      return json({ claims })
+      const [rewardRequests, proposals] = await Promise.all([
+        db.collection('reward_requests').countDocuments({ familyId: user.familyId, status: 'pending' }),
+        db.collection('reward_proposals').countDocuments({ familyId: user.familyId, status: 'pending' }),
+      ])
+      return json({ claims, rewardRequests, proposals, inboxCount: claims.length + rewardRequests + proposals })
     }
 
     // GET /verify-queue/items  → enriched pending items (with habit + child data joined)
@@ -3603,6 +3630,11 @@ async function handleRoute(request, { params }) {
         proposedBy: session.userId,
       }
       await db.collection('reward_proposals').insertOne(rec)
+      const pn = child?.nickname || 'Your child'
+      await notifyParents(db, user.familyId, (l) => [
+        pickL(l, `💡 ${pn} cadangkan ganjaran: "${rec.title}"`, `💡 ${pn} suggested a reward: "${rec.title}"`, `💡 ${pn} mengusulkan hadiah: "${rec.title}"`, `💡 ${pn} اقترح مكافأة: «${rec.title}»`),
+        pickL(l, `${rec.cost} Mata Reward · Tekan untuk semak`, `${rec.cost} Reward points · Tap to review`, `${rec.cost} poin · Ketuk untuk meninjau`, `${rec.cost} نقطة · اضغط للمراجعة`),
+      ], { tag: `proposal-${rec.id}` })
       return json({ ok: true, proposal: rec })
     }
 
@@ -3675,6 +3707,10 @@ async function handleRoute(request, { params }) {
       }
       await db.collection('reward_proposals').updateOne({ id: propId }, { $set })
       const updated = await db.collection('reward_proposals').findOne({ id: propId }, { projection: { _id: 0 } })
+      await notifyKid(db, user.familyId, prop.childId, (l) => decision === 'approved'
+        ? [pickL(l, `🎉 Cadangan diterima: ${updated.finalTitle || prop.title}`, `🎉 Your idea is in the shop: ${updated.finalTitle || prop.title}`, `🎉 Usulanmu diterima: ${updated.finalTitle || prop.title}`, `🎉 تم قبول اقتراحك`), pickL(l, 'Kumpul mata untuk menebusnya 🎁', 'Collect points to redeem it 🎁', 'Kumpulkan poin untuk menukarnya 🎁', 'اجمع النقاط 🎁')]
+        : [pickL(l, `🤍 Cadangan "${prop.title}" belum diterima`, `🤍 "${prop.title}" wasn't added this time`, `🤍 Usulan "${prop.title}" belum diterima`, `🤍 لم يُقبل الاقتراح`), String(body.note || '').slice(0, 120) || pickL(l, 'Bincang dengan Ibu/Ayah ya!', 'Talk about it with your parents!', 'Bicarakan dengan orang tua ya!', 'تحدث مع والديك!')],
+        `proposal-${prop.id}`)
       return json({ ok: true, proposal: updated })
     }
 
@@ -3773,6 +3809,11 @@ async function handleRoute(request, { params }) {
         requestedBy: session.userId,
       }
       await db.collection('reward_requests').insertOne(rec)
+      const nm = child.nickname || 'Your child'
+      await notifyParents(db, user.familyId, (l) => [
+        pickL(l, `🎁 ${nm} mahu tebus "${rec.snapshot.title}"`, `🎁 ${nm} wants "${rec.snapshot.title}"`, `🎁 ${nm} ingin menukar "${rec.snapshot.title}"`, `🎁 ${nm} يريد «${rec.snapshot.title}»`),
+        pickL(l, `${rec.snapshot.cost} Mata Reward · Tekan untuk luluskan`, `${rec.snapshot.cost} Reward points · Tap to approve`, `${rec.snapshot.cost} poin · Ketuk untuk menyetujui`, `${rec.snapshot.cost} نقطة · اضغط للموافقة`),
+      ], { tag: `reward-${rec.id}` })
       return json({ ok: true, request: rec })
     }
 
@@ -3825,6 +3866,10 @@ async function handleRoute(request, { params }) {
         { id: reqId },
         { $set: { status: decision, decidedAt: new Date(), decidedBy: session.userId, decidedNote: note } }
       )
+      await notifyKid(db, user.familyId, rr.childId, (l) => decision === 'approved'
+        ? [pickL(l, `🎉 Ganjaran diluluskan: ${rr.snapshot.title}!`, `🎉 Reward approved: ${rr.snapshot.title}!`, `🎉 Hadiah disetujui: ${rr.snapshot.title}!`, `🎉 تمت الموافقة: ${rr.snapshot.title}!`), pickL(l, 'Tahniah atas usaha anda 🌟', 'Well done for your effort 🌟', 'Selamat atas usahamu 🌟', 'أحسنت 🌟')]
+        : [pickL(l, `🤍 ${rr.snapshot.title} — belum lagi`, `🤍 ${rr.snapshot.title} — not this time`, `🤍 ${rr.snapshot.title} — belum kali ini`, `🤍 ${rr.snapshot.title} — ليس هذه المرة`), note || pickL(l, 'Mata anda dikembalikan. Cuba lagi nanti!', 'Your points are safe. Try again later!', 'Poinmu aman. Coba lagi nanti!', 'نقاطك محفوظة.')],
+        `reward-${rr.id}`)
       return json({ ok: true, decision })
     }
 

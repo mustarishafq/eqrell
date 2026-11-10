@@ -155,6 +155,7 @@ const ParentDashboard = () => {
   const [habitsSheetView, setHabitsSheetView] = useState(null)   // 'custom' → open straight on the create form
   const [habitCounts, setHabitCounts] = useState({})  // {childId: {total, done}}
   const [pendingVerifyCount, setPendingVerifyCount] = useState(0)
+  const [inboxExtra, setInboxExtra] = useState(0)   // pending reward requests + reward ideas (bell badge)
   const [verifySheetOpen, setVerifySheetOpen] = useState(false)
   const [quickVerifyOpen, setQuickVerifyOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
@@ -319,6 +320,7 @@ const ParentDashboard = () => {
           if (vq.ok) {
             const vqd = await vq.json()
             setPendingVerifyCount(vqd.claims?.length || 0)
+            setInboxExtra((vqd.rewardRequests || 0) + (vqd.proposals || 0))
           }
         } catch (e) {}
 
@@ -460,7 +462,11 @@ const ParentDashboard = () => {
             label={lang === 'ms' ? 'Muat semula' : lang === 'id' ? 'Muat ulang' : lang === 'ar' ? 'تحديث' : 'Refresh'} />
           <button onClick={() => setQuickVerifyOpen(true)} data-testid="header-bell" className="w-11 h-11 bg-white rounded-full shadow-eq-card flex items-center justify-center relative" aria-label={t.nav_notifications}>
             <Bell className="w-5 h-5 text-eq-ink" strokeWidth={2.5} />
-            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-eq-coral rounded-full ring-2 ring-white" />
+            {pendingVerifyCount + inboxExtra > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-eq-coral text-white text-[10px] font-black rounded-full ring-2 ring-white flex items-center justify-center" data-testid="header-bell-count">
+                {pendingVerifyCount + inboxExtra > 99 ? '99+' : pendingVerifyCount + inboxExtra}
+              </span>
+            )}
           </button>
           <button
             onClick={async () => {
@@ -857,6 +863,7 @@ const ParentDashboard = () => {
           setQuickVerifyOpen(false)
           children.forEach(c => refreshChildHabits(c.id))
           setDataVersion(v => v + 1)
+          setReloadTick(v => v + 1)
           fetchStreak()
         }}
         onDone={() => setPendingVerifyCount(c => Math.max(0, c - 1))}

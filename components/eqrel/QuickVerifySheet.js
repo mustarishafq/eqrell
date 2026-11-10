@@ -15,14 +15,53 @@ export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDet
   const [items, setItems] = useState(null)
   const [busy, setBusy] = useState(null)
   const [result, setResult] = useState(null)
+  // Reward shop inbox: redemption requests + reward ideas from kids
+  const [rewardReqs, setRewardReqs] = useState([])
+  const [proposals, setProposals] = useState([])
+  const [kidsById, setKidsById] = useState({})
+  const [inboxMsg, setInboxMsg] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch('/api/verify-queue/items', { credentials: 'include' })
+      const [r, rr, rp, rc] = await Promise.all([
+        fetch('/api/verify-queue/items', { credentials: 'include' }),
+        fetch('/api/rewards/requests?status=pending', { credentials: 'include' }),
+        fetch('/api/rewards/proposals?status=pending', { credentials: 'include' }),
+        fetch('/api/children', { credentials: 'include' }),
+      ])
       const d = r.ok ? await r.json() : { items: [] }
+      setRewardReqs(rr.ok ? ((await rr.json()).requests || []) : [])
+      setProposals(rp.ok ? ((await rp.json()).proposals || []) : [])
+      if (rc.ok) { const cd = await rc.json(); setKidsById(Object.fromEntries((cd.children || []).map(c => [c.id, c]))) }
       setItems(d.items || [])
     } catch { setItems([]) }
   }, [])
+
+  const decideReward = async (rq, decision) => {
+    setBusy(rq.id + decision); setInboxMsg('')
+    try {
+      const r = await fetch(`/api/rewards/requests/${rq.id}/decide`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setInboxMsg(d?.error || 'Error'); return }
+      try { navigator.vibrate?.(30) } catch { /* ignore */ }
+      setRewardReqs(prev => prev.filter(x => x.id !== rq.id))
+      onDone?.()
+    } finally { setBusy(null) }
+  }
+  const decideProposal = async (pr, decision) => {
+    setBusy(pr.id + decision); setInboxMsg('')
+    try {
+      const r = await fetch(`/api/rewards/proposals/${pr.id}`, {
+        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setInboxMsg(d?.error || 'Error'); return }
+      setProposals(prev => prev.filter(x => x.id !== pr.id))
+      onDone?.()
+    } finally { setBusy(null) }
+  }
   useEffect(() => { if (open) { setItems(null); setResult(null); load() } }, [open, load])
 
   const groups = (items || []).reduce((acc, it) => {
@@ -64,6 +103,10 @@ export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDet
   }
 
   const count = items?.length || 0
+  const inboxCount = count + rewardReqs.length + proposals.length
+  const KidAvatar = ({ id }) => (
+    <img src={AVATAR_BY_ID[kidsById[id]?.avatarId]?.src || '/avatars/boys/B01.png'} alt="" className="w-8 h-8 rounded-full bg-amber-50 object-contain flex-shrink-0" />
+  )
   return (
     <AnimatePresence>
       {open && (
@@ -75,8 +118,8 @@ export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDet
             <div className="px-4 pt-4 pb-2 flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-2xl">⚡</div>
               <div className="flex-1 min-w-0">
-                <h2 className="font-extrabold text-eq-ink text-lg leading-tight">{L('Sahkan Pantas', 'Quick Verify', 'Verifikasi Cepat', 'تحقق سريع')}</h2>
-                <p className="text-[11px] text-eq-ink/60">{L('Siap dalam 10 saat — anak terus nampak hasil usahanya', 'Done in 10 seconds — your child sees their effort count', 'Selesai dalam 10 detik', 'تنتهي في ١٠ ثوانٍ')}</p>
+                <h2 className="font-extrabold text-eq-ink text-lg leading-tight">{L('Peti Masuk Ibu Bapa', 'Parent Inbox', 'Kotak Masuk Orang Tua', 'صندوق الوالدين')}</h2>
+                <p className="text-[11px] text-eq-ink/60">{L('Tugasan, tebusan ganjaran & cadangan anak — semua di sini', 'Habits, reward requests & kids\' ideas — all in one place', 'Tugas, penukaran hadiah & usulan anak — semua di sini', 'العادات وطلبات المكافآت والاقتراحات — في مكان واحد')}</p>
               </div>
               <button onClick={onClose} aria-label="close" data-testid="quick-verify-close" className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow"><X className="w-4 h-4" /></button>
             </div>
@@ -97,7 +140,63 @@ export function QuickVerifySheet({ open, onClose, lang = 'en', onDone, onOpenDet
 
               {items === null && [0, 1, 2].map(i => <div key={i} className="h-16 rounded-2xl bg-white/70 animate-pulse" />)}
 
-              {items && count === 0 && (
+              {/* 🎁 Reward requests */}
+              {rewardReqs.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-eq-card p-3" data-testid="inbox-reward-requests">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-amber-700 mb-1.5">🎁 {L('Permintaan ganjaran', 'Reward requests', 'Permintaan hadiah', 'طلبات المكافآت')} · {rewardReqs.length}</div>
+                  <div className="space-y-1.5">
+                    {rewardReqs.map(rq => {
+                      const kid = kidsById[rq.childId]
+                      const short = kid && Number(kid.mataReward || 0) < Number(rq.snapshot?.cost || 0)
+                      return (
+                        <div key={rq.id} className="flex items-center gap-2 rounded-xl bg-amber-50/70 px-2.5 py-2" data-testid={`inbox-rr-${rq.id}`}>
+                          <KidAvatar id={rq.childId} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-bold text-eq-ink truncate">{rq.snapshot?.icon} {rq.snapshot?.title}</div>
+                            <div className={`text-[10px] font-bold ${short ? 'text-red-500' : 'text-eq-ink/55'}`}>
+                              {kid?.nickname} · {rq.snapshot?.cost} 🎁{kid ? ` · ${L('baki', 'balance', 'saldo', 'الرصيد')} ${kid.mataReward || 0}` : ''}
+                            </div>
+                          </div>
+                          <button onClick={() => decideReward(rq, 'rejected')} disabled={!!busy} aria-label="reject" data-testid={`inbox-rr-reject-${rq.id}`}
+                            className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center active:scale-90 disabled:opacity-40"><X className="w-3.5 h-3.5 text-gray-500" /></button>
+                          <button onClick={() => decideReward(rq, 'approved')} disabled={!!busy || short} aria-label="approve" data-testid={`inbox-rr-approve-${rq.id}`}
+                            className="px-3 h-8 rounded-full bg-amber-500 text-white text-[11px] font-black flex items-center gap-1 active:scale-90 disabled:opacity-40"><Check className="w-3.5 h-3.5" strokeWidth={3} />{L('Lulus', 'Approve', 'Setujui', 'موافقة')}</button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 💡 Reward ideas from kids */}
+              {proposals.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-eq-card p-3" data-testid="inbox-proposals">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-violet-700 mb-1.5">💡 {L('Cadangan ganjaran anak', 'Reward ideas from kids', 'Usulan hadiah anak', 'اقتراحات الأطفال')} · {proposals.length}</div>
+                  <div className="space-y-1.5">
+                    {proposals.map(pr => (
+                      <div key={pr.id} className="flex items-center gap-2 rounded-xl bg-violet-50/70 px-2.5 py-2" data-testid={`inbox-prop-${pr.id}`}>
+                        <KidAvatar id={pr.childId} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-bold text-eq-ink truncate">{pr.icon} {pr.title}</div>
+                          <div className="text-[10px] font-bold text-eq-ink/55 truncate">{kidsById[pr.childId]?.nickname} · {pr.cost} 🎁{pr.desc ? ` · ${pr.desc}` : ''}</div>
+                        </div>
+                        <button onClick={() => decideProposal(pr, 'rejected')} disabled={!!busy} aria-label="reject" data-testid={`inbox-prop-reject-${pr.id}`}
+                          className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center active:scale-90 disabled:opacity-40"><X className="w-3.5 h-3.5 text-gray-500" /></button>
+                        <button onClick={() => decideProposal(pr, 'approved')} disabled={!!busy} aria-label="add to shop" data-testid={`inbox-prop-approve-${pr.id}`}
+                          className="px-3 h-8 rounded-full bg-violet-500 text-white text-[11px] font-black flex items-center gap-1 active:scale-90 disabled:opacity-40"><Check className="w-3.5 h-3.5" strokeWidth={3} />{L('Masuk kedai', 'Add to shop', 'Tambahkan', 'أضف')}</button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-eq-ink/50 mt-1.5">{L('Nak ubah harga atau nama? Buka Kedai Ganjaran.', 'Want to change the price or name? Open the Reward Shop.', 'Ingin ubah harga? Buka Toko Hadiah.', 'لتعديل السعر افتح المتجر.')}</p>
+                </div>
+              )}
+              {inboxMsg && <div className="text-[11px] text-red-500 font-bold px-1" data-testid="inbox-error">{inboxMsg}</div>}
+
+              {items && count > 0 && (rewardReqs.length > 0 || proposals.length > 0) && (
+                <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700 px-1 pt-1">✅ {L('Tugasan untuk disahkan', 'Habits to verify', 'Tugas untuk diverifikasi', 'عادات للتحقق')} · {count}</div>
+              )}
+
+              {items && inboxCount === 0 && (
                 <div className="text-center py-8" data-testid="quick-verify-empty">
                   <div className="text-5xl">🌙</div>
                   <div className="font-extrabold text-eq-ink mt-2">{L('Tiada yang menunggu', 'Nothing waiting', 'Tidak ada yang menunggu', 'لا شيء بالانتظار')}</div>
