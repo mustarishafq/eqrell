@@ -46,10 +46,12 @@ export default function CatchUpSheet({ open, onClose, child, lang = 'en', mode =
     if (!child?.id) return
     const r = await fetch(`/api/children/${child.id}/catchup`, { credentials: 'include' }).catch(() => null)
     const d = r?.ok ? await r.json() : { days: [] }
-    setDays(d.days || [])
+    // Kid Mode (even on a parent's phone) only ever offers yesterday
+    const list = (d.days || []).filter(x => mode !== 'kid' || x.daysAgo === 1)
+    setDays(list)
     setUntil(d.kidUntil || null)
-    setDate(prev => (prev && (d.days || []).some(x => x.dateStr === prev)) ? prev : (d.days?.[0]?.dateStr || null))
-  }, [child?.id])
+    setDate(prev => (prev && list.some(x => x.dateStr === prev)) ? prev : (list[0]?.dateStr || null))
+  }, [child?.id, mode])
 
   const loadRows = useCallback(async () => {
     if (!child?.id || !date) { setRows([]); return }
@@ -190,7 +192,9 @@ export default function CatchUpSheet({ open, onClose, child, lang = 'en', mode =
 }
 
 /** Entry button: shows only when an earlier day still has unticked habits. */
-export function CatchUpButton({ days = [], lang = 'en', mode = 'parent', onClick, compact = false }) {
+export function CatchUpButton({ days: allDays = [], lang = 'en', mode = 'parent', onClick, compact = false }) {
+  const days = mode === 'kid' ? allDays.filter(d => d.daysAgo === 1) : allDays
+  days.kidUntil = allDays.kidUntil
   const missed = days.reduce((n, d) => n + (d.missed || 0), 0)
   if (mode === 'kid' && missed === 0) return null
   if (mode !== 'kid' && days.length === 0) return null

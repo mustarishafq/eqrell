@@ -26,9 +26,13 @@ const isDone = (h) => h.todayStatus === 'claimed' || h.todayStatus === 'verified
 export function DayTimeline({ habits = [], lang = 'en', timings = null, onPick }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t) }, [])
-  // Keep the "Now" stop in view on narrow screens
+  // Keep the "Now" stop in view on narrow screens (scroll only the timeline strip, never the page)
   useEffect(() => {
-    const id = setTimeout(() => document.querySelector('[data-timeline-now="1"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 300)
+    const id = setTimeout(() => {
+      const btn = document.querySelector('[data-timeline-now="1"]')
+      const strip = btn?.closest('[data-timeline-strip]')
+      if (btn && strip) strip.scrollLeft = Math.max(0, btn.offsetLeft - (strip.clientWidth - btn.clientWidth) / 2)
+    }, 300)
     return () => clearTimeout(id)
   }, [])
   const groups = groupHabitsBySession(habits)
@@ -45,7 +49,7 @@ export function DayTimeline({ habits = [], lang = 'en', timings = null, onPick }
         <div className="text-[12px] font-black text-emerald-900">🗓️ {L(lang, 'Hari Saya', 'My Day', 'Hariku', 'يومي')}</div>
         <div className="text-[11px] font-black text-emerald-700">{totalDone}/{total} ✓</div>
       </div>
-      <div className="relative overflow-x-auto no-scrollbar -mx-1 px-1">
+      <div className="relative overflow-x-auto no-scrollbar -mx-1 px-1" data-timeline-strip>
         <div className="flex items-start gap-1 min-w-max pt-3">
           {stops.map(({ sid, g }, i) => {
             const meta = SESSION_BY_ID[sid]
